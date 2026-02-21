@@ -1,0 +1,2262 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
+
+// ============================================================================
+// 設定區
+// ============================================================================
+const GEMINI_API_KEY = "AIzaSyC93wpAHbYeKrfVgEAF9DkIFi2OAC33lJM"; 
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+// ============================================================================
+// Firebase 設定區
+// ============================================================================
+const firebaseConfig = {
+  apiKey: "AIzaSyBMLUjaOLYXL7aUaKl0RE8efXTZVxixvUo",
+  authDomain: "scheduling-systembachelor.firebaseapp.com",
+  projectId: "scheduling-systembachelor",
+  storageBucket: "scheduling-systembachelor.firebasestorage.app",
+  messagingSenderId: "273758593077",
+  appId: "1:273758593077:web:f100cef98b01f4b8dad17c"
+};
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+// ============================================================================
+// 資料結構與常數定義
+// ============================================================================
+
+const SHIFT_TYPES = {
+  D: { name: '白班', time: '07:00-16:00', color: '#FFD93D', icon: Sun, hours: 9 },
+  E: { name: '小夜班', time: '15:00-00:00', color: '#FF6B9D', icon: Sunset, hours: 9 },
+  N: { name: '大夜班', time: '23:00-08:00', color: '#4D96FF', icon: Moon, hours: 9 },
+  OFF: { name: '休假', time: '', color: '#E8E8E8', icon: null, hours: 0 },
+  RG: { name: '例假', time: '', color: '#2ecc71', icon: null, hours: 0 }, // 深綠
+  RC: { name: '休假', time: '', color: '#d5f5e3', icon: null, hours: 0 }, // 淺綠 (亦可稱休息日)
+  '支援': { name: '支援', time: '依需求', color: '#D4AC0D', icon: Users, hours: 9 }
+};
+
+const LABOR_LAW_RULES = {
+  MAX_DAILY_HOURS: 8,
+  MAX_WEEKLY_HOURS: 40,
+  MAX_WEEKLY_HOURS_WITH_BREAK: 45,
+  MAX_MONTHLY_OT: 46,
+  MIN_REST_HOURS: 11,
+  MAX_CONSECUTIVE_DAYS: 6,
+  REQUIRED_DAYS_OFF_PER_4_WEEKS: 8,
+  REQUIRED_REGULAR_DAYS: 4,
+  REQUIRED_REST_DAYS: 4
+};
+
+// ============================================================================
+// 工具函數
+// ============================================================================
+
+const parseCSV = (csvText) => {
+  const lines = csvText.trim().split('\n');
+  const headers = lines[0].replace(/^\uFEFF/, '').split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(v => v.trim());
+    const obj = {};
+    headers.forEach((header, i) => {
+      let value = values[i];
+      if (value === 'True' || value === 'TRUE') value = true;
+      else if (value === 'False' || value === 'FALSE') value = false;
+      else if (value === 'None' || value === '') value = null;
+      else if (!isNaN(value) && value !== '') value = parseFloat(value);
+      obj[header] = value;
+    });
+    return obj;
+  });
+};
+
+// ============================================================================
+// 法遵檢查邏輯 (全功能版：含工時、間隔、休假、加班)
+// ============================================================================
+const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) => {
+  const violations = [];
+  const daysInMonth = new Date(year, month, 0).getDate();
+  
+  // 定義每種班別的「工作時數」 (扣除休息時間)
+  // 假設 D/E/N 均為 8 小時工時 (不含休息)
+  const SHIFT_HOURS = { 'D': 8, 'E': 8, 'N': 8, '支援': 8, 'OFF': 0, 'RG': 0, 'RC': 0 };
+
+  // 輪班間隔檢查邏輯 (E接D, N接D, N接E 都是違規)
+  const isForbiddenSequence = (prev, curr) => {
+      if (prev === 'E' && curr === 'D') return true; 
+      if (prev === 'N' && curr === 'D') return true; 
+      if (prev === 'N' && curr === 'E') return true; 
+      return false;
+  };
+
+  Object.keys(schedule).forEach(staffId => {
+    const staff = staffData.find(s => s.staff_id === staffId);
+    if (!staff) return; // 只檢查真實員工
+
+    const monthSchedule = schedule[staffId];
+    
+    let consecutiveDays = 0;
+    let lastShiftType = null;
+    let totalOffDays = 0;
+    let totalMonthlyHours = 0;
+
+    // 用來計算每週工時 (以週一為起始)
+    let currentWeekHours = 0;
+    
+    for (let day = 1; day <= daysInMonth; day++) {
+      const cell = monthSchedule[day] || 'OFF';
+      const shiftType = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
+      
+      // 取得當日工時
+      const dailyHours = SHIFT_HOURS[shiftType] || 0;
+      totalMonthlyHours += dailyHours;
+
+      // --- A. 每日工時檢查 (MAX_DAILY_HOURS: 8) ---
+      if (dailyHours > 8) {
+           violations.push({
+            staffId, staffName: staff?.name, day, type: 'DAILY_HOURS',
+            message: `⚠️ 每日工時超標：${dailyHours} 小時 (上限 8)`
+          });
+      }
+
+      // --- B. 每週工時檢查 (MAX_WEEKLY_HOURS: 40) ---
+      // 判斷是否為週一 (若是週一，重置週工時計數器)
+      const currentDayOfWeek = new Date(year, month - 1, day).getDay(); // 0=週日, 1=週一
+      if (currentDayOfWeek === 1) { 
+          currentWeekHours = 0; 
+      }
+      
+      currentWeekHours += dailyHours;
+      
+      if (currentWeekHours > 40) {
+          // 為了避免同一週每天都報錯，只在剛超過那天報錯，或者顯示累計
+          // 這裡簡單處理：只要發現累積 > 40 就提示，通常會發生在第 6 個工作天
+          violations.push({
+            staffId, staffName: staff?.name, day, type: 'WEEKLY_HOURS',
+            message: `⚠️ 每週工時超標：本週已累計 ${currentWeekHours} 小時 (上限 40)`
+          });
+      }
+
+      // --- C. 統計休假天數 ---
+      if (['RG', 'RC', 'OFF'].includes(shiftType)) {
+          totalOffDays++;
+      }
+
+      // --- D. 檢查連續工作天數 (連六) ---
+      if (dailyHours > 0) { // 有工時代表有上班
+        consecutiveDays++;
+        if (consecutiveDays > 6) { 
+          violations.push({
+            staffId, staffName: staff?.name, day, type: 'CONSECUTIVE_DAYS',
+            message: `⚠️ 違反七休一：連續工作已達 ${consecutiveDays} 天`
+          });
+        }
+      } else {
+        consecutiveDays = 0;
+      }
+
+      // --- E. 檢查輪班間隔 (MIN_REST_HOURS: 11) ---
+      if (lastShiftType && dailyHours > 0 && SHIFT_HOURS[lastShiftType] > 0) {
+          if (isForbiddenSequence(lastShiftType, shiftType)) {
+              violations.push({
+                  staffId, staffName: staff?.name, day, type: 'SHIFT_INTERVAL',
+                  message: `⚠️ 輪班間隔不足：${lastShiftType} 接 ${shiftType} (休息 < 11小時)`
+              });
+          }
+      }
+      
+      if (dailyHours > 0) lastShiftType = shiftType;
+      else lastShiftType = null;
+    }
+
+    // --- F. 檢查月休總天數 ---
+    if (totalOffDays < 8) {
+        violations.push({
+            staffId, staffName: staff?.name, day: '整月', type: 'INSUFFICIENT_OFF',
+            message: `⚠️ 休假不足：本月僅排休 ${totalOffDays} 天 (標準 8 天)`
+        });
+    }
+
+    // --- G. 檢查每月加班上限 (MAX_MONTHLY_OT: 46) ---
+    // 簡單估算：正常工時約 176小時 (22天*8)，超過的部分視為延長工時
+    // 若總工時 > (上班天數 * 8) + 46 ? 
+    // 更嚴格的算法：直接看總數是否超過 "月標準工時 + 46"
+    // 假設月標準工時以 4 週 160 小時估算，或以當月天數估算
+    // 這裡採用較寬鬆標準：當月總工時若超過 222 小時 (176正常 + 46加班) 則警告
+    const MONTHLY_LIMIT = 176 + 46; 
+    if (totalMonthlyHours > MONTHLY_LIMIT) {
+        violations.push({
+            staffId, staffName: staff?.name, day: '整月', type: 'MONTHLY_OT',
+            message: `⚠️ 加班超標：本月總工時 ${totalMonthlyHours} 小時 (含加班上限約 ${MONTHLY_LIMIT})`
+        });
+    }
+
+  });
+  return violations;
+};
+
+// ============================================================================
+// 1. LoginPanel (登入介面 - 含 OT/夜班 Top 5 排行榜)
+// ============================================================================
+const LoginPanel = ({ onLogin, staffData = [] }) => { 
+  const [employeeId, setEmployeeId] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  // ★★★ 新增：計算 Top 5 邏輯 ★★★
+  const getTop5 = (key) => {
+    if (!staffData || staffData.length === 0) return [];
+    return [...staffData]
+      .map(s => ({ name: s.name, id: s.staff_id, value: Number(s[key]) || 0 })) // 轉換數值
+      .sort((a, b) => b.value - a.value) // 由大到小排序
+      .slice(0, 5); // 取前 5 名
+  };
+
+  const otTop5 = getTop5('accumulated_ot');
+  const nightTop5 = getTop5('night_shift_balance');
+
+  const handleLogin = (e) => {
+    e.preventDefault();
+    setError('');
+
+    if (employeeId === 'admin' && password === 'admin') {
+      onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
+      return;
+    }
+
+    if (!staffData || staffData.length === 0) {
+      setError('⚠️ 系統錯誤：員工資料尚未載入。請先使用 admin / admin 登入檢查。');
+      return;
+    }
+
+    const staff = staffData.find(s => 
+      (s.staff_id && s.staff_id.trim() === employeeId.trim()) || 
+      (s.name && s.name.trim() === employeeId.trim())
+    );
+    
+if (staff) {
+      // ★★★ 修改：讀取員工專屬密碼，若無則預設為 1234 ★★★
+      const correctPassword = staff.password || '1234'; 
+      
+      if (password === correctPassword) {
+        onLogin({ 
+            id: staff.staff_id, 
+            name: staff.name, 
+            role: 'staff',
+            rule: staff.special_status === 'Standard' ? 'Standard' : 'BiWeekly'
+        });
+      } else {
+        setError('密碼錯誤！請確認您輸入的密碼。');
+      }
+    } else {
+      setError(`找不到工號或姓名 "${employeeId}"`);
+    }
+  };
+
+ const handleClearData = () => {
+    if(window.confirm('確定要重置排班資料嗎？\n\n注意：這將清除目前的「總班表」與「發布狀態」，但會【保留】員工名單與基本設定。')) {
+        localStorage.removeItem('schedule');
+        localStorage.removeItem('finalizedSchedule');
+        localStorage.removeItem('publishedDate'); 
+        window.location.reload();
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', position:'relative', padding:'20px' }}>
+      
+      {/* 登入框 (保持原樣) */}
+      <div style={{ background: 'white', padding: '3rem', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', textAlign: 'center', marginBottom:'30px', zIndex: 10 }}>
+        <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>護理排班系統</h2>
+        <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.8rem', color: '#666', textAlign: 'left' }}>
+          <strong>💡 測試帳號提示：</strong><br/>
+          1. 管理員：admin / admin<br/>
+          2. 員工：請輸入工號 (如 N001) / 1234
+        </div>
+        
+        <form onSubmit={handleLogin}>
+          <input 
+            type="text" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} 
+            placeholder="工號 (例如: N001 或 admin)" 
+            style={{ width: '100%', padding: '12px', marginBottom: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+          />
+          <input 
+            type="password" value={password} onChange={(e) => setPassword(e.target.value)} 
+            placeholder="密碼 (預設: 1234)" 
+            style={{ width: '100%', padding: '12px', marginBottom: '1.5rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+          />
+          {error && <div style={{ color: '#e74c3c', background: '#fdecea', padding: '10px', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'left' }}>❌ {error}</div>}
+          <button type="submit" style={{ width: '100%', padding: '14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem' }}>登入系統</button>
+        </form>
+      </div>
+
+      {/* ★★★ 新增：排行榜顯示區塊 ★★★ */}
+      {staffData.length > 0 && (
+        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '850px' }}>
+            
+            {/* 左側：積假 Top 5 */}
+            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#e67e22', borderBottom: '2px solid #e67e22', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>
+                   🔥 積假 (OT) Top 5
+                </h3>
+                {otTop5.map((s, i) => (
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
+                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span>
+                        <span style={{fontWeight:'bold', color:'#e67e22', background:'#fff3e0', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* 右側：夜班 Top 5 */}
+            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#8e44ad', borderBottom: '2px solid #8e44ad', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>
+                   🌙 夜班 (Night) Top 5
+                </h3>
+                {nightTop5.map((s, i) => (
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
+                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span>
+                        <span style={{fontWeight:'bold', color:'#8e44ad', background:'#f3e5f5', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
+                    </div>
+                ))}
+            </div>
+
+        </div>
+      )}
+
+      {/* 清除資料按鈕 (放在右下角) */}
+      <button onClick={handleClearData} style={{ position: 'fixed', bottom: '20px', right: '20px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', backdropFilter:'blur(4px)' }}>
+         🗑️ 重置系統
+      </button>
+    </div>
+  );
+};
+// ============================================================================
+// 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
+// ============================================================================
+const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], setStaffData, priorityConfig }) => {  
+  // 1. 基本防呆
+  if (!currentUser) return <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>🔄 正在載入使用者資料...</div>;
+
+  // ★★★ 新增：修改密碼狀態管理 ★★★
+  const [showPwdModal, setShowPwdModal] = useState(false);
+  const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
+  const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
+
+  const handlePasswordSubmit = (e) => {
+      e.preventDefault();
+      const staff = staffData.find(s => s.staff_id === currentUser.id);
+      const currentPwd = staff?.password || '1234'; // 預設 1234
+
+      if (pwdData.old !== currentPwd) {
+          return setPwdMsg({ type: 'error', text: '舊密碼輸入錯誤！' });
+      }
+      if (pwdData.new !== pwdData.confirm) {
+          return setPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
+      }
+      if (pwdData.new.length < 4) {
+          return setPwdMsg({ type: 'error', text: '新密碼長度至少需 4 碼！' });
+      }
+
+      // 更新密碼到 staffData
+      setStaffData(prev => prev.map(s => s.staff_id === currentUser.id ? { ...s, password: pwdData.new } : s));
+      setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
+
+      // 2秒後自動關閉視窗
+      setTimeout(() => {
+          setShowPwdModal(false);
+          setPwdData({ old: '', new: '', confirm: '' });
+          setPwdMsg({ type: '', text: '' });
+      }, 2000);
+  };
+
+  // 優先選班權限檢查
+  if (priorityConfig && !priorityConfig.isOpenToAll) {
+      const allowedIds = new Set();
+      if (priorityConfig.types.includes('accumulated_ot')) {
+          const sortedOT = [...staffData].map(s => ({id: s.staff_id, val: Number(s.accumulated_ot)||0})).sort((a,b)=>b.val-a.val);
+          sortedOT.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
+      }
+      if (priorityConfig.types.includes('night_shift_balance')) {
+          const sortedNight = [...staffData].map(s => ({id: s.staff_id, val: Number(s.night_shift_balance)||0})).sort((a,b)=>b.val-a.val);
+          sortedNight.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
+      }
+
+      if (!allowedIds.has(currentUser.id)) {
+          return (
+            <div style={{ padding: '2rem', maxWidth: '600px', margin: '4rem auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔒</div>
+                <h2 style={{ color: '#2c3e50', fontWeight: 'bold' }}>班表選填暫未開放</h2>
+                <p style={{ color: '#7f8c8d', fontSize: '1.1rem', margin: '1.5rem 0' }}>目前為<strong>「優先選班時段」</strong>，僅開放符合以下條件的前 {priorityConfig.count} 位同仁優先選填：</p>
+                <div style={{textAlign:'left', background:'#f8f9fa', padding:'15px 30px', borderRadius:'10px', display:'inline-block'}}>
+                    {priorityConfig.types.includes('accumulated_ot') && <div style={{color:'#e67e22', fontWeight:'bold'}}>🔥 積借休時數 (OT) 較多者</div>}
+                    {priorityConfig.types.includes('night_shift_balance') && <div style={{color:'#8e44ad', fontWeight:'bold', marginTop:'5px'}}>🌙 夜班結餘較多者</div>}
+                </div>
+                <div style={{ marginTop:'20px', fontSize:'0.9rem', color:'#666' }}>
+                    您的數據：OT: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.accumulated_ot || 0}</strong> / Night: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.night_shift_balance || 0}</strong><br/>(未達優先門檻)
+                </div>
+                <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 30px', background: '#667eea', color: 'white', border: 'none', borderRadius: '50px', cursor: 'pointer' }}>重新整理</button>
+            </div>
+          );
+      }
+  }
+
+  const [currentStep, setCurrentStep] = useState(1);
+  const [selectedShiftType, setSelectedShiftType] = useState('ALL'); 
+  const [selectedOption, setSelectedOption] = useState(null);      
+  const [aiSlots, setAiSlots] = useState([]);                      
+  const [previewSchedule, setPreviewSchedule] = useState({});      
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const getPrevMonthStreak = () => {
+    if (!currentUser || !currentUser.id) return 0;
+    if (!staffData || staffData.length === 0) return 0;
+    const staff = staffData.find(s => s.staff_id === currentUser.id);
+    if (!staff || !staff.prevMonthLeave) return 0;
+    const leaves = staff.prevMonthLeave; 
+    let streak = 0;
+    for (let i = 6; i >= 0; i--) { if (leaves[i] === true) break; streak++; }
+    return streak;
+  };
+
+  const prevStreak = getPrevMonthStreak();
+
+  useEffect(() => {
+    if (!currentSchedule || Object.keys(currentSchedule).length === 0) { setAiSlots([]); return; }
+    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+    
+    const allSlots = Object.keys(currentSchedule).sort((a, b) => {
+        if (a.startsWith('D') && !b.startsWith('D')) return -1;
+        if (!a.startsWith('D') && b.startsWith('D')) return 1;
+        return a.localeCompare(b);
+    });
+
+    const formattedSlots = allSlots.map(slotId => {
+        const slotData = currentSchedule[slotId];
+        const pattern = [];
+        const shiftCounts = { D: 0, E: 0, N: 0 };
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = slotData[d];
+            const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
+            pattern.push(type);
+            if (['D', 'E', 'N'].includes(type)) shiftCounts[type]++;
+        }
+
+        let mainShift = 'D';
+        if (shiftCounts.E > shiftCounts.D && shiftCounts.E > shiftCounts.N) mainShift = 'E';
+        if (shiftCounts.N > shiftCounts.D && shiftCounts.N > shiftCounts.E) mainShift = 'N';
+
+        let title = "混合班表";
+        if (shiftCounts.D >= 10) title = "白班為主";
+        else if (shiftCounts.E >= 10) title = "小夜為主";
+        else if (shiftCounts.N >= 10) title = "大夜為主";
+
+        const isClaimed = !slotId.startsWith('D');
+        const claimant = isClaimed ? (staffData.find(s => s.staff_id === slotId)?.name || slotId) : null;
+
+        return { id: slotId, title: isClaimed ? `${title}` : `${title} (${slotId})`, shift: mainShift, pattern: pattern, isClaimed: isClaimed, claimantName: claimant };
+    });
+    setAiSlots(formattedSlots);
+  }, [currentSchedule, targetYear, targetMonth, staffData]);
+
+  const checkCompliance = (pattern) => {
+      let currentStreak = prevStreak;
+      for (let i = 0; i < pattern.length; i++) {
+          const shift = pattern[i];
+          if (shift !== 'OFF' && shift !== 'RG' && shift !== 'RC' && shift !== '空班') currentStreak++;
+          else currentStreak = 0;
+          if (currentStreak > 6) return { valid: false, reason: `違反七休一 (第${i+1}天連上${currentStreak}天)` };
+      }
+      return { valid: true };
+  };
+  
+  const filteredOptions = selectedShiftType === 'ALL' ? aiSlots : aiSlots.filter(opt => opt.shift === selectedShiftType);
+
+  const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
+  const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = s); setPreviewSchedule(map); setCurrentStep(3); };
+  const handleFinalSubmit = () => {
+      const choice = aiSlots.find(opt => opt.id === selectedOption);
+      onConfirmSchedule({ staffId: currentUser.id, staffName: currentUser.name, shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType, chosenSchedule: { id: choice.id, title: choice.title }, fullMonthData: previewSchedule });
+      setCurrentStep(4);
+  };
+
+  const getShiftColor = (shift) => { if (shift === 'D') return '#FFD93D'; if (shift === 'E') return '#FF6B9D'; if (shift === 'N') return '#4D96FF'; return '#f0f0f0'; };
+  const firstDayOfWeek = new Date(targetYear, targetMonth - 1, 1).getDay();
+
+  return (
+    <div style={{ padding: '2rem', maxWidth: '900px', margin: '0 auto', background: 'white', borderRadius: '16px', minHeight: '80vh', boxShadow: '0 4px 20px rgba(0,0,0,0.05)', position: 'relative' }}>
+      
+      {/* ★★★ 新增：修改密碼 Modal 視窗 ★★★ */}
+      {showPwdModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '400px', position: 'relative' }}>
+                <button onClick={() => setShowPwdModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666' }}>✖</button>
+                <h3 style={{ marginTop: 0, color: '#333' }}>⚙️ 修改密碼</h3>
+                <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼 (預設: 1234)</label>
+                        <input type="password" value={pwdData.old} onChange={e=>setPwdData({...pwdData, old: e.target.value})} required style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼 (至少 4 碼)</label>
+                        <input type="password" value={pwdData.new} onChange={e=>setPwdData({...pwdData, new: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>確認新密碼</label>
+                        <input type="password" value={pwdData.confirm} onChange={e=>setPwdData({...pwdData, confirm: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    {pwdMsg.text && (
+                        <div style={{ color: pwdMsg.type === 'error' ? '#e74c3c' : '#27ae60', background: pwdMsg.type === 'error' ? '#fdecea' : '#e8f8f5', padding: '10px', borderRadius: '8px', fontSize: '0.9rem' }}>
+                            {pwdMsg.text}
+                        </div>
+                    )}
+                    <button type="submit" style={{ padding: '12px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>儲存修改</button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '2rem', borderBottom: '1px solid #eee', paddingBottom: '1rem' }}>
+          {['班別選擇', '認領班表', '確認預覽', '完成'].map((label, idx) => (
+              <div key={idx} style={{ color: currentStep >= idx+1 ? '#667eea' : '#ccc', fontWeight: 'bold' }}>{idx+1}. {label}</div>
+          ))}
+      </div>
+
+      {currentStep === 1 && (
+        <div style={{ textAlign: 'center' }}> 
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
+              <h2 style={{ color: 'black', fontWeight: 'bold', margin: 0 }}>👋 嗨，{currentUser.name}</h2>
+              {/* ★★★ 新增：修改密碼按鈕 ★★★ */}
+              <button onClick={() => setShowPwdModal(true)} style={{ background: '#f8f9fa', border: '1px solid #ddd', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.85rem', color: '#555', fontWeight: 'bold' }}>⚙️ 修改密碼</button>
+          </div>
+
+          <h3 style={{ color: '#666', fontSize:'1rem', marginTop:0 }}>
+            目前開放認領月份：<span style={{color:'#667eea', fontWeight:'bold'}}>{targetYear}年 {targetMonth}月</span>
+          </h3>
+
+          <div style={{ background: '#e3f2fd', padding: '10px', borderRadius: '8px', display: 'inline-block', marginBottom: '2rem', fontSize:'0.9rem', color:'#0d47a1', marginTop:'1rem' }}>
+              ℹ️ 系統偵測：您上個月底已連續上班 <strong>{prevStreak}</strong> 天。
+              {prevStreak >= 6 && <div style={{color:'red', fontWeight:'bold'}}>⚠️ 警告：您已達連六上限，本月 1 號必須排休！</div>}
+          </div>
+
+          <p style={{ marginBottom: '1rem', color: '#666' }}>請選擇您下個月希望認領的班別類型：</p>
+          
+          {!currentSchedule || Object.keys(currentSchedule).length === 0 ? (
+              <div style={{padding:'20px', background:'#fff3cd', color:'#856404', borderRadius:'8px'}}>⚠️ 管理員尚未發布此月份 ({targetMonth}月) 的班表，請稍後再來。</div>
+          ) : (
+              <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap:'wrap' }}>
+                <button onClick={() => handleSelectType('ALL')} disabled={isProcessing} 
+                    style={{ width: '120px', height: '120px', border: 'none', borderRadius: '15px', background: '#95a5a6', color: 'white', fontSize: '1.2rem', cursor: 'pointer', opacity: isProcessing?0.7:1 }}>
+                    全部顯示
+                </button>
+                {[{t:'D',l:'白班'}, {t:'E',l:'小夜'}, {t:'N',l:'大夜'}].map(i => (
+                    <button key={i.t} onClick={() => handleSelectType(i.t)} disabled={isProcessing} 
+                        style={{ width: '120px', height: '120px', border: 'none', borderRadius: '15px', background: getShiftColor(i.t), color: 'white', fontSize: '1.2rem', cursor: 'pointer', opacity: isProcessing?0.7:1 }}>
+                        {i.l}
+                    </button>
+                ))}
+              </div>
+          )}
+        </div>
+      )}
+
+      {currentStep === 2 && (
+        <div>
+          <button onClick={() => setCurrentStep(1)} style={{ border: 'none', background: '#4a5568', color: 'white', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', marginBottom: '15px', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '5px' }}>← 返回</button>
+          <h2 style={{ color: 'black', fontWeight: 'bold' }}>📋 選擇整月方案 ({targetYear}年{targetMonth}月)</h2>
+          <div style={{color:'#666', fontSize:'0.9rem', marginBottom:'15px'}}>💡 提示：灰底並標示「鎖頭」的班表代表已被其他人選走。若您極需該班表，請私下與該同仁協調。</div>
+
+          <div style={{ display: 'grid', gap: '20px', maxHeight:'600px', overflowY:'auto', paddingRight:'10px' }}>
+            {filteredOptions.length === 0 ? (
+              <div style={{padding:'40px', textAlign:'center', color: '#666', background:'#f9f9f9', borderRadius:'12px'}}><h3>無符合條件的推薦方案 😕</h3></div>
+            ) : (
+              filteredOptions.map(opt => {
+                const check = checkCompliance(opt.pattern);
+                const isSelectable = !opt.isClaimed && check.valid;
+                const shiftColors = { 'D': '#FFD93D', 'E': '#FF6B9D', 'N': '#4D96FF', 'RG': '#2ecc71', 'RC': '#d5f5e3', 'OFF': '#d5f5e3', '空班': '#d5f5e3' };
+
+                return (
+                    <div key={opt.id} onClick={() => isSelectable && handleSelectOption(opt)}
+                        style={{ padding: '1.5rem', borderRadius: '16px', border: selectedOption === opt.id ? '3px solid #667eea' : '1px solid #e2e8f0', background: opt.isClaimed ? '#f1f3f5' : (!check.valid ? '#fff5f5' : 'white'), cursor: isSelectable ? 'pointer' : 'not-allowed', opacity: opt.isClaimed ? 0.7 : 1, boxShadow: '0 4px 6px rgba(0,0,0,0.05)', transition: 'transform 0.2s' }}>
+                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:'10px'}}>
+                            <div>
+                                <div style={{fontWeight:'bold', fontSize:'1.1rem', color: opt.isClaimed ? '#7f8c8d' : '#2d3748'}}>{opt.title}</div>
+                                {opt.isClaimed && <div style={{color:'#e67e22', fontSize:'0.85rem', fontWeight:'bold', marginTop:'4px'}}>🔒 已被 {opt.claimantName} 選擇 (請員工間自主協調)</div>}
+                            </div>
+                            {!opt.isClaimed && !check.valid && <div style={{color:'#e53e3e', fontSize:'0.9rem', fontWeight:'bold'}}>⚠️ {check.reason}</div>}
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', filter: opt.isClaimed ? 'grayscale(30%)' : 'none' }}>
+                            {['日','一','二','三','四','五','六'].map(d => <div key={d} style={{textAlign:'center', fontSize:'0.7rem', color:'#718096', marginBottom:'2px'}}>{d}</div>)}
+                            {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
+                            {opt.pattern.map((s, i) => (
+                              <div key={i} title={`${i+1}號: ${s}`} style={{ height: '25px', background: shiftColors[s] || '#edf2f7', borderRadius: '4px', fontSize: '0.75rem', color: ['RG','RC','OFF','空班'].includes(s) ? '#333' : 'white', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                   {i+1} 
+                              </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            }))}
+          </div>
+        </div>
+      )}
+
+      {currentStep === 3 && (
+        <div>
+          <button onClick={() => setCurrentStep(2)} style={{ border: 'none', background: '#4a5568', color: 'white', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', marginBottom: '15px', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '5px' }}>← 重選</button>
+          <h2 style={{ color: 'black', fontWeight: 'bold', textAlign:'center', marginBottom:'20px' }}>確認您的班表 ({targetYear}年{targetMonth}月)</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '8px', maxWidth:'600px', margin:'0 auto' }}>
+              {['日','一','二','三','四','五','六'].map(d=><div key={d} style={{textAlign:'center', fontWeight:'bold', color:'#555', paddingBottom:'5px'}}>{d}</div>)}
+              {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
+              {Object.keys(previewSchedule).map(d => {
+                  const type = previewSchedule[d];
+                  const shiftColors = { 'D': '#FFD93D', 'E': '#FF6B9D', 'N': '#4D96FF', 'RG': '#2ecc71', 'RC': '#d5f5e3', 'OFF': '#E8E8E8', '空班': '#E8E8E8', '支援': '#D4AC0D' };
+                  const bgColor = shiftColors[type] || '#fff';
+                  const isDarkBg = ['D', 'E', 'N', 'RG', '支援'].includes(type);
+                  return (
+                      <div key={d} style={{ border: isDarkBg ? 'none' : '1px solid #eee', padding:'8px 5px', textAlign:'center', background: bgColor, borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60px' }}>
+                          <div style={{fontSize:'0.75rem', color: isDarkBg ? 'rgba(255,255,255,0.9)' : '#888', marginBottom:'2px'}}>{d}</div>
+                          <div style={{fontWeight:'bold', color: isDarkBg ? 'white' : '#333', fontSize:'1.1rem'}}>{type}</div>
+                      </div>
+                  )
+              })}
+          </div>
+          <div style={{textAlign:'center', marginTop:'30px'}}>
+             <button onClick={handleFinalSubmit} style={{padding:'12px 40px', background:'#667eea', color:'white', border:'none', borderRadius:'20px', cursor:'pointer', fontSize:'1.1rem', fontWeight:'bold', boxShadow:'0 4px 10px rgba(102, 126, 234, 0.4)'}}>確認認領</button>
+          </div>
+        </div>
+      )}
+
+      {currentStep === 4 && (
+        <div style={{ textAlign: 'center', padding: '4rem 2rem' }}>
+          <h2 style={{ color: '#2d3748', fontWeight: '900', fontSize: '2rem', marginBottom: '1rem' }}>🎉 認領成功！</h2>
+          <p style={{ color: '#718096', marginBottom: '2rem', fontSize: '1.1rem' }}>您的班表已成功送出，系統已更新。<br/>(您選擇的月份：{targetYear}年 {targetMonth}月)</p>
+          <button onClick={() => window.location.reload()} style={{ marginTop: '10px', padding: '15px 40px', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', border: 'none', borderRadius: '50px', fontSize: '1.2rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 15px rgba(102, 126, 234, 0.4)' }}>回首頁</button>
+        </div>
+      )}
+    </div>
+  );
+};
+// ============================================================================
+// 3. NurseSchedulingSystem (主元件)
+// ============================================================================
+const NurseSchedulingSystem = () => {
+  const [currentUser, setCurrentUser] = useState(null);
+
+
+
+// --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
+
+  const [shiftOptions, setShiftOptions] = useState([
+    { code: 'D', name: '白班', color: '#FFD93D', time: '08:00-16:00' },
+    { code: 'E', name: '小夜', color: '#FF6B9D', time: '16:00-24:00' },
+    { code: 'N', name: '大夜', color: '#4D96FF', time: '00:00-08:00' },
+    { code: 'RG', name: '例假', color: '#2ecc71', time: '例假' }, 
+    { code: 'RC', name: '休假', color: '#d5f5e3', time: '休假' },
+    { code: 'OFF', name: '空班', color: '#E8E8E8', time: '空班' },
+    { code: '支援', name: '支援', color: '#D4AC0D', time: '09:00-18:00' }
+  ]);
+  const [priorityConfig, setPriorityConfig] = useState({ types: ['accumulated_ot'], count: 5, isOpenToAll: false });
+  const [staffData, setStaffData] = useState([]);
+  const [schedule, setSchedule] = useState(null);
+  const [finalizedSchedule, setFinalizedSchedule] = useState(null);
+  const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
+
+  // --- 2. 本機暫存狀態 (不需上雲端) ---
+  const [historyData, setHistoryData] = useState([]);
+  const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
+  const [preferences, setPreferences] = useState({});
+  const [violations, setViolations] = useState([]);
+  const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
+  const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
+
+  useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
+  useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
+
+  // ★★★ 新增：自動抓取台灣國定假日 API ★★★
+  const [publicHolidays, setPublicHolidays] = useState([]);
+  
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      try {
+        // 使用開源的台灣行事曆 JSON 資料
+        const res = await fetch(`https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`);
+        const data = await res.json();
+        
+        // 過濾出「放假」且「有描述 (代表是國定假日或補假，而非一般週休二日)」的日期
+        const holidays = data
+            .filter(d => d.isHoliday && d.description !== "")
+            .map(d => d.date); // 格式為 "YYYYMMDD"
+            
+        setPublicHolidays(holidays);
+      } catch (error) {
+        console.error("無法抓取國定假日，使用預設空陣列:", error);
+        setPublicHolidays([]);
+      }
+    };
+    fetchHolidays();
+  }, [selectedYear]);
+
+
+
+  // ★★★ 新增這段：法遵檢查自動化引擎 ★★★
+  useEffect(() => {
+    // 只有當班表存在時才檢查
+    if (schedule && Object.keys(schedule).length > 0) {
+      
+      // 執行檢查函式
+      const newViolations = checkLaborLawCompliance(
+        schedule, 
+        staffData, 
+        historyData, 
+        selectedYear, 
+        selectedMonth
+      );
+      
+      // 更新法遵頁面的資料
+      setViolations(newViolations);
+    }
+  }, [schedule, staffData, selectedYear, selectedMonth]); // <--- 監聽這些變數，一變就跑
+
+// ☁️ 雲端引擎 1：即時讀取 Firestore (OnSnapshot 監聽)
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, "NurseApp", "MainData"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.shiftOptions) setShiftOptions(data.shiftOptions);
+        if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
+        if (data.staffData) setStaffData(data.staffData);
+        if (data.schedule) setSchedule(data.schedule);
+        if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
+        if (data.publishedDate) setPublishedDate(data.publishedDate);
+      }
+      setIsCloudLoaded(true); // 標記為：已成功從雲端抓取到資料
+    });
+    return () => unsub(); // 關閉元件時取消監聽
+  }, []);
+
+  // ☁️ 雲端引擎 2：資料變更時，自動寫入 Firestore
+  useEffect(() => {
+    // 防呆：如果雲端資料還沒載入完畢，不要寫入，以免把雲端資料洗白
+    if (!isCloudLoaded) return; 
+
+    setDoc(doc(db, "NurseApp", "MainData"), {
+      shiftOptions,
+      priorityConfig,
+      staffData,
+      schedule,
+      finalizedSchedule,
+      publishedDate
+    }, { merge: true });
+
+  }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded]);
+
+  const handleGenerateSchedule = (providedSchedule = null) => {
+    let newSchedule = providedSchedule;
+    if (!newSchedule) { return; }
+    if (newSchedule) {
+        setSchedule(newSchedule);
+        const newViolations = checkLaborLawCompliance(newSchedule, staffData, historyData, selectedYear, selectedMonth);
+        setViolations(newViolations);
+    }
+  };
+
+  const handleExportPreferences = () => {};
+  const handleLogout = () => setCurrentUser(null);
+
+// ★★★ 核心修復：員工認領後，新增 Nxxx 並刪除對應的 Dxxx ★★★
+  const handleStaffScheduleUpdate = (result) => {
+    const updateLogic = (prev) => {
+      const next = { ...(prev || {}) };
+      
+      // 1. 新增：將該員工 (Nxxx) 的班表寫入
+      next[result.staffId] = result.fullMonthData;
+      
+      // 2. 刪除：將被選走的那個虛擬代號 (Dxxx) 移除
+      // 我們從 result.chosenSchedule.id 取得員工選的是哪一個 (例如 "D001")
+      const targetVirtualId = result.chosenSchedule?.id;
+
+      if (targetVirtualId && next[targetVirtualId]) {
+          delete next[targetVirtualId]; // 精準刪除被選走的那個
+      } else {
+          // 如果抓不到 ID (防呆)，則刪除第一個找到的 D 開頭空缺
+          const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
+          if (fallbackId) delete next[fallbackId];
+      }
+      
+      return next;
+    };
+
+    setSchedule(updateLogic);
+    setFinalizedSchedule(updateLogic); // 同步更新
+
+    // 更新員工資料 (保持不變)
+    setStaffData(prevData => {
+      const exists = prevData.find(s => s.staff_id === result.staffId);
+      if (exists) return prevData;
+      return [...prevData, { 
+        staff_id: result.staffId, name: result.staffName, 
+        special_status: result.shiftType === 'D' ? 'Standard' : 'BiWeekly', 
+        is_active: true, accumulated_ot: 0, night_shift_balance: 0,
+        prevMonthLeave: [false,false,false,false,false,false,false]
+      }];
+    });
+
+    alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，該時段已從工作桌移除。`);
+  };
+
+  const handleSaveAndPublish = () => {
+    if (!schedule || Object.keys(schedule).length === 0) {
+      alert("❌ 目前沒有班表內容，無法儲存！");
+      return;
+    }
+    setFinalizedSchedule(JSON.parse(JSON.stringify(schedule)));
+  const newPubDate = { year: selectedYear, month: selectedMonth };
+    setPublishedDate(newPubDate);
+    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
+    
+    alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
+  };
+
+  if (!currentUser) {
+    return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />;
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '2rem', fontFamily: 'sans-serif' }}>
+      <div style={{ maxWidth: '1400px', margin: '0 auto 2rem', background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <Calendar size={28} color="#667eea" />
+            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#333' }}>智能排班系統</h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ color: '#555', fontWeight: 'bold' }}>👋 {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
+            <button onClick={handleLogout} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>登出</button>
+          </div>
+      </div>
+
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+        {currentUser.role === 'admin' ? (
+          <ManagerInterface
+            staffData={staffData} setStaffData={setStaffData} historyData={historyData}
+            requirements={requirements} setRequirements={setRequirements}
+            preferences={preferences} setPreferences={setPreferences}
+            schedule={schedule} violations={violations}
+            selectedYear={selectedYear} 
+            selectedMonth={selectedMonth}
+            onGenerateSchedule={handleGenerateSchedule} onExportPreferences={handleExportPreferences}
+            setSchedule={setSchedule} setViolations={setViolations}
+            setSelectedYear={setSelectedYear}   // <--- 補上這行 (讓子元件能修改年份)
+            setSelectedMonth={setSelectedMonth} // <--- 補上這行 (讓子元件能修改月份)
+            onSaveSchedule={handleSaveAndPublish}
+            shiftOptions={shiftOptions}       // <--- 補上這個
+            setShiftOptions={setShiftOptions} // <--- 補上這個
+            priorityConfig={priorityConfig}       // <--- 補上
+            setPriorityConfig={setPriorityConfig} // <--- 補上
+            publicHolidays={publicHolidays} // <--- ★★★ 補上這一行 ★★★
+          />
+        ) : (
+          <StaffDashboard
+          currentUser={currentUser}
+            targetYear={publishedDate.year}
+  targetMonth={publishedDate.month}
+  currentSchedule={finalizedSchedule} 
+  onConfirmSchedule={handleStaffScheduleUpdate} 
+  staffData={staffData}
+  priorityConfig={priorityConfig} // <--- ★★★ 補上這個，用於判斷權限
+  setStaffData={setStaffData} // <--- ★★★ 補上這行：讓員工有權限改自己密碼 ★★★
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// 子元件區 (ManagerInterface) - 負責管理分頁切換
+// ============================================================================
+const ManagerInterface = ({
+  staffData, setStaffData, historyData, requirements, setRequirements,
+  preferences, setPreferences, schedule, violations,
+  shiftOptions, setShiftOptions,priorityConfig, setPriorityConfig,publicHolidays, // <--- ★★★ 就是漏了這一個！請補上 ★★★ 
+  // 確保接收到所有需要的 props
+  selectedYear, setSelectedYear, 
+  selectedMonth, setSelectedMonth,
+  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule
+}) => {
+  // 這裡控制目前顯示哪個分頁，預設為 'requirements'
+  const [activeTab, setActiveTab] = useState('requirements');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      
+      {/* 1. 分頁導覽列 (Navigation Tabs) */}
+      <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {['requirements', 'staff', 'schedule', 'review', 'statistics'].map(tab => (
+          <button 
+            key={tab} 
+            onClick={() => setActiveTab(tab)} 
+            style={{
+              flex: 1, 
+              padding: '1rem', 
+              border: 'none', 
+              borderRadius: '10px', 
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              transition: 'all 0.2s',
+              background: activeTab === tab ? '#667eea' : 'transparent', 
+              color: activeTab === tab ? 'white' : '#666',
+              boxShadow: activeTab === tab ? '0 4px 6px rgba(102, 126, 234, 0.3)' : 'none'
+            }}
+          >
+            {tab === 'requirements' && '⚙️ 人力需求'}
+            {tab === 'staff' && '👥 員工管理'}
+            {tab === 'schedule' && '🛠️ 排班工作桌'} 
+            {tab === 'review' && '✅ 審核與發布'}   {/* 這裡原本是 法遵檢查，現在改成 審核與發布 */}
+            {tab === 'statistics' && '📊 統計報表'}
+          </button>
+        ))}
+      </div>
+
+      {/* 2. 頁面內容區 (Content Area) */}
+      
+      {/* 分頁 1: 人力需求設定 */}
+      {activeTab === 'requirements' && (
+        <RequirementsPanel
+          requirements={requirements} setRequirements={setRequirements}
+          onGenerateSchedule={onGenerateSchedule} 
+          onExportPreferences={onExportPreferences}
+          onSaveSchedule={onSaveSchedule} 
+          selectedYear={selectedYear} 
+          setSelectedYear={setSelectedYear}
+          selectedMonth={selectedMonth} 
+          setSelectedMonth={setSelectedMonth}
+        />
+      )}
+      
+      {/* 分頁 2: 員工管理 */}
+      {activeTab === 'staff' && (
+        <StaffManagementPanel 
+           staffData={staffData} 
+           setStaffData={setStaffData} 
+        />
+      )}
+      
+      {/* 分頁 3: 總班表 (排班工作桌) */}
+      {activeTab === 'schedule' && (
+        <SchedulePanel
+          schedule={schedule} 
+          staffData={staffData} 
+          violations={violations}
+          requirements={requirements} 
+          onGenerateSchedule={onGenerateSchedule} 
+          onSaveSchedule={onSaveSchedule} 
+          setSchedule={setSchedule}
+          selectedYear={selectedYear} 
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
+          shiftOptions={shiftOptions}       // <--- 2. 傳給 SchedulePanel
+          setShiftOptions={setShiftOptions} // <--- 2. 傳給 SchedulePanel
+          setSelectedYear={setSelectedYear}
+        />
+      )}
+      
+      {/* 分頁 4: 審核與發布 (整合面板) - 取代原本的 ViolationsPanel */}
+      {activeTab === 'review' && (
+        <ScheduleReviewPanel 
+           schedule={schedule}
+           setSchedule={setSchedule} // 傳遞修改權限
+           staffData={staffData}
+           violations={violations}   // 傳遞違規資料
+           selectedYear={selectedYear}
+           selectedMonth={selectedMonth}
+           onSaveSchedule={onSaveSchedule}
+           shiftOptions={shiftOptions}       // <--- 3. 傳給 ScheduleReviewPanel
+           setShiftOptions={setShiftOptions} // <--- 3. 傳給 ScheduleReviewPanel
+           publicHolidays={publicHolidays} // <--- 2. 這裡傳遞下去
+        />
+      )}
+      
+    {/* 分頁 5: 統計報表 (修改這裡) */}
+      {activeTab === 'statistics' && (
+        <StatisticsPanel 
+            staffData={staffData} 
+            priorityConfig={priorityConfig}       // <--- 2. 傳下去
+            setPriorityConfig={setPriorityConfig} // <--- 2. 傳下去
+        />
+      )}
+
+    </div>
+  );
+};
+
+// ============================================================================
+// 人力需求設定面板 (含：年月選擇器 + 儲存按鈕)
+// ============================================================================
+const RequirementsPanel = ({ 
+  requirements, setRequirements, 
+  selectedYear, setSelectedYear, selectedMonth, setSelectedMonth,
+  onSaveSchedule // ★ 接收存檔功能
+}) => {
+ 
+  const [bedCount, setBedCount] = useState(50);
+  const [ratioD, setRatioD] = useState(10);
+  const [ratioE, setRatioE] = useState(12);
+  const [ratioN, setRatioN] = useState(15);
+
+  const dailyD = Math.ceil(bedCount / ratioD);
+  const dailyE = Math.ceil(bedCount / ratioE);
+  const dailyN = Math.ceil(bedCount / ratioN);
+
+  useEffect(() => {
+    setRequirements({
+      ...requirements, D: dailyD, E: dailyE, N: dailyN,
+      optimalD: Math.ceil(dailyD * 1.4), optimalE: Math.ceil(dailyE * 1.4), optimalN: Math.ceil(dailyN * 1.4)
+    });
+  }, [bedCount, ratioD, ratioE, ratioN]);
+
+
+  return (
+    <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
+      <h2 style={{ color: 'black', marginBottom: '1.5rem' }}>人力需求與排班設定</h2>
+      
+
+      <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem' }}>
+        {/* 病床數與護病比設定 (保持不變) */}
+        <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem', color: 'black', fontSize: '1.1rem' }}>
+              病床數: <span style={{fontSize:'1.3rem'}}>{bedCount}</span>
+            </label>
+            <input 
+              type="range" min="0" max="100" value={bedCount} 
+              onChange={e=>setBedCount(Number(e.target.value))} 
+              style={{ width:'100%', cursor: 'pointer' }}
+            />
+        </div>
+
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            {/* 早班 */}
+            <div style={{ flex: 1, background: '#FFD93D', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyD} 人</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
+                   <span>早班 1 :</span>
+                   <input type="number" value={ratioD} onChange={e => setRatioD(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                </div>
+            </div>
+
+            {/* 小夜 */}
+            <div style={{ flex: 1, background: '#FF6B9D', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyE} 人</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
+                   <span>小夜 1 :</span>
+                   <input type="number" value={ratioE} onChange={e => setRatioE(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                </div>
+            </div>
+
+            {/* 大夜 */}
+            <div style={{ flex: 1, background: '#4D96FF', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyN} 人</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
+                   <span>大夜 1 :</span>
+                   <input type="number" value={ratioN} onChange={e => setRatioN(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// ============================================================================
+// 總班表顯示面板 (精簡版：移除認領清單，專注於 AI 排班工作桌)
+// ============================================================================
+const SchedulePanel = ({ 
+    onSaveSchedule, schedule, setSchedule, staffData, violations, requirements, 
+    onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
+    shiftOptions, setShiftOptions // ★ 改用 props 接收全域選項
+}) => {
+  const [geminiMessages, setGeminiMessages] = useState([]); 
+  const [geminiInput, setGeminiInput] = useState('');       
+  const [showGemini, setShowGemini] = useState(false);      
+  const [processing, setProcessing] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState(''); 
+  
+  // 自定義 AI 指令
+  const [customAiInstruction, setCustomAiInstruction] = useState('');
+  
+  // 選項管理 UI 狀態
+  const [showAddOption, setShowAddOption] = useState(false);
+  const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
+
+  const chatSessionRef = useRef(null);
+  const messagesEndRef = useRef(null);
+
+  const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
+  useEffect(() => { scrollToBottom(); }, [geminiMessages, loadingStatus]);
+
+  // 計算當月天數
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
+
+  // ★★★ 資料清洗函式 ★★★
+  const refineSchedule = (rawSchedule) => {
+    const refined = {}; 
+    const currentDaysInMonth = new Date(selectedYear, selectedMonth, 0).getDate() || 31;
+
+    Object.keys(rawSchedule).forEach(staffId => {
+        const rawStaffData = rawSchedule[staffId];
+        if (typeof rawStaffData !== 'object' || rawStaffData === null) return;
+        refined[staffId] = {};
+        const normalizedData = {};
+        Object.keys(rawStaffData).forEach(k => {
+            const dayNum = parseInt(k.replace(/\D/g, ''), 10); 
+            const cleanDay = dayNum > 100 ? dayNum % 100 : dayNum;
+            if (!isNaN(cleanDay) && cleanDay >= 1 && cleanDay <= 31) {
+                normalizedData[cleanDay] = rawStaffData[k];
+            }
+        });
+        let lastShift = 'OFF';
+        for (let d = 1; d <= currentDaysInMonth; d++) {
+            let cell = normalizedData[d]; 
+            if (!cell) {
+                refined[staffId][d] = { type: 'OFF', time: '' };
+                lastShift = 'OFF';
+                continue;
+            }
+            let type = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
+            if (lastShift === 'N' && type === 'D') { type = 'OFF'; }
+            refined[staffId][d] = { type: type, time: '' };
+            lastShift = type;
+        }
+    });
+    return refined;
+  };
+
+  const handleReset = () => {
+    if (!schedule || Object.keys(schedule).length === 0) {
+        alert("目前沒有班表可重置。");
+        return;
+    }
+    if (window.confirm("⚠️ 確定要【重置所有認領狀態】嗎？\n\n執行後：\n1. 所有員工的認領將被取消 (Nxxx 消失)\n2. 班表內容會保留，但全部變回「待認領」(Dxxx)\n3. 資料將全部回到「排班工作桌」讓大家重選")) {
+      const newSchedule = {};
+      let index = 1;
+      Object.keys(schedule).sort().forEach(key => {
+          const virtualId = `D${String(index).padStart(3, '0')}`;
+          newSchedule[virtualId] = schedule[key];
+          index++;
+      });
+      setSchedule(newSchedule); 
+      alert("✅ 系統已重置！\n所有班表已釋出並回到「排班工作桌」，員工可以重新進行認領。");
+    }
+  };
+
+  const handleExportExcel = () => {
+    if (!schedule) return alert("無資料可匯出");
+    let csv = "\uFEFF工號,姓名,";
+    for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
+    csv += "\n";
+    Object.keys(schedule).sort().forEach(rowId => {
+        // 匯出目前列表中的資料 (這裡主要是虛擬代號)
+        const realStaff = staffData.find(s => s.staff_id === rowId);
+        const name = realStaff ? realStaff.name : "待認領";
+        let row = `${rowId},${name},`;
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = schedule[rowId]?.[d];
+            row += `${(typeof cell === 'object' ? cell.type : cell) || ''},`;
+        }
+        csv += row + "\n";
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${selectedYear}_${selectedMonth}_班表_工作桌.csv`;
+    link.click();
+  };
+
+  const handleGeminiSolve = async () => {
+    setShowGemini(true);
+    setProcessing(true);
+    const dailyNeeded = (requirements.D || 0) + (requirements.E || 0) + (requirements.N || 0);
+    const totalShiftsNeeded = dailyNeeded * daysInMonth;
+    let estimatedCount = dailyNeeded > 0 ? Math.ceil(totalShiftsNeeded / 22) : 10;
+    estimatedCount += 2; 
+
+    setGeminiMessages([{ role: 'assistant', content: `🤖 根據人力需求 (${dailyNeeded}人/日)，正在為 ${selectedMonth}月 生成 ${estimatedCount} 份匿名班表...` }]);
+
+ let currentPrompt = `
+[角色定義]
+你是一個高階排班演算法引擎，採用「目標規劃法 (Goal Programming)」邏輯。你精通台灣勞動基準法 (Taiwan Labor Standards Act) 與護理人員排班規則。
+
+[使用者額外指令]
+${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` : "無額外特殊要求，請依照一般最佳化原則排班。"}
+[任務目標]
+為 ${selectedYear}年${selectedMonth}月 (共 ${daysInMonth} 天) 的護理團隊規劃班表。
+目標是將目標函數 Z 的總罰分降至最低： Minimize Z = (W1 * 工作量偏差) + (W2 * 偏好偏差) + (W3 * 班別公平性偏差)。
+
+[輸入資料：員工與限制]
+2. 班別定義: D (07-16), E (15-00), N (23-08) 
+- 休假班: **RG (例假), RC (休假)**。
+- 所有休假必須明確標示為 RG 或 RC。
+3. 每日人力需求: 早班(D)至少 ${requirements.D} 人, 小夜(E)至少 ${requirements.E} 人, 大夜(N)至少 ${requirements.N} 人。
+
+[硬性約束 (Hard Constraints) - 必須完全遵守，違反即失敗]
+高優先級別-**每個護理人員班表僅能出現一種班別，也就是說第一天出現白班，接下來的排班除休假日外也僅可以出現白班。**
+1. **法規底線**: 
+   - 任何員工不得連續工作超過 6 天 (勞基法「七休一」)。
+   - 輪班間隔必須 >= 11 小時 (例如: 今天 E 班 24:00 下班，明天最早只能接 E 班，不能接 D 班)。
+   - 每 7 天週期內，至少要有 1 個 RG (例假) 和 1 個 RC (休假)。
+   - RG (例假) 之間間隔不得超過 6 天。
+   - 4週內總計至少應有 8 天休假 (4個 RG + 4個 RC)。
+2. **24小時無縫覆蓋**: 任何時段護理站都不能空班。
+3. **工時制度**: 
+   - "Standard" (單週): 每日 8 小時，每週工時 <= 40。
+   - "BiWeekly" (雙週變形): 每日可達 10 小時，雙週總工時 <= 80。
+4. **夜班限制**: 禁止連續大夜班 (N) 超過44 天 (避免過勞)。
+
+[軟性目標 (Soft Goals) - 盡力達成，做不到則計入罰分]
+1. **Goal 1 (工作量公平性)**: 每人每月總班數應介於 22-24 班之間。偏差值越小越好。
+2. **Goal 2 (個人偏好)**: 盡量滿足員工「假日休假」與「連續休假」。(若違反，每錯一個罰 10 分)。
+
+[輸出格式 JSON]
+1. 日期 Key 請務必使用「純數字」(例如 "1", "2", "3")，不要加 "Day" 或 "01"。
+2. 格式範例: 
+{ 
+  "schedule": { 
+      "N001": { "1": { "type": "D" }, "2": { "type": "E" }, ... },
+      "N002": { ... }
+  }, 
+  "summary": "說明..." 
+}
+`;
+    const model = genAI.getGenerativeModel({ model: "gemini-pro-latest" }); 
+    const chat = model.startChat();
+    chatSessionRef.current = chat;
+
+    let attempts = 0; const MAX_RETRIES = 3; let isSuccess = false;
+
+    while (attempts < MAX_RETRIES && !isSuccess) {
+        try {
+            attempts++;
+            setLoadingStatus(attempts === 1 ? "🧠 AI 正在生成初版班表..." : `♻️ 第 ${attempts} 次嘗試...`);
+            const result = await chat.sendMessage(currentPrompt);
+            const text = result.response.text().replace(/```json|```/g, '').trim();
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error("JSON 格式錯誤");
+            const parsed = JSON.parse(jsonMatch[0]);
+            
+            if (parsed.schedule) {
+                const refinedSchedule = refineSchedule(parsed.schedule);
+                const virtualSchedule = {};
+                let vIndex = 1;
+                Object.keys(refinedSchedule).forEach(originalKey => {
+                    const newKey = `D${String(vIndex).padStart(3, '0')}`;
+                    virtualSchedule[newKey] = refinedSchedule[originalKey];
+                    vIndex++;
+                });
+
+                const summary = parsed.summary || "排班完成。";
+                setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功**\n\n${summary}` }]);
+                isSuccess = true;
+                
+                const currentRealStaffSchedule = {};
+                if (schedule) {
+                    Object.keys(schedule).forEach(key => {
+                        if (!key.startsWith('D')) {
+                            currentRealStaffSchedule[key] = schedule[key];
+                        }
+                    });
+                }
+                const finalSchedule = { ...virtualSchedule, ...currentRealStaffSchedule };
+                onGenerateSchedule(finalSchedule);
+            }
+        } catch (e) {
+            console.error(e);
+            if (attempts >= MAX_RETRIES) {
+                setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 系統錯誤: " + e.message }]);
+                break;
+            }
+        }
+    }
+    setProcessing(false); setLoadingStatus('');
+  };
+
+  const handleUserChat = async () => {
+      if (!geminiInput.trim() || !chatSessionRef.current) return;
+      const userMsg = geminiInput;
+      setGeminiInput(''); setProcessing(true);
+      setLoadingStatus("🤖 AI 正在思考回應...");
+      setGeminiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+      try {
+          const result = await chatSessionRef.current.sendMessage(userMsg);
+          const text = result.response.text();
+          setGeminiMessages(prev => [...prev, { role: 'assistant', content: text }]);
+      } catch (error) {
+          setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 錯誤: " + error.message }]);
+      } finally { setProcessing(false); setLoadingStatus(''); }
+  };
+
+  const handleCellChange = (staffId, day, newValue) => {
+    const newSchedule = JSON.parse(JSON.stringify(schedule));
+    if (!newSchedule[staffId]) newSchedule[staffId] = {};
+    const oldCell = newSchedule[staffId][day];
+    const opt = shiftOptions.find(o => o.code === newValue);
+    const defaultTime = opt ? opt.time : '';
+    newSchedule[staffId][day] = { ...(typeof oldCell === 'object' ? oldCell : {}), type: newValue, time: defaultTime };
+    setSchedule(newSchedule);
+  };
+
+  const handleAddOption = () => {
+    if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
+    if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
+    setShiftOptions([...shiftOptions, { ...newOption, time: '' }]);
+    setNewOption({ code: '', name: '', color: '#cccccc' });
+  };
+  const handleDeleteOption = (code) => {
+      if(window.confirm(`確定要刪除班別「${code}」嗎？`)) {
+          setShiftOptions(shiftOptions.filter(o => o.code !== code));
+      }
+  };
+
+  // 計算每日統計 (用於 Footer)
+  const calculateDailyStats = () => {
+      const stats = {};
+      for(let d=1; d<=daysInMonth; d++) stats[d] = { D:0, E:0, N:0 };
+      if(schedule) {
+          Object.values(schedule).forEach(staffSchedule => {
+              for(let d=1; d<=daysInMonth; d++) {
+                  const cell = staffSchedule[d];
+                  const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
+                  if(['D','E','N'].includes(type)) stats[d][type]++;
+              }
+          });
+      }
+      return stats;
+  };
+  const dailyStats = calculateDailyStats();
+
+  return (
+    <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', position: 'relative' }}>
+      
+      {processing && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.95)', zIndex: 100, borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="win7-loader" style={{ border: '5px solid #f3f3f3', borderTop: '5px solid #3498db', borderRadius: '50%', width: '50px', height: '50px', animation: 'spin 1s linear infinite' }}></div>
+          <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+          <div style={{ marginTop: '20px', fontSize: '1.2rem', fontWeight: 'bold', color: '#2c3e50' }}>AI 正在排班中...</div>
+          <div style={{ marginTop: '8px', fontSize: '0.95rem', color: '#7f8c8d' }}>{loadingStatus}</div>
+        </div>
+      )}
+
+      {/* 頂部工具列 */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center', flexWrap:'wrap', gap:'10px' }}>
+        <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+            <h2 style={{ color: 'black', fontWeight: 'bold', margin: 0 }}>總班表 (排班工作桌)</h2>
+        </div>
+
+       <div style={{ display: 'flex', gap: '10px', alignItems:'center' }}>
+           {/* 日期控制區 */}
+           <div style={{ display: 'flex', alignItems: 'center', background: '#e3f2fd', padding: '5px 10px', borderRadius: '8px', marginRight:'10px', border:'1px solid #90caf9' }}>
+               <input 
+                  type="number" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  style={{ width: '60px', padding: '5px', borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold', textAlign: 'center' }}
+               />
+               <span style={{margin:'0 5px', color:'#1565c0', fontWeight:'bold'}}>年</span>
+               <select 
+                  value={selectedMonth} onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                  style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold', cursor:'pointer' }}
+               >
+                  {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}</option>)}
+               </select>
+               <span style={{margin:'0 5px', color:'#1565c0', fontWeight:'bold'}}>月</span>
+               <span style={{fontSize:'0.85rem', color:'#555', marginLeft:'5px'}}>({daysInMonth}天)</span>
+           </div>
+           
+           <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 選項</button>
+           
+           {/* 操作按鈕 */}
+           <input 
+              type="text" 
+              placeholder="AI 指令 (例: 週末多排人...)" 
+              value={customAiInstruction}
+              onChange={(e) => setCustomAiInstruction(e.target.value)}
+              style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc', width: '180px' }}
+           />
+           <button id="gemini-trigger-btn" onClick={handleGeminiSolve} disabled={processing} style={{ padding: '0.5rem 1rem', background: processing ? '#ccc' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer' }}>{processing ? '⏳' : '✨ 生成'}</button>
+           <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 重置</button>
+           <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
+           <button onClick={onSaveSchedule} style={{ padding: '0.5rem 1rem', background: '#e67e22', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💾 儲存並發布</button>
+        </div>
+      </div>
+
+      {showAddOption && (
+        <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f1f3f5', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap:'wrap' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
+          <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} style={{padding:'5px', width:'80px'}} />
+          <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} style={{padding:'5px', width:'120px'}} />
+          <input type="color" value={newOption.color} onChange={e=>setNewOption({...newOption, color: e.target.value})} style={{border:'none', width:'40px', height:'30px', cursor:'pointer'}} />
+          <button onClick={handleAddOption} style={{padding:'5px 15px', background:'#28a745', color:'white', border:'none', borderRadius:'4px', cursor:'pointer'}}>確認新增</button>
+        </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'10px', paddingTop:'10px', borderTop:'1px solid #ddd', width:'100%' }}>
+              {shiftOptions.map(opt => (
+                  <div key={opt.code} style={{ background:'white', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ccc', display:'flex', alignItems:'center', gap:'5px', fontSize:'0.85rem' }}>
+                      <span style={{width:'12px', height:'12px', background:opt.color, display:'inline-block', borderRadius:'50%'}}></span>
+                      <b style={{color: '#000000'}}>{opt.code}</b>
+                      <button onClick={() => handleDeleteOption(opt.code)} style={{border:'none', background:'transparent', color:'red', cursor:'pointer', fontWeight:'bold', padding:'0 2px'}}>×</button>
+                  </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {showGemini && (
+        <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f8f9fa', borderRadius: '12px', border: '1px solid #eee' }}>
+            <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '10px' }}>
+                {geminiMessages.map((m, i) => (
+                    <div key={i} style={{ marginBottom: '0.8rem', textAlign: m.role === 'user' ? 'right' : 'left' }}>
+                        <div style={{ display: 'inline-block', padding: '10px 15px', borderRadius: '12px', background: m.role === 'user' ? '#667eea' : 'white', color: m.role === 'user' ? 'white' : '#333', border: m.role === 'assistant' ? '1px solid #ddd' : 'none', maxWidth: '80%', whiteSpace: 'pre-wrap', textAlign: 'left', fontSize: '0.9rem' }}>{m.content}</div>
+                    </div>
+                ))}
+                <div ref={messagesEndRef} />
+            </div>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <input value={geminiInput} onChange={(e) => setGeminiInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleUserChat()} placeholder="輸入指令..." style={{ flex: 1, padding: '0.8rem', borderRadius: '8px', border: '1px solid #ddd' }} disabled={processing} />
+                <button onClick={handleUserChat} disabled={processing} style={{ padding: '0 20px', background: processing ? '#ccc' : '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer' }}>發送</button>
+            </div>
+        </div>
+      )}
+
+      {schedule ? (
+        <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                    <tr style={{ background: '#667eea', color: 'white' }}>
+                        <th style={{ padding: '8px', minWidth: '80px', position: 'sticky', left: 0, background: '#667eea', zIndex: 10 }}>員工</th>
+                        {/* ★★★ 修改處：動態計算星期，並將六、日標示為淺紅色 ★★★ */}
+                        {daysArray.map(d => {
+                            const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay(); // 0 是週日, 6 是週六
+                            const dayStrs = ['日', '一', '二', '三', '四', '五', '六'];
+                            const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                            
+                            return (
+                                <th key={d} style={{ padding:'4px', minWidth:'45px', color: isWeekend ? '#ffcccc' : 'white' }}>
+                                    <div style={{ fontSize: '1rem' }}>{d}</div>
+                                    <div style={{ fontSize: '0.75rem', fontWeight: 'normal' }}>{dayStrs[dayOfWeek]}</div>
+                                </th>
+                            )
+                        })}
+                    </tr>
+                </thead>
+                <tbody>
+                    {/* ★ 只顯示虛擬代號 (Dxxx) ★ */}
+                    {Object.keys(schedule).sort().filter(rowId => {
+                        const isReal = staffData.some(s => s.staff_id === rowId);
+                        return !isReal; // 只顯示虛擬的
+                    }).map(rowId => {
+                        return (
+                            <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: '#fafafa' }}>
+                                <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: '#f9f9f9', zIndex: 5 }}>
+                                    <div style={{ color: '#888', fontWeight: 'bold', fontSize: '1rem' }}>🎲 待認領</div>
+                                    <div style={{ fontSize: '0.85rem', color: '#aaa', fontWeight: 'bold' }}>{rowId}</div>
+                                </td>
+                                {daysArray.map(d => {
+                                    const cellData = schedule[rowId]?.[d];
+                                    const currentType = (typeof cellData === 'object') ? cellData.type : (cellData || 'OFF');
+                                    const optionInfo = shiftOptions.find(o => o.code === currentType) || { color: '#fff', code: currentType };
+                                    const isDarkBg = ['N', 'E', 'D', 'RG', '支援'].includes(currentType); 
+                                    return (
+                                        <td key={d} style={{ padding: 0, borderRight: '1px solid #f0f0f0', height: '40px' }}>
+                                            <select value={currentType} onChange={(e) => handleCellChange(rowId, d, e.target.value)} style={{ width: '100%', height: '100%', padding: '0', border: 'none', background: optionInfo.color, color: isDarkBg ? 'white' : '#333', fontWeight: 'bold', textAlignLast: 'center', cursor: 'pointer', appearance: 'none', borderRadius: 0 }}>
+                                                {shiftOptions.map(opt => <option key={opt.code} value={opt.code} style={{background:'white', color:'black'}}>{opt.code}</option>)}
+                                            </select>
+                                        </td>
+                                    )
+                                })}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+                
+                <tfoot style={{ borderTop: '2px solid #ddd' }}>
+                  {['D', 'E', 'N'].map(type => {
+                      const req = requirements[type] || 0;
+                      return (
+                          <tr key={type} style={{ background: '#f8f9fa' }}>
+                              <td style={{ padding: '8px', position: 'sticky', left: 0, background: '#f8f9fa', zIndex: 5, fontWeight: 'bold', borderRight: '1px solid #eee',color:'#333' }}>
+                                  {type === 'D' ? '早班' : type === 'E' ? '小夜' : '大夜'} 
+                                  <span style={{ fontSize: '0.8rem', color: '#666' }}>(需{req})</span>
+                              </td>
+                              {daysArray.map(d => {
+                                  const count = dailyStats[d][type];
+                                  const isOk = count >= req;
+                                  return (
+                                      <td key={d} style={{ textAlign: 'center', fontWeight: 'bold', color: isOk ? '#27ae60' : '#e74c3c', background: isOk ? '#d4edda' : '#f8d7da', fontSize: '0.9rem', borderRight: '1px solid white' }}>
+                                          {count}
+                                      </td>
+                                  )
+                              })}
+                          </tr>
+                      )
+                  })}
+                </tfoot>
+            </table>
+        </div>
+      ) : <div style={{textAlign:'center', padding:'2rem', color:'#666'}}>尚未生成班表，請點擊「✨ 生成模擬排班」</div>}
+    </div>
+  );
+};
+// ============================================================================
+// 員工管理面板 (更新：加入「重置密碼」功能)
+// ============================================================================
+const StaffManagementPanel = ({ staffData, setStaffData }) => {
+  const [localStaff, setLocalStaff] = useState([]);
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    setLocalStaff(staffData);
+    setIsDirty(false);
+  }, [staffData]);
+
+  const handleChange = (id, field, value) => {
+    setLocalStaff(prev => prev.map(staff => {
+      if (staff.staff_id === id) {
+        return { ...staff, [field]: value };
+      }
+      return staff;
+    }));
+    setIsDirty(true);
+  };
+
+  const handleAddStaff = () => {
+    const newId = `N${String(localStaff.length + 1).padStart(3, '0')}`;
+    const newStaff = {
+      staff_id: newId, name: '新員工', level: 'N0', tenure_years: 0, is_leader: false,
+      leave_status: 'None', is_active: true, special_status: 'Standard',
+      can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
+      prevMonthLeave: [false, false, false, false, false, false, false],
+      password: '1234' // 預設密碼
+    };
+    setLocalStaff([...localStaff, newStaff]);
+    setIsDirty(true);
+  };
+
+  const handleDelete = (id) => {
+    if (window.confirm(`確定要刪除員工 ${id} 嗎？`)) {
+      setLocalStaff(prev => prev.filter(s => s.staff_id !== id));
+      setIsDirty(true);
+    }
+  };
+
+  // ★★★ 新增：重置密碼功能 ★★★
+  const handleResetPassword = (id, name) => {
+      if (window.confirm(`確定要將員工「${name} (${id})」的密碼重置為預設值 (1234) 嗎？`)) {
+          setLocalStaff(prev => prev.map(staff => {
+              if (staff.staff_id === id) {
+                  return { ...staff, password: '1234' };
+              }
+              return staff;
+          }));
+          setIsDirty(true);
+          alert(`✅ 員工 ${name} 密碼已重置為 1234！\n⚠️ 請記得點擊右上角「💾 儲存變更」才會正式生效。`);
+      }
+  };
+
+  const handleSave = () => {
+    setStaffData(localStaff);
+    setIsDirty(false);
+    alert('✅ 員工資料已儲存！');
+  };
+
+  const columns = [
+    { key: 'staff_id', label: '工號', type: 'text', width: '60px', readOnly: true },
+    { key: 'name', label: '姓名', type: 'text', width: '80px' },
+    { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
+    { key: 'prevMonthLeave', label: '上月末休假', type: 'week_picker', width: '220px' },
+    { key: 'tenure_years', label: '年資', type: 'number', width: '60px' },
+    { key: 'is_leader', label: '組長', type: 'checkbox', width: '50px' },
+    { key: 'leave_status', label: '狀態', type: 'select', options: ['None', 'Maternal', 'Student', 'OnLeave'], width: '90px' },
+    { key: 'is_active', label: '在職', type: 'checkbox', width: '50px' },
+    { key: 'special_status', label: '工時', type: 'select', options: ['Standard', 'BiWeekly'], width: '90px' },
+    { key: 'can_night_shift', label: '夜班', type: 'checkbox', width: '50px' },
+    { key: 'accumulated_ot', label: '積假', type: 'number', width: '60px' },
+    { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '60px' },
+  ];
+
+  return (
+    <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', height: '80vh', display: 'flex', flexDirection: 'column' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h2 style={{ margin: 0 }}>員工資料管理 ({localStaff.length}人)</h2>
+        <div style={{ display: 'flex', gap: '1rem' }}>
+          <button onClick={handleAddStaff} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>+ 新增員工</button>
+          <button onClick={handleSave} disabled={!isDirty} style={{ padding: '0.5rem 2rem', background: isDirty ? '#e67e22' : '#ccc', color: 'white', border: 'none', borderRadius: '8px', cursor: isDirty ? 'pointer' : 'not-allowed', fontWeight: 'bold', boxShadow: isDirty ? '0 4px 10px rgba(230, 126, 34, 0.4)' : 'none' }}>{isDirty ? '💾 儲存變更' : '已同步'}</button>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1300px' }}>
+          <thead style={{ position: 'sticky', top: 0, background: '#f8f9fa', zIndex: 1 }}>
+            <tr>
+              {columns.map(col => (
+                <th key={col.key} style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #ddd', minWidth: col.width, color: 'black', fontWeight: 'bold' }}>
+                  {col.label}
+                </th>
+              ))}
+              <th style={{ padding: '12px', borderBottom: '2px solid #ddd', width: '100px', color: 'black', fontWeight: 'bold', textAlign: 'center' }}>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {localStaff.map((staff) => (
+              <tr key={staff.staff_id} style={{ borderBottom: '1px solid #f0f0f0', background: !staff.is_active ? '#fafafa' : 'white', opacity: !staff.is_active ? 0.7 : 1 }}>
+                {columns.map(col => (
+                  <td key={col.key} style={{ padding: '8px' }}>
+                    {col.readOnly ? (
+                      <span style={{ color: '#888', fontWeight: 'bold' }}>{staff[col.key]}</span>
+                    ) : col.type === 'checkbox' ? (
+                      <input type="checkbox" checked={staff[col.key] === true || staff[col.key] === 'True'} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
+                    ) : col.type === 'select' ? (
+                      <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}>{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
+                    ) : col.type === 'week_picker' ? (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {['一','二','三','四','五','六','日'].map((day, idx) => (
+                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#555', marginBottom: '2px' }}>{day}</span>
+                            <input 
+                              type="checkbox" 
+                              checked={staff[col.key]?.[idx] || false} 
+                              onChange={(e) => {
+                                const newWeek = [...(staff[col.key] || [false,false,false,false,false,false,false])];
+                                newWeek[idx] = e.target.checked;
+                                handleChange(staff.staff_id, col.key, newWeek);
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer', margin: 0 }} 
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <input 
+                        type={col.type} 
+                        value={staff[col.key] ?? ''} 
+                        onChange={(e) => handleChange(staff.staff_id, col.key, col.type === 'number' ? parseFloat(e.target.value) : e.target.value)} 
+                        style={{ 
+                          padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%', 
+                          background: col.key === 'name' ? '#fff' : 'transparent',
+                          color: ['name', 'tenure_years', 'accumulated_ot', 'night_shift_balance'].includes(col.key) ? 'black' : 'inherit',
+                          fontWeight: ['name', 'tenure_years', 'accumulated_ot', 'night_shift_balance'].includes(col.key) ? 'bold' : 'normal'
+                        }} 
+                      />
+                    )}
+                  </td>
+                ))}
+                
+                {/* ★★★ 這裡是操作欄位 ★★★ */}
+                <td style={{ padding: '8px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                  {/* 新增：重置密碼按鈕 */}
+                  <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f39c12', fontSize: '1.3rem', marginRight: '10px' }} title="重置密碼為 1234">🔑</button>
+                  {/* 原本：刪除按鈕 */}
+                  <button onClick={() => handleDelete(staff.staff_id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#e74c3c', fontSize: '1.3rem' }} title="刪除員工">🗑️</button>
+                </td>
+
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+// ============================================================================
+// 統計報表面板 (含：優先選班控制台 - 多選版 + 黑色字體)
+// ============================================================================
+const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
+  
+  // 計算統計數據
+  const calculateStats = (data, key) => {
+    const validData = data.map(s => ({ ...s, value: Number(s[key]) || 0 })).sort((a, b) => b.value - a.value);
+    const values = validData.map(d => d.value);
+    
+    if (values.length === 0) return { avg: 0, median: 0, top5: [], bottom5: [], allRank: [] };
+
+    const sum = values.reduce((acc, curr) => acc + curr, 0);
+    const avg = (sum / values.length).toFixed(1);
+    const floorValues = values.map(v => Math.floor(v));
+    const mid = Math.floor(floorValues.length / 2);
+    const median = floorValues.length % 2 !== 0 ? floorValues[mid] : ((floorValues[mid - 1] + floorValues[mid]) / 2).toFixed(1);
+    const top5 = [...validData].slice(0, 5); 
+    const bottom5 = [...validData].reverse().slice(0, 5);
+    
+    return { avg, median, top5, bottom5, allRank: validData };
+  };
+
+  const otStats = calculateStats(staffData, 'accumulated_ot');
+  const nightStats = calculateStats(staffData, 'night_shift_balance');
+
+  // 計算優先名單
+  const allowedStaffMap = new Map();
+  if (priorityConfig.types.includes('accumulated_ot')) {
+      otStats.allRank.slice(0, priorityConfig.count).forEach(s => allowedStaffMap.set(s.staff_id, { ...s, reason: 'OT' }));
+  }
+  if (priorityConfig.types.includes('night_shift_balance')) {
+      nightStats.allRank.slice(0, priorityConfig.count).forEach(s => {
+          if(allowedStaffMap.has(s.staff_id)) {
+              const existing = allowedStaffMap.get(s.staff_id);
+              allowedStaffMap.set(s.staff_id, { ...existing, reason: 'OT & Night' });
+          } else {
+              allowedStaffMap.set(s.staff_id, { ...s, reason: 'Night' });
+          }
+      });
+  }
+  
+  const priorityList = Array.from(allowedStaffMap.values());
+
+  const RankingList = ({ title, data, color }) => (
+    <div style={{ flex: 1, minWidth: '140px' }}>
+      <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: '#666', marginBottom: '8px', borderBottom: '1px solid #eee', paddingBottom: '4px' }}>{title}</div>
+      {data.map((s, i) => (
+        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
+          <span style={{ color: 'black' }}>{i + 1}. {s.name} <span style={{fontSize:'0.75rem', color:'#333'}}>({s.staff_id})</span></span>
+          <span style={{ fontWeight: 'bold', color: color }}>{s.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
+      
+      {/* 優先選班控制台 */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #667eea', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'20px'}}>
+             <div>
+                 <h2 style={{ margin: '0 0 5px 0', color: '#2c3e50', fontSize:'1.4rem' }}>🏆 優先選班控制台</h2>
+                 <p style={{ margin: 0, color: '#7f8c8d', fontSize:'0.9rem' }}>設定誰可以優先進場認領班表 (滿足任一條件即可)</p>
+             </div>
+             
+             <div style={{ display:'flex', alignItems:'center', gap:'15px', background:'#f8f9fa', padding:'10px 20px', borderRadius:'50px' }}>
+                 <span style={{fontWeight:'bold', color:'#333'}}>目前狀態:</span>
+                 {priorityConfig.isOpenToAll ? (
+                     <span style={{color:'green', fontWeight:'bold', display:'flex', alignItems:'center', gap:'5px'}}>🟢 全面開放 (所有人可選)</span>
+                 ) : (
+                     <span style={{color:'#e67e22', fontWeight:'bold', display:'flex', alignItems:'center', gap:'5px'}}>🔒 僅限優先人員 ({priorityList.length}人)</span>
+                 )}
+                 <button 
+                    onClick={() => setPriorityConfig({...priorityConfig, isOpenToAll: !priorityConfig.isOpenToAll})}
+                    style={{ 
+                        marginLeft:'10px', padding:'5px 15px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'bold',
+                        background: priorityConfig.isOpenToAll ? '#e74c3c' : '#27ae60', color:'white'
+                    }}
+                 >
+                    {priorityConfig.isOpenToAll ? '改為限制模式' : '開啟全面開放'}
+                 </button>
+             </div>
+          </div>
+
+          <div style={{ marginTop:'20px', display:'flex', gap:'30px', flexWrap:'wrap' }}>
+              {/* 設定區域 */}
+              <div style={{ flex:1, minWidth:'250px' }}>
+                  {/* ★★★ 修改處：強制設定顏色為黑色 ★★★ */}
+                  <label style={{display:'block', fontWeight:'bold', marginBottom:'10px', color: 'black'}}>優先依據指標 (可多選):</label>
+                  
+                  <div style={{display:'flex', gap:'10px', flexDirection:'column'}}>
+                      <label style={{cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', fontSize:'1rem', color: 'black'}}>
+                          <input 
+                              type="checkbox" 
+                              checked={priorityConfig.types.includes('accumulated_ot')}
+                              onChange={e => {
+                                  const newTypes = e.target.checked 
+                                      ? [...priorityConfig.types, 'accumulated_ot']
+                                      : priorityConfig.types.filter(t => t !== 'accumulated_ot');
+                                  setPriorityConfig({...priorityConfig, types: newTypes});
+                              }}
+                              style={{width:'18px', height:'18px'}}
+                          />
+                          🔥 積借休時數 (OT) 前 {priorityConfig.count} 名
+                      </label>
+                      
+                      <label style={{cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', fontSize:'1rem', color: 'black'}}>
+                          <input 
+                              type="checkbox" 
+                              checked={priorityConfig.types.includes('night_shift_balance')}
+                              onChange={e => {
+                                  const newTypes = e.target.checked 
+                                      ? [...priorityConfig.types, 'night_shift_balance']
+                                      : priorityConfig.types.filter(t => t !== 'night_shift_balance');
+                                  setPriorityConfig({...priorityConfig, types: newTypes});
+                              }}
+                              style={{width:'18px', height:'18px'}}
+                          />
+                          🌙 夜班結餘 (Night) 前 {priorityConfig.count} 名
+                      </label>
+                  </div>
+
+                  {/* ★★★ 修改處：強制設定顏色為黑色 ★★★ */}
+                  <label style={{display:'block', fontWeight:'bold', marginBottom:'5px', marginTop:'20px', color: 'black'}}>優先入閘人數 (Top N):</label>
+                  <input 
+                    type="number" min="1" max={staffData.length}
+                    value={priorityConfig.count}
+                    onChange={e => setPriorityConfig({...priorityConfig, count: Number(e.target.value)})}
+                    style={{ width:'100%', padding:'8px', borderRadius:'6px', border:'1px solid #ccc', fontSize:'1rem', color: 'white' }}
+                  />
+                  <div style={{fontSize:'0.8rem', color:'#888', marginTop:'5px'}}>若勾選多項，系統將取聯集 (人數可能會大於N)</div>
+              </div>
+
+              {/* 預覽名單 */}
+              <div style={{ flex:2, background:'#f1f3f5', padding:'15px', borderRadius:'8px' }}>
+                  <div style={{fontWeight:'bold', marginBottom:'10px', color:'#555'}}>📋 目前符合優先資格名單 ({priorityList.length}人):</div>
+                  <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
+                      {priorityList.length === 0 ? <span style={{color:'#999'}}>無符合條件人員 (請勾選指標)</span> : priorityList.map(s => (
+                          <span key={s.staff_id} style={{background:'white', padding:'4px 12px', borderRadius:'15px', fontSize:'0.9rem', border:'1px solid #ddd', color:'#333', boxShadow:'0 2px 2px rgba(0,0,0,0.05)'}}>
+                              {s.name} <span style={{color:'#888', fontSize:'0.8rem'}}>({s.reason})</span>
+                          </span>
+                      ))}
+                  </div>
+              </div>
+          </div>
+      </div>
+
+      {/* 統計圖表區塊 (保持不變) */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
+        <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', color: 'black' }}>
+          <TrendingUp color="#667eea" /> 團隊人力統計報表
+        </h2>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
+          {/* 總人數 */}
+          <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: '16px', color: 'white', boxShadow: '0 10px 20px rgba(102, 126, 234, 0.2)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}><h3 style={{ margin: 0, opacity: 0.9 }}>總員工數</h3><Users size={24} style={{ opacity: 0.8 }} /></div>
+            <div style={{ fontSize: '3.5rem', fontWeight: 'bold', lineHeight: 1 }}>{staffData.length} <span style={{ fontSize: '1rem', fontWeight: 'normal', opacity: 0.8 }}>人</span></div>
+            <div style={{ marginTop: '1rem', fontSize: '0.9rem', opacity: 0.8 }}>目前在職率: {Math.round((staffData.filter(s=>s.is_active).length / staffData.length || 1) * 100)}%</div>
+          </div>
+
+          {/* OT */}
+          <div style={{ padding: '1.5rem', background: 'white', borderRadius: '16px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}><div style={{ padding: '8px', background: '#e3f2fd', borderRadius: '8px', color: '#1976d2' }}><Clock size={20}/></div><h3 style={{ margin: 0, color: '#444' }}>積借休時數 (OT)</h3></div>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>平均</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#333' }}>{otStats.avg}</div></div>
+               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>中位數</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#1976d2' }}>{otStats.median}</div></div>
+            </div>
+            <div style={{ display: 'flex', gap: '1.5rem' }}><RankingList title="🔥 最高 Top 5" data={otStats.top5} color="#e67e22" /><RankingList title="❄️ 最低 Top 5" data={otStats.bottom5} color="#3498db" /></div>
+          </div>
+
+          {/* Night */}
+          <div style={{ padding: '1.5rem', background: 'white', borderRadius: '16px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}><div style={{ padding: '8px', background: '#f3e5f5', borderRadius: '8px', color: '#8e44ad' }}><Moon size={20}/></div><h3 style={{ margin: 0, color: '#444' }}>夜班結餘 (Night)</h3></div>
+            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
+               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>平均</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#333' }}>{nightStats.avg}</div></div>
+               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>中位數</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#8e44ad' }}>{nightStats.median}</div></div>
+            </div>
+            <div style={{ display: 'flex', gap: '1.5rem' }}><RankingList title="🌙 最高 Top 5" data={nightStats.top5} color="#8e44ad" /><RankingList title="☀️ 最低 Top 5" data={nightStats.bottom5} color="#95a5a6" /></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// 新增：班表審核與發布面板 (可編輯版 + 員工指派 + 自動連網國定假日結算 + 自訂月薪)
+// ============================================================================
+const ScheduleReviewPanel = ({ 
+  schedule, setSchedule, 
+  staffData, violations, 
+  selectedYear, selectedMonth, onSaveSchedule,
+  shiftOptions, setShiftOptions,
+  publicHolidays = [] 
+}) => {
+  
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
+
+  const [showAddOption, setShowAddOption] = useState(false);
+  const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
+  const [showSettlement, setShowSettlement] = useState(false);
+
+  // ★★★ 新增：自訂底薪狀態 (並且會自動記憶在瀏覽器中) ★★★
+  const [baseSalary, setBaseSalary] = useState(() => {
+      const saved = localStorage.getItem('globalBaseSalary');
+      return saved ? Number(saved) : 40000;
+  });
+
+  // 當底薪改變時，自動存檔
+  useEffect(() => {
+      localStorage.setItem('globalBaseSalary', baseSalary);
+  }, [baseSalary]);
+
+  const handleAddOption = () => {
+    if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
+    if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
+    setShiftOptions([...shiftOptions, { ...newOption, time: '' }]);
+    setNewOption({ code: '', name: '', color: '#cccccc' });
+  };
+
+  const handleDeleteOption = (code) => {
+      if(window.confirm(`確定要刪除班別「${code}」嗎？`)) {
+          setShiftOptions(shiftOptions.filter(o => o.code !== code));
+      }
+  };
+
+  const handleCellChange = (staffId, day, newValue) => {
+    const newSchedule = JSON.parse(JSON.stringify(schedule));
+    if (!newSchedule[staffId]) newSchedule[staffId] = {};
+    newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+    setSchedule(newSchedule);
+  };
+
+  const handleStaffChange = (oldRowId, newStaffId) => {
+      if (oldRowId === newStaffId) return; 
+      const newSchedule = JSON.parse(JSON.stringify(schedule));
+
+      if (newStaffId === 'UNASSIGN') {
+          let vIndex = 1;
+          let newVirtualId = '';
+          while(true) {
+              newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
+              if (!newSchedule[newVirtualId]) break;
+              vIndex++;
+          }
+          newSchedule[newVirtualId] = newSchedule[oldRowId];
+          delete newSchedule[oldRowId];
+          setSchedule(newSchedule);
+          return;
+      }
+
+      if (newSchedule[newStaffId]) {
+          const staffName = staffData.find(s => s.staff_id === newStaffId)?.name || newStaffId;
+          alert(`⚠️ 員工「${staffName}」已經在班表中！\n若要替換，請先將其原有班表改為「🔄 退回待認領」。`);
+          return;
+      }
+
+      newSchedule[newStaffId] = newSchedule[oldRowId];
+      delete newSchedule[oldRowId];
+      setSchedule(newSchedule);
+  };
+
+ // ★★★ 升級版：支援 (OT) 標記的加班費計算引擎 ★★★
+  const getSettlementData = () => {
+      const data = [];
+      const currentBaseSalary = Number(baseSalary) || 0; 
+      const hourlyWage = Math.round(currentBaseSalary / 240); 
+
+      Object.keys(schedule).forEach(rowId => {
+          if (rowId.startsWith('D')) return; 
+
+          const staff = staffData.find(s => s.staff_id === rowId);
+          const name = (staff && staff.name && staff.name.trim() !== '') ? staff.name : '未知姓名'; 
+          
+          let workDays = 0;
+          let nationalHolidayWorkDays = 0; 
+          let explicitOtDays = 0; // ★ 新增：明確標示為 (OT) 的天數
+
+          for (let d = 1; d <= daysInMonth; d++) {
+              const cell = schedule[rowId]?.[d];
+              const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
+              
+              const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+              const isNationalHoliday = publicHolidays.includes(dateStr);
+
+              // 檢查一般班別
+              if (['D', 'E', 'N', '支援'].includes(type)) {
+                  workDays++;
+                  if (isNationalHoliday) {
+                      nationalHolidayWorkDays++;
+                  }
+              }
+              // ★ 新增：檢查帶有 (OT) 的班別
+              else if (type.includes('(OT)')) {
+                   explicitOtDays++;
+              }
+          }
+
+          const nationalHolidayPay = nationalHolidayWorkDays * (hourlyWage * 8);
+          
+          // 休息日加班有兩種來源：
+          // 1. 總天數超標 (原本的邏輯，扣除國定假日出勤)
+          const regularWorkDays = workDays - nationalHolidayWorkDays;
+          const standardWorkDays = daysInMonth - 8;
+          const overStandardDays = Math.max(0, regularWorkDays - standardWorkDays);
+          
+          // 2. 總加班天數 = 總天數超標 + 手動標示為 (OT) 的天數
+          const totalRestOtDays = overStandardDays + explicitOtDays;
+
+          const restDayOtPayPerDay = Math.round((hourlyWage * 1.34 * 2) + (hourlyWage * 1.67 * 6));
+          const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
+
+          const totalOtPay = restDayOtPay + nationalHolidayPay;
+
+          data.push({
+              staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, 
+              workDays: workDays + explicitOtDays, // 總上班天數要加上 OT 天數
+              standardWorkDays, 
+              otDays: totalRestOtDays, // 這裡顯示包含手動 OT 的總天數
+              restDayOtPay,
+              nationalHolidayWorkDays, nationalHolidayPay,
+              totalOtPay, 
+              totalSalary: currentBaseSalary + totalOtPay
+          });
+      });
+      return data;
+  };
+
+  const handleExportExcel = () => {
+    if (!schedule) return alert("無資料可匯出");
+    const settlementData = getSettlementData(); 
+
+    let csv = "\uFEFF工號,姓名,";
+    for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
+    csv += "總上班天數,標準天數,休息日加班(天),國定假日出勤(天),預估總加班費,預估總薪資\n"; 
+
+    Object.keys(schedule).sort().forEach(rowId => {
+        const isVirtual = rowId.startsWith('D');
+        const realStaff = staffData.find(s => s.staff_id === rowId);
+        const displayName = isVirtual ? `待認領(${rowId})` : (realStaff?.name || rowId);
+        
+        let row = `${rowId},${displayName},`;
+        let workDaysCount = 0;
+        let explicitOtCount = 0; // 新增計算手動 OT
+        
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = schedule[rowId]?.[d];
+            const type = (typeof cell === 'object') ? cell.type : (cell || '');
+            row += `${type},`;
+            if (['D', 'E', 'N', '支援'].includes(type)) workDaysCount++;
+            else if (type.includes('(OT)')) {
+                explicitOtCount++; // 若為 OT 班別
+            }
+        }
+
+        if (!isVirtual) {
+            const sData = settlementData.find(s => s.staff_id === rowId);
+            if (sData) {
+                row += `${sData.workDays},${sData.standardWorkDays},${sData.otDays},${sData.nationalHolidayWorkDays},${sData.totalOtPay},${sData.totalSalary}`;
+            } else {
+                row += "0,0,0,0,0,0";
+            }
+        } else {
+            const stdDays = daysInMonth - 8;
+           const otDays = Math.max(0, workDaysCount - stdDays) + explicitOtCount;
+            row += `${workDaysCount + explicitOtCount},${stdDays},${otDays},--, --, --`;
+         
+        }
+
+        csv += row + "\n";
+    });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${selectedYear}_${selectedMonth}_班表與結算.csv`;
+    link.click();
+  };
+
+  // 動態計算目前的時薪 (用於 Modal 顯示)
+  const currentHourlyWage = Math.round((Number(baseSalary) || 0) / 240);
+
+  return (
+    <div style={{ display: 'flex', gap: '20px', height: '80vh', flexDirection:'column', position: 'relative' }}>
+      
+      <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+           <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+               <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#2c3e50' }}>📋 班表審核與微調</h2>
+               <span style={{background:'#e3f2fd', padding:'5px 10px', borderRadius:'8px', color:'#1565c0', fontWeight:'bold'}}>
+                   {selectedYear}年 {selectedMonth}月
+               </span>
+           </div>
+           
+           <div style={{ display:'flex', gap:'10px' }}>
+              <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
+              <button onClick={() => setShowSettlement(true)} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
+              <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel (含結算)</button>
+           </div>
+      </div>
+
+      {/* 薪資結算 Modal */}
+      {showSettlement && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+              <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '95%', maxWidth: '1100px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
+                  <button onClick={() => setShowSettlement(false)} style={{ position: 'absolute', top: '15px', right: '20px', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'black' }}>✖</button>
+                  <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>💰 薪資與加班費結算預覽 ({selectedYear}年{selectedMonth}月)</h2>
+                  
+                  <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', fontSize: '0.9rem', color: '#333', borderLeft: '4px solid #8e44ad', lineHeight: '1.8' }}>
+                      <strong>⚖️ 勞基法計算基準：</strong><br/>
+                      1. 本月國定假日：<span style={{color:'#e74c3c', fontWeight:'bold'}}>{publicHolidays.filter(h => h.startsWith(`${selectedYear}${String(selectedMonth).padStart(2, '0')}`)).length} 天</span> (由開源 API 自動判定)。<br/>
+                      
+                      {/* ★★★ 這裡改成輸入框 ★★★ */}
+                      2. 平日工資：月薪總額 
+                      <input 
+                          type="number" 
+                          value={baseSalary} 
+                          onChange={(e) => setBaseSalary(e.target.value)}
+                          style={{ width: '90px', margin: '0 8px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #8e44ad', color: '#b1daad', fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' }}
+                      />
+                      元 ÷ 30天 ÷ 8小時 (時薪約 <strong>{currentHourlyWage}</strong> 元)。<br/>
+                      
+                      3. 國定假日出勤：不論時數，加發 1 日工資 (約 <strong>{currentHourlyWage * 8}</strong> 元)。<br/>
+                      4. 休息日加班費：前2小時 1.34 倍，後6小時 1.67 倍。本月標準上班天數為 {daysInMonth - 8} 天，超出且非國定假日者計入。
+                  </div>
+
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.95rem' }}>
+                      <thead style={{ background: '#34495e', color: 'white' }}>
+                          <tr>
+                              <th style={{ padding: '10px' }}>員工姓名</th>
+                              <th style={{ padding: '10px' }}>總上班</th>
+                              <th style={{ padding: '10px', background: '#e67e22' }}>國定出勤 (加倍)</th>
+                              <th style={{ padding: '10px', background: '#e74c3c' }}>休息日加班</th>
+                              <th style={{ padding: '10px' }}>總加班費</th>
+                              <th style={{ padding: '10px', background: '#27ae60' }}>預估總薪資</th>
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {getSettlementData().map(row => (
+                              <tr key={row.staff_id} style={{ borderBottom: '1px solid #eee' }}>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: 'black' }}>{row.name} <span style={{fontSize:'0.8rem', color:'#888'}}>({row.staff_id})</span></td>
+                                  <td style={{ padding: '10px', color: 'black', fontWeight: 'bold' }}>{row.workDays}</td>
+                                  
+                                  <td style={{ padding: '10px', color: row.nationalHolidayWorkDays > 0 ? '#e67e22' : 'black', fontWeight: row.nationalHolidayWorkDays > 0 ? 'bold' : 'normal' }}>
+                                      {row.nationalHolidayWorkDays} 天 <br/>
+                                      {row.nationalHolidayPay > 0 && <span style={{fontSize:'0.8rem'}}>(+{row.nationalHolidayPay.toLocaleString()})</span>}
+                                  </td>
+
+                                  <td style={{ padding: '10px', color: row.otDays > 0 ? '#e74c3c' : 'black', fontWeight: row.otDays > 0 ? 'bold' : 'normal' }}>
+                                      {row.otDays} 天 <br/>
+                                      {row.restDayOtPay > 0 && <span style={{fontSize:'0.8rem'}}>(+{row.restDayOtPay.toLocaleString()})</span>}
+                                  </td>
+                                  
+                                  <td style={{ padding: '10px', color: row.totalOtPay > 0 ? '#e74c3c' : 'black', fontWeight: 'bold' }}>NT$ {row.totalOtPay.toLocaleString()}</td>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#27ae60', fontSize: '1.1rem' }}>NT$ {row.totalSalary.toLocaleString()}</td>
+                              </tr>
+                          ))}
+                          {getSettlementData().length === 0 && (
+                              <tr><td colSpan="6" style={{ padding: '20px', color: '#888' }}>尚無已認領的員工資料</td></tr>
+                          )}
+                      </tbody>
+                  </table>
+              </div>
+          </div>
+      )}
+
+      {/* 選項管理面板 */}
+      {showAddOption && (
+        <div style={{ padding: '1rem', background: 'white', borderRadius: '16px', border:'1px solid #ddd' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
+            <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} style={{padding:'5px', width:'80px', color: 'black'}} />
+            <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} style={{padding:'5px', width:'120px', color: 'black'}} />
+            <input type="color" value={newOption.color} onChange={e=>setNewOption({...newOption, color: e.target.value})} style={{border:'none', width:'40px', height:'30px', cursor:'pointer'}} />
+            <button onClick={handleAddOption} style={{padding:'5px 15px', background:'#28a745', color:'white', border:'none', borderRadius:'4px', cursor:'pointer'}}>確認新增</button>
+          </div>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:'10px', paddingTop:'10px', borderTop:'1px solid #eee' }}>
+              {shiftOptions.map(opt => (
+                  <div key={opt.code} style={{ background:'#f8f9fa', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ddd', display:'flex', alignItems:'center', gap:'5px', fontSize:'0.85rem' }}>
+                      <span style={{width:'12px', height:'12px', background:opt.color, display:'inline-block', borderRadius:'50%'}}></span>
+                      <b style={{ color: '#000000' }}>{opt.code}</b>
+                      <button onClick={() => handleDeleteOption(opt.code)} style={{border:'none', background:'transparent', color:'red', cursor:'pointer', fontWeight:'bold', padding:'0 2px'}}>×</button>
+                  </div>
+              ))}
+          </div>
+        </div>
+      )}
+
+      {/* 主內容區：左表右檢查 */}
+      <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
+          <div style={{ flex: 3, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
+              {schedule ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                    <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                        <tr style={{ background: '#34495e', color: 'white' }}>
+                            <th style={{ padding: '8px', minWidth: '130px', position: 'sticky', left: 0, background: '#34495e', zIndex: 11 }}>員工指派</th>
+                            {daysArray.map(d => {
+                                const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay();
+                                const dayStrs = ['日', '一', '二', '三', '四', '五', '六'];
+                                const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+                                
+                                const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+                                const isNationalHoliday = publicHolidays.includes(dateStr);
+                                
+                                return (
+                                    <th key={d} style={{ padding:'4px', minWidth:'35px', color: isNationalHoliday ? '#ff7675' : (isWeekend ? '#ffcccc' : 'white'), textAlign: 'center' }}>
+                                        <div style={{ fontSize: '0.9rem', lineHeight: '1.2' }}>{d}</div>
+                                        <div style={{ fontSize: '0.7rem', fontWeight: 'normal', lineHeight: '1.2' }}>{isNationalHoliday ? '國假' : dayStrs[dayOfWeek]}</div>
+                                    </th>
+                                )
+                            })}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {Object.keys(schedule).sort().map(rowId => {
+                            const isVirtual = rowId.startsWith('D');
+                            return (
+                                <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
+                                    <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: isVirtual ? '#f9f9f9' : 'white', zIndex: 5 }}>
+                                        <select 
+                                            value={rowId}
+                                            onChange={(e) => handleStaffChange(rowId, e.target.value)}
+                                            style={{
+                                                width: '100%', padding: '6px 4px', borderRadius: '6px', border: '1px solid #ccc',
+                                                background: isVirtual ? '#f8f9fa' : '#e3f2fd', color: isVirtual ? '#888' : '#1565c0',
+                                                fontWeight: 'bold', cursor: 'pointer', outline: 'none'
+                                            }}
+                                        >
+                                            {isVirtual && <option value={rowId}>🎲 待認領 ({rowId})</option>}
+                                            {!isVirtual && <option value="UNASSIGN">🔄 退回待認領...</option>}
+                                            <optgroup label="護理人員名單">
+                                                {staffData.filter(s => s.staff_id === rowId || !schedule[s.staff_id]).map(s => (
+                                                    <option key={s.staff_id} value={s.staff_id} style={{ background: 'white', color: 'black' }}>{s.name} ({s.staff_id})</option>
+                                                ))}
+                                            </optgroup>
+                                        </select>
+                                    </td>
+                                    {daysArray.map(d => {
+                                        const cellData = schedule[rowId]?.[d];
+                                        const type = (typeof cellData === 'object') ? cellData.type : (cellData || '');
+                                        const optionInfo = shiftOptions.find(o => o.code === type) || { color: '#fff' };
+                                        
+                                        return (
+                                            <td key={d} style={{ padding: 0, borderRight: '1px solid #f0f0f0', height: '40px' }}>
+                                                <select 
+                                                    value={type} 
+                                                    onChange={(e) => handleCellChange(rowId, d, e.target.value)}
+                                                    style={{ 
+                                                        width: '100%', height: '100%', padding: 0, border: 'none', background: optionInfo.color, 
+                                                        color: 'black', fontWeight: 'bold', textAlignLast: 'center', cursor: 'pointer',
+                                                        appearance: 'none', borderRadius: 0
+                                                    }}
+                                                >
+                                                    {shiftOptions.map(opt => <option key={opt.code} value={opt.code} style={{background:'white', color:'black'}}>{opt.code}</option>)}
+                                                </select>
+                                            </td>
+                                        )
+                                    })}
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                </table>
+              ) : <div style={{padding:'20px', textAlign:'center', color:'#888'}}>尚無班表資料</div>}
+            </div>
+          </div>
+
+          {/* 右側：法遵檢查 */}
+          <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c' }}>
+             <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: '#c0392b', display:'flex', alignItems:'center', gap:'10px' }}>
+                ⚖️ 法遵檢查結果
+                <span style={{ fontSize:'0.9rem', background:'#e74c3c', color:'white', padding:'2px 8px', borderRadius:'12px' }}>{violations.length}</span>
+             </h2>
+             
+             <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
+                {violations.length === 0 ? (
+                    <div style={{ color: 'green', textAlign:'center', marginTop:'20px', fontSize:'1.1rem' }}>✅ 完美！無任何違規</div>
+                ) : (
+                    violations.map((v, i) => (
+                      <div key={i} style={{ padding: '12px', background: '#fff5f5', marginBottom: '10px', borderRadius: '8px', borderLeft: '4px solid #e74c3c', fontSize: '0.9rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                        <div style={{fontWeight:'bold', color:'#c0392b', marginBottom:'4px'}}>
+                            {v.staffName || `待認領(${v.staffId})`} <span style={{color:'#666', fontSize:'0.8rem'}}>({v.staffId})</span>
+                        </div>
+                        <div style={{color:'#333'}}>Day {v.day}: {v.message}</div>
+                      </div>
+                    ))
+                )}
+             </div>
+          </div>
+      </div>
+    </div>
+  );
+};
+export default NurseSchedulingSystem;
