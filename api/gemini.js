@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
 
     // 3. 呼叫 Gemini AI
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-pro-latest" });
 
     const { prompt } = req.body;
     if (!prompt) {
