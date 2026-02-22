@@ -1945,7 +1945,7 @@ const ScheduleReviewPanel = ({
   schedule, setSchedule, 
   staffData, violations, 
   selectedYear, selectedMonth, onSaveSchedule,
-  shiftOptions, setShiftOptions,scheduleRisks, // <--- ★★★ 補上這行 ★★★
+  shiftOptions, setShiftOptions, scheduleRisks,
   publicHolidays = [] 
 }) => {
   
@@ -1956,13 +1956,11 @@ const ScheduleReviewPanel = ({
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
   const [showSettlement, setShowSettlement] = useState(false);
 
-  // ★★★ 新增：自訂底薪狀態 (並且會自動記憶在瀏覽器中) ★★★
   const [baseSalary, setBaseSalary] = useState(() => {
       const saved = localStorage.getItem('globalBaseSalary');
       return saved ? Number(saved) : 40000;
   });
 
-  // 當底薪改變時，自動存檔
   useEffect(() => {
       localStorage.setItem('globalBaseSalary', baseSalary);
   }, [baseSalary]);
@@ -2016,7 +2014,6 @@ const ScheduleReviewPanel = ({
       setSchedule(newSchedule);
   };
 
- // ★★★ 升級版：支援 (OT) 標記的加班費計算引擎 ★★★
   const getSettlementData = () => {
       const data = [];
       const currentBaseSalary = Number(baseSalary) || 0; 
@@ -2030,7 +2027,7 @@ const ScheduleReviewPanel = ({
           
           let workDays = 0;
           let nationalHolidayWorkDays = 0; 
-          let explicitOtDays = 0; // ★ 新增：明確標示為 (OT) 的天數
+          let explicitOtDays = 0; 
 
           for (let d = 1; d <= daysInMonth; d++) {
               const cell = schedule[rowId]?.[d];
@@ -2039,14 +2036,12 @@ const ScheduleReviewPanel = ({
               const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
               const isNationalHoliday = publicHolidays.includes(dateStr);
 
-              // 檢查一般班別
               if (['D', 'E', 'N', '支援'].includes(type)) {
                   workDays++;
                   if (isNationalHoliday) {
                       nationalHolidayWorkDays++;
                   }
               }
-              // ★ 新增：檢查帶有 (OT) 的班別
               else if (type.includes('(OT)')) {
                    explicitOtDays++;
               }
@@ -2054,25 +2049,19 @@ const ScheduleReviewPanel = ({
 
           const nationalHolidayPay = nationalHolidayWorkDays * (hourlyWage * 8);
           
-          // 休息日加班有兩種來源：
-          // 1. 總天數超標 (原本的邏輯，扣除國定假日出勤)
           const regularWorkDays = workDays - nationalHolidayWorkDays;
           const standardWorkDays = daysInMonth - 8;
           const overStandardDays = Math.max(0, regularWorkDays - standardWorkDays);
-          
-          // 2. 總加班天數 = 總天數超標 + 手動標示為 (OT) 的天數
           const totalRestOtDays = overStandardDays + explicitOtDays;
-
           const restDayOtPayPerDay = Math.round((hourlyWage * 1.34 * 2) + (hourlyWage * 1.67 * 6));
           const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
-
           const totalOtPay = restDayOtPay + nationalHolidayPay;
 
           data.push({
               staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, 
-              workDays: workDays + explicitOtDays, // 總上班天數要加上 OT 天數
+              workDays: workDays + explicitOtDays,
               standardWorkDays, 
-              otDays: totalRestOtDays, // 這裡顯示包含手動 OT 的總天數
+              otDays: totalRestOtDays,
               restDayOtPay,
               nationalHolidayWorkDays, nationalHolidayPay,
               totalOtPay, 
@@ -2097,7 +2086,7 @@ const ScheduleReviewPanel = ({
         
         let row = `${rowId},${displayName},`;
         let workDaysCount = 0;
-        let explicitOtCount = 0; // 新增計算手動 OT
+        let explicitOtCount = 0;
         
         for (let d = 1; d <= daysInMonth; d++) {
             const cell = schedule[rowId]?.[d];
@@ -2105,7 +2094,7 @@ const ScheduleReviewPanel = ({
             row += `${type},`;
             if (['D', 'E', 'N', '支援'].includes(type)) workDaysCount++;
             else if (type.includes('(OT)')) {
-                explicitOtCount++; // 若為 OT 班別
+                explicitOtCount++;
             }
         }
 
@@ -2118,11 +2107,9 @@ const ScheduleReviewPanel = ({
             }
         } else {
             const stdDays = daysInMonth - 8;
-           const otDays = Math.max(0, workDaysCount - stdDays) + explicitOtCount;
+            const otDays = Math.max(0, workDaysCount - stdDays) + explicitOtCount;
             row += `${workDaysCount + explicitOtCount},${stdDays},${otDays},--, --, --`;
-         
         }
-
         csv += row + "\n";
     });
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -2132,7 +2119,6 @@ const ScheduleReviewPanel = ({
     link.click();
   };
 
-  // 動態計算目前的時薪 (用於 Modal 顯示)
   const currentHourlyWage = Math.round((Number(baseSalary) || 0) / 240);
 
   return (
@@ -2153,7 +2139,6 @@ const ScheduleReviewPanel = ({
            </div>
       </div>
 
-      {/* 薪資結算 Modal */}
       {showSettlement && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '95%', maxWidth: '1100px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
@@ -2163,8 +2148,6 @@ const ScheduleReviewPanel = ({
                   <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '8px', marginBottom: '20px', fontSize: '0.9rem', color: '#333', borderLeft: '4px solid #8e44ad', lineHeight: '1.8' }}>
                       <strong>⚖️ 勞基法計算基準：</strong><br/>
                       1. 本月國定假日：<span style={{color:'#e74c3c', fontWeight:'bold'}}>{publicHolidays.filter(h => h.startsWith(`${selectedYear}${String(selectedMonth).padStart(2, '0')}`)).length} 天</span> (由開源 API 自動判定)。<br/>
-                      
-                      {/* ★★★ 這裡改成輸入框 ★★★ */}
                       2. 平日工資：月薪總額 
                       <input 
                           type="number" 
@@ -2173,7 +2156,6 @@ const ScheduleReviewPanel = ({
                           style={{ width: '90px', margin: '0 8px', padding: '4px 8px', borderRadius: '6px', border: '1px solid #8e44ad', color: '#b1daad', fontWeight: 'bold', fontSize: '1rem', textAlign: 'center' }}
                       />
                       元 ÷ 30天 ÷ 8小時 (時薪約 <strong>{currentHourlyWage}</strong> 元)。<br/>
-                      
                       3. 國定假日出勤：不論時數，加發 1 日工資 (約 <strong>{currentHourlyWage * 8}</strong> 元)。<br/>
                       4. 休息日加班費：前2小時 1.34 倍，後6小時 1.67 倍。本月標準上班天數為 {daysInMonth - 8} 天，超出且非國定假日者計入。
                   </div>
@@ -2194,17 +2176,14 @@ const ScheduleReviewPanel = ({
                               <tr key={row.staff_id} style={{ borderBottom: '1px solid #eee' }}>
                                   <td style={{ padding: '10px', fontWeight: 'bold', color: 'black' }}>{row.name} <span style={{fontSize:'0.8rem', color:'#888'}}>({row.staff_id})</span></td>
                                   <td style={{ padding: '10px', color: 'black', fontWeight: 'bold' }}>{row.workDays}</td>
-                                  
                                   <td style={{ padding: '10px', color: row.nationalHolidayWorkDays > 0 ? '#e67e22' : 'black', fontWeight: row.nationalHolidayWorkDays > 0 ? 'bold' : 'normal' }}>
                                       {row.nationalHolidayWorkDays} 天 <br/>
                                       {row.nationalHolidayPay > 0 && <span style={{fontSize:'0.8rem'}}>(+{row.nationalHolidayPay.toLocaleString()})</span>}
                                   </td>
-
                                   <td style={{ padding: '10px', color: row.otDays > 0 ? '#e74c3c' : 'black', fontWeight: row.otDays > 0 ? 'bold' : 'normal' }}>
                                       {row.otDays} 天 <br/>
                                       {row.restDayOtPay > 0 && <span style={{fontSize:'0.8rem'}}>(+{row.restDayOtPay.toLocaleString()})</span>}
                                   </td>
-                                  
                                   <td style={{ padding: '10px', color: row.totalOtPay > 0 ? '#e74c3c' : 'black', fontWeight: 'bold' }}>NT$ {row.totalOtPay.toLocaleString()}</td>
                                   <td style={{ padding: '10px', fontWeight: 'bold', color: '#27ae60', fontSize: '1.1rem' }}>NT$ {row.totalSalary.toLocaleString()}</td>
                               </tr>
@@ -2218,7 +2197,6 @@ const ScheduleReviewPanel = ({
           </div>
       )}
 
-      {/* 選項管理面板 */}
       {showAddOption && (
         <div style={{ padding: '1rem', background: 'white', borderRadius: '16px', border:'1px solid #ddd' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
@@ -2239,7 +2217,6 @@ const ScheduleReviewPanel = ({
         </div>
       )}
 
-      {/* 主內容區：左表右檢查 */}
       <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
           <div style={{ flex: 3, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
@@ -2252,7 +2229,6 @@ const ScheduleReviewPanel = ({
                                 const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay();
                                 const dayStrs = ['日', '一', '二', '三', '四', '五', '六'];
                                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                                
                                 const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
                                 const isNationalHoliday = publicHolidays.includes(dateStr);
                                 
@@ -2319,11 +2295,8 @@ const ScheduleReviewPanel = ({
             </div>
           </div>
 
-          
-             {/* 右側：檢查與風險控制台 */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
              
-             {/* 上層：法規硬限制 (紅燈) */}
              <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
                 <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b', display:'flex', alignItems:'center', gap:'10px' }}>
                    ⚖️ 法遵檢查結果 (硬限制)
@@ -2345,7 +2318,6 @@ const ScheduleReviewPanel = ({
                 </div>
              </div>
 
-             {/* 下層：壓力與公平風險 (橘燈) */}
              <div style={{ flex: 1.2, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #f39c12', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
                 <div style={{ marginBottom: '1rem' }}>
                     <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#d35400', display:'flex', alignItems:'center', gap:'10px' }}>
@@ -2396,14 +2368,13 @@ const SimulationPanel = ({
     const [isSimulating, setIsSimulating] = useState(false);
     const [simResult, setSimResult] = useState(null);
 
-    // 模擬參數 (沙盒狀態，預設載入目前真實設定)
     const [simParams, setSimParams] = useState({
         bedCount: 50,
         ratioD: 10,
         ratioE: 12,
         ratioN: 15,
-        staffChange: 0, // -1 代表少一人, +1 代表多一人
-        banNightShift: false // 假設的情境：全面禁止大夜班
+        staffChange: 0, 
+        banNightShift: false 
     });
 
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -2412,17 +2383,14 @@ const SimulationPanel = ({
         setIsSimulating(true);
         setSimResult(null);
 
-        // 1. 計算模擬需求
         const dailyD = Math.ceil(simParams.bedCount / simParams.ratioD);
         const dailyE = Math.ceil(simParams.bedCount / simParams.ratioE);
         const dailyN = simParams.banNightShift ? 0 : Math.ceil(simParams.bedCount / simParams.ratioN);
         const totalNeededPerDay = dailyD + dailyE + dailyN;
 
-        // 2. 計算模擬可用人力
         let availableStaffCount = staffData.filter(s => s.is_active).length + simParams.staffChange;
         if (availableStaffCount < 1) availableStaffCount = 1;
 
-        // 3. 呼叫 AI 進行沙盒排班 (要求 AI 在極端條件下硬排)
         const prompt = `
             [制度模擬測試]
             這是一個壓力測試。請為 ${availableStaffCount} 名護理人員排 ${daysInMonth} 天的班表。
@@ -2432,12 +2400,7 @@ const SimulationPanel = ({
             格式範例: {"patterns": ["D,D,D,OFF..."]}
         `;
 
-        //try {
-            //const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-            //const result = await model.generateContent(prompt);
-            //const text = result.response.text().replace(/```json|```/g, '').trim();
         try {
-            // 改成呼叫我們自己寫的安全後端 API
             const response = await fetch('/api/gemini', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2451,11 +2414,9 @@ const SimulationPanel = ({
 
             const data = await response.json();
             const text = data.text.replace(/```json|```/g, '').trim();
-            // ... 底下保留
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             const parsed = JSON.parse(jsonMatch[0]);
 
-            // 4. 解析 AI 回傳的模擬班表
             const virtualSchedule = {};
             parsed.patterns.forEach((patternStr, index) => {
                 const shifts = patternStr.split(',').map(s => s.trim());
@@ -2465,13 +2426,11 @@ const SimulationPanel = ({
                 });
             });
 
-            // 5. 執行衝擊分析 (Impact Analysis)
             let totalOTCost = 0;
             let totalViolations = 0;
             let gapDays = 0;
             const hourlyWage = Math.round((Number(baseSalary) || 40000) / 240);
 
-            // 掃描每一天的缺口
             for (let d = 1; d <= daysInMonth; d++) {
                 let countD = 0, countE = 0, countN = 0;
                 Object.values(virtualSchedule).forEach(staff => {
@@ -2485,7 +2444,6 @@ const SimulationPanel = ({
                 if (countN < dailyN) gapDays += (dailyN - countN);
             }
 
-            // 掃描違規與薪資成本
             Object.keys(virtualSchedule).forEach(staffId => {
                 let workDays = 0;
                 let consecutive = 0;
@@ -2494,12 +2452,11 @@ const SimulationPanel = ({
                     if (['D', 'E', 'N'].includes(type)) {
                         workDays++;
                         consecutive++;
-                        if (consecutive > 6) totalViolations++; // 抓出連六違規
+                        if (consecutive > 6) totalViolations++; 
                     } else {
                         consecutive = 0;
                     }
                 }
-                // 估算休息日加班費 (超過標準天數)
                 const stdDays = daysInMonth - 8;
                 if (workDays > stdDays) {
                     const otDays = workDays - stdDays;
@@ -2508,7 +2465,6 @@ const SimulationPanel = ({
                 }
             });
 
-            // 總結報告
             setSimResult({
                 staffCount: availableStaffCount,
                 dailyNeeded: totalNeededPerDay,
@@ -2534,7 +2490,6 @@ const SimulationPanel = ({
             </div>
 
             <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-                {/* 左側：控制面板 */}
                 <div style={{ flex: 1, minWidth: '300px', background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', border: '1px solid #ddd' }}>
                     <h3 style={{ marginTop: 0, color: '#333' }}>🎛️ 調整模擬參數</h3>
                     
@@ -2564,7 +2519,6 @@ const SimulationPanel = ({
                     </button>
                 </div>
 
-                {/* 右側：分析報告 */}
                 <div style={{ flex: 1.5, minWidth: '300px', background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #8e44ad', boxShadow: '0 4px 15px rgba(142, 68, 173, 0.1)' }}>
                     <h3 style={{ marginTop: 0, color: '#8e44ad' }}>📊 模擬衝擊報告</h3>
                     
@@ -2598,4 +2552,5 @@ const SimulationPanel = ({
         </div>
     );
 };
+
 export default NurseSchedulingSystem;
