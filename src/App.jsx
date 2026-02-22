@@ -1286,12 +1286,6 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
   "summary": "已生成符合勞基法的高效排班陣列。" 
 }
 `;
-
-    // ★★★ 改用 gemini-1.5-flash 模型，速度最快 ★★★
-    //const model = genAI.getGenerativeModel({ model: "gemini-pro-latest" }); 
-    //const chat = model.startChat();
-    //chatSessionRef.current = chat;
-
     let attempts = 0; const MAX_RETRIES = 3; let isSuccess = false;
 
     while (attempts < MAX_RETRIES && !isSuccess) {
