@@ -7,7 +7,7 @@ import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
 // ============================================================================
 // 設定區
 // ============================================================================
-const GEMINI_API_KEY = "AIzaSyC93wpAHbYeKrfVgEAF9DkIFi2OAC33lJM"; 
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 // ============================================================================
 // Firebase 設定區
@@ -1218,17 +1218,22 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 1. **Goal 1 (工作量公平性)**: 每人每月總班數應介於 22-24 班之間。偏差值越小越好。
 2. **Goal 2 (個人偏好)**: 盡量滿足員工「假日休假」與「連續休假」。(若違反，每錯一個罰 10 分)。
 
-[輸出格式 JSON]
-1. 日期 Key 請務必使用「純數字」(例如 "1", "2", "3")，不要加 "Day" 或 "01"。
-2. 格式範例: 
+[輸出格式 JSON - 極度重要]
+為了追求極致的運算速度，請絕對不要輸出複雜的 JSON 物件！
+請只輸出一個包含 ${estimatedCount} 個字串的陣列 (Array)。
+每個字串代表一個人的整月班表，以「逗號」分隔，剛好 ${daysInMonth} 個班別。
+
+格式範例: 
 { 
-  "schedule": { 
-      "N001": { "1": { "type": "D" }, "2": { "type": "E" }, ... },
-      "N002": { ... }
-  }, 
-  "summary": "說明..." 
+  "patterns": [
+    "D,D,D,D,D,RG,RC,D,D,D,D,E,E,OFF,OFF...",
+    "E,E,E,E,OFF,RC,E,E,E,E,D,D,RG,OFF,OFF..."
+  ],
+  "summary": "已生成符合勞基法的高效排班陣列。" 
 }
 `;
+
+    // ★★★ 改用 gemini-1.5-flash 模型，速度最快 ★★★
     const model = genAI.getGenerativeModel({ model: "gemini-pro-latest" }); 
     const chat = model.startChat();
     chatSessionRef.current = chat;
@@ -1238,25 +1243,34 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
     while (attempts < MAX_RETRIES && !isSuccess) {
         try {
             attempts++;
-            setLoadingStatus(attempts === 1 ? "🧠 AI 正在生成初版班表..." : `♻️ 第 ${attempts} 次嘗試...`);
+            setLoadingStatus(attempts === 1 ? "🧠 AI 正在計算最佳排班陣列..." : `♻️ 第 ${attempts} 次嘗試...`);
             const result = await chat.sendMessage(currentPrompt);
             const text = result.response.text().replace(/```json|```/g, '').trim();
             const jsonMatch = text.match(/\{[\s\S]*\}/);
+            
             if (!jsonMatch) throw new Error("JSON 格式錯誤");
             const parsed = JSON.parse(jsonMatch[0]);
             
-            if (parsed.schedule) {
-                const refinedSchedule = refineSchedule(parsed.schedule);
+            // ★★★ 用 JavaScript 瞬間「解壓縮」資料 ★★★
+            if (parsed.patterns && Array.isArray(parsed.patterns)) {
                 const virtualSchedule = {};
-                let vIndex = 1;
-                Object.keys(refinedSchedule).forEach(originalKey => {
-                    const newKey = `D${String(vIndex).padStart(3, '0')}`;
-                    virtualSchedule[newKey] = refinedSchedule[originalKey];
-                    vIndex++;
+                
+                parsed.patterns.forEach((patternStr, index) => {
+                    const virtualId = `D${String(index + 1).padStart(3, '0')}`;
+                    const shifts = patternStr.split(',').map(s => s.trim());
+                    
+                    virtualSchedule[virtualId] = {};
+                    
+                    shifts.forEach((shiftType, dIndex) => {
+                        const dayNum = dIndex + 1;
+                        if (dayNum <= daysInMonth) {
+                            virtualSchedule[virtualId][dayNum] = { type: shiftType, time: '' }; 
+                        }
+                    });
                 });
 
                 const summary = parsed.summary || "排班完成。";
-                setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功**\n\n${summary}` }]);
+                setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (極速壓縮版)**\n\n${summary}` }]);
                 isSuccess = true;
                 
                 const currentRealStaffSchedule = {};
@@ -1269,6 +1283,8 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 }
                 const finalSchedule = { ...virtualSchedule, ...currentRealStaffSchedule };
                 onGenerateSchedule(finalSchedule);
+            } else {
+                throw new Error("AI 未回傳正確的 patterns 陣列");
             }
         } catch (e) {
             console.error(e);
@@ -1280,8 +1296,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
     }
     setProcessing(false); setLoadingStatus('');
   };
-
-  const handleUserChat = async () => {
+const handleUserChat = async () => {
       if (!geminiInput.trim() || !chatSessionRef.current) return;
       const userMsg = geminiInput;
       setGeminiInput(''); setProcessing(true);
@@ -1295,7 +1310,6 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
           setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 錯誤: " + error.message }]);
       } finally { setProcessing(false); setLoadingStatus(''); }
   };
-
   const handleCellChange = (staffId, day, newValue) => {
     const newSchedule = JSON.parse(JSON.stringify(schedule));
     if (!newSchedule[staffId]) newSchedule[staffId] = {};
