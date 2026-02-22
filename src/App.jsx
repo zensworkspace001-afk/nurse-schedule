@@ -1128,7 +1128,7 @@ const RequirementsPanel = ({
 const SchedulePanel = ({ 
     onSaveSchedule, schedule, setSchedule, staffData, violations, requirements, 
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
-    shiftOptions, setShiftOptions // ★ 改用 props 接收全域選項
+    shiftOptions, setShiftOptions
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
@@ -1136,55 +1136,23 @@ const SchedulePanel = ({
   const [processing, setProcessing] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(''); 
   
-  // 自定義 AI 指令
   const [customAiInstruction, setCustomAiInstruction] = useState('');
-  
-  // 選項管理 UI 狀態
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
 
-  const chatSessionRef = useRef(null);
   const messagesEndRef = useRef(null);
 
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [geminiMessages, loadingStatus]);
 
-  // 計算當月天數
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
   const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
-  // ★★★ 資料清洗函式 ★★★
-  const refineSchedule = (rawSchedule) => {
-    const refined = {}; 
-    const currentDaysInMonth = new Date(selectedYear, selectedMonth, 0).getDate() || 31;
-
-    Object.keys(rawSchedule).forEach(staffId => {
-        const rawStaffData = rawSchedule[staffId];
-        if (typeof rawStaffData !== 'object' || rawStaffData === null) return;
-        refined[staffId] = {};
-        const normalizedData = {};
-        Object.keys(rawStaffData).forEach(k => {
-            const dayNum = parseInt(k.replace(/\D/g, ''), 10); 
-            const cleanDay = dayNum > 100 ? dayNum % 100 : dayNum;
-            if (!isNaN(cleanDay) && cleanDay >= 1 && cleanDay <= 31) {
-                normalizedData[cleanDay] = rawStaffData[k];
-            }
-        });
-        let lastShift = 'OFF';
-        for (let d = 1; d <= currentDaysInMonth; d++) {
-            let cell = normalizedData[d]; 
-            if (!cell) {
-                refined[staffId][d] = { type: 'OFF', time: '' };
-                lastShift = 'OFF';
-                continue;
-            }
-            let type = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
-            if (lastShift === 'N' && type === 'D') { type = 'OFF'; }
-            refined[staffId][d] = { type: type, time: '' };
-            lastShift = type;
-        }
-    });
-    return refined;
+  // ★★★ 新增：一鍵清空整張班表 ★★★
+  const handleClearAll = () => {
+    if (window.confirm(`⚠️ 確定要【清空 ${selectedMonth}月 的所有班表】嗎？\n\n這將刪除目前工作桌上的所有資料，讓您有一張乾淨的空白桌面。\n(此操作不可逆)`)) {
+        setSchedule({});
+    }
   };
 
   const handleReset = () => {
@@ -1192,7 +1160,7 @@ const SchedulePanel = ({
         alert("目前沒有班表可重置。");
         return;
     }
-    if (window.confirm("⚠️ 確定要【重置所有認領狀態】嗎？\n\n執行後：\n1. 所有員工的認領將被取消 (Nxxx 消失)\n2. 班表內容會保留，但全部變回「待認領」(Dxxx)\n3. 資料將全部回到「排班工作桌」讓大家重選")) {
+    if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？\n\n執行後：\n1. 班表內容將全數保留。\n2. 但所有員工的名字會被拔除，全部變回待認領的虛擬空缺 (Dxxx)。")) {
       const newSchedule = {};
       let index = 1;
       Object.keys(schedule).sort().forEach(key => {
@@ -1201,7 +1169,7 @@ const SchedulePanel = ({
           index++;
       });
       setSchedule(newSchedule); 
-      alert("✅ 系統已重置！\n所有班表已釋出並回到「排班工作桌」，員工可以重新進行認領。");
+      alert("✅ 系統已重置！所有班次已退回待認領狀態。");
     }
   };
 
@@ -1211,7 +1179,6 @@ const SchedulePanel = ({
     for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
     csv += "\n";
     Object.keys(schedule).sort().forEach(rowId => {
-        // 匯出目前列表中的資料 (這裡主要是虛擬代號)
         const realStaff = staffData.find(s => s.staff_id === rowId);
         const name = realStaff ? realStaff.name : "待認領";
         let row = `${rowId},${name},`;
@@ -1229,6 +1196,12 @@ const SchedulePanel = ({
   };
 
   const handleGeminiSolve = async () => {
+    // ★★★ 核心修復：阻斷舊歷史資料的疊加 ★★★
+    if (schedule && Object.keys(schedule).length > 0) {
+        const confirmOverwrite = window.confirm("⚠️ 畫面上已經有班表資料！\n\n為避免「新舊班表疊加」導致人數暴增（產生多餘的幽靈空缺），系統將會【完全清除】目前的舊資料，再為您產生一份乾淨的 AI 班表。\n\n確定要覆蓋並繼續嗎？");
+        if (!confirmOverwrite) return;
+    }
+
     setShowGemini(true);
     setProcessing(true);
     const dailyNeeded = (requirements.D || 0) + (requirements.E || 0) + (requirements.N || 0);
@@ -1292,30 +1265,24 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         try {
             attempts++;
             setLoadingStatus(attempts === 1 ? "🧠 AI 正在計算最佳排班陣列..." : `♻️ 第 ${attempts} 次嘗試...`);
-            //const result = await chat.sendMessage(currentPrompt);
-            //const text = result.response.text().replace(/```json|```/g, '').trim();
-            //const jsonMatch = text.match(/\{[\s\S]*\}/);
             
-            //if (!jsonMatch) throw new Error("JSON 格式錯誤");
-            // 改成呼叫我們剛剛寫的 Vercel 後端 API：
-const response = await fetch('/api/gemini', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ prompt: currentPrompt })
-});
+            const response = await fetch('/api/gemini', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: currentPrompt })
+            });
 
-if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.error || "伺服器連線失敗");
-}
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "伺服器連線失敗");
+            }
 
-const data = await response.json();
-const text = data.text.replace(/```json|```/g, '').trim();
-const jsonMatch = text.match(/\{[\s\S]*\}/);
-if (!jsonMatch) throw new Error("JSON 格式錯誤");
+            const data = await response.json();
+            const text = data.text.replace(/```json|```/g, '').trim();
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error("JSON 格式錯誤");
             const parsed = JSON.parse(jsonMatch[0]);
             
-            // ★★★ 用 JavaScript 瞬間「解壓縮」資料 ★★★
             if (parsed.patterns && Array.isArray(parsed.patterns)) {
                 const virtualSchedule = {};
                 
@@ -1333,20 +1300,11 @@ if (!jsonMatch) throw new Error("JSON 格式錯誤");
                     });
                 });
 
-                const summary = parsed.summary || "排班完成。";
-                setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (極速壓縮版)**\n\n${summary}` }]);
+                setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (全新產生)**\n\n已為您配置 ${Object.keys(virtualSchedule).length} 位人力！` }]);
                 isSuccess = true;
                 
-                const currentRealStaffSchedule = {};
-                if (schedule) {
-                    Object.keys(schedule).forEach(key => {
-                        if (!key.startsWith('D')) {
-                            currentRealStaffSchedule[key] = schedule[key];
-                        }
-                    });
-                }
-                const finalSchedule = { ...virtualSchedule, ...currentRealStaffSchedule };
-                onGenerateSchedule(finalSchedule);
+                // ★★★ 核心修復：直接將最終班表設為 virtualSchedule，不再合併舊有的 currentRealStaffSchedule ★★★
+                onGenerateSchedule(virtualSchedule);
             } else {
                 throw new Error("AI 未回傳正確的 patterns 陣列");
             }
@@ -1360,7 +1318,8 @@ if (!jsonMatch) throw new Error("JSON 格式錯誤");
     }
     setProcessing(false); setLoadingStatus('');
   };
-const handleUserChat = async () => {
+
+  const handleUserChat = async () => {
       if (!geminiInput.trim()) return;
       const userMsg = geminiInput;
       setGeminiInput(''); setProcessing(true);
@@ -1382,6 +1341,7 @@ const handleUserChat = async () => {
           setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 錯誤: " + error.message }]);
       } finally { setProcessing(false); setLoadingStatus(''); }
   };
+
   const handleCellChange = (staffId, day, newValue) => {
     const newSchedule = JSON.parse(JSON.stringify(schedule));
     if (!newSchedule[staffId]) newSchedule[staffId] = {};
@@ -1404,7 +1364,6 @@ const handleUserChat = async () => {
       }
   };
 
-  // 計算每日統計 (用於 Footer)
   const calculateDailyStats = () => {
       const stats = {};
       for(let d=1; d<=daysInMonth; d++) stats[d] = { D:0, E:0, N:0 };
@@ -1439,9 +1398,9 @@ const handleUserChat = async () => {
             <h2 style={{ color: 'black', fontWeight: 'bold', margin: 0 }}>總班表 (排班工作桌)</h2>
         </div>
 
-       <div style={{ display: 'flex', gap: '10px', alignItems:'center' }}>
+       <div style={{ display: 'flex', gap: '8px', alignItems:'center' }}>
            {/* 日期控制區 */}
-           <div style={{ display: 'flex', alignItems: 'center', background: '#e3f2fd', padding: '5px 10px', borderRadius: '8px', marginRight:'10px', border:'1px solid #90caf9' }}>
+           <div style={{ display: 'flex', alignItems: 'center', background: '#e3f2fd', padding: '5px 10px', borderRadius: '8px', marginRight:'5px', border:'1px solid #90caf9' }}>
                <input 
                   type="number" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}
                   style={{ width: '60px', padding: '5px', borderRadius: '4px', border: '1px solid #ccc', fontWeight: 'bold', textAlign: 'center' }}
@@ -1459,26 +1418,21 @@ const handleUserChat = async () => {
            
            <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 選項</button>
            
-           {/* 操作按鈕 */}
-           <input 
-              type="text" 
-              placeholder="AI 指令 (例: 週末多排人...)" 
-              value={customAiInstruction}
-              onChange={(e) => setCustomAiInstruction(e.target.value)}
-              style={{ padding: '8px', borderRadius: '8px', border: '1px solid #ccc', width: '180px' }}
-           />
-           <button id="gemini-trigger-btn" onClick={handleGeminiSolve} disabled={processing} style={{ padding: '0.5rem 1rem', background: processing ? '#ccc' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer' }}>{processing ? '⏳' : '✨ 生成'}</button>
-           <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 重置</button>
-           <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
-           <button onClick={onSaveSchedule} style={{ padding: '0.5rem 1rem', background: '#e67e22', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💾 儲存並發布</button>
+           <button id="gemini-trigger-btn" onClick={handleGeminiSolve} disabled={processing} style={{ padding: '0.5rem 1rem', background: processing ? '#ccc' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(142,68,173,0.3)' }}>{processing ? '⏳' : '✨ 生成 AI 班表'}</button>
+           <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
+           {/* 新增的清空按鈕 */}
+           <button onClick={handleClearAll} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 清空舊班表</button>
+           
+           <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 Excel</button>
+           <button onClick={onSaveSchedule} style={{ padding: '0.5rem 1rem', background: '#2980b9', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💾 儲存並發布</button>
         </div>
       </div>
 
       {showAddOption && (
         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f1f3f5', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap:'wrap' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
-          <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} style={{padding:'5px', width:'80px'}} />
-          <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} style={{padding:'5px', width:'120px'}} />
+          <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} style={{padding:'5px', width:'80px', color:'black'}} />
+          <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} style={{padding:'5px', width:'120px', color:'black'}} />
           <input type="color" value={newOption.color} onChange={e=>setNewOption({...newOption, color: e.target.value})} style={{border:'none', width:'40px', height:'30px', cursor:'pointer'}} />
           <button onClick={handleAddOption} style={{padding:'5px 15px', background:'#28a745', color:'white', border:'none', borderRadius:'4px', cursor:'pointer'}}>確認新增</button>
         </div>
@@ -1505,21 +1459,20 @@ const handleUserChat = async () => {
                 <div ref={messagesEndRef} />
             </div>
             <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <input value={geminiInput} onChange={(e) => setGeminiInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleUserChat()} placeholder="輸入指令..." style={{ flex: 1, padding: '0.8rem', borderRadius: '8px', border: '1px solid #ddd' }} disabled={processing} />
-                <button onClick={handleUserChat} disabled={processing} style={{ padding: '0 20px', background: processing ? '#ccc' : '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer' }}>發送</button>
+                <input value={geminiInput} onChange={(e) => setGeminiInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleUserChat()} placeholder="輸入指令..." style={{ flex: 1, padding: '0.8rem', borderRadius: '8px', border: '1px solid #ddd', color:'black' }} disabled={processing} />
+                <button onClick={handleUserChat} disabled={processing} style={{ padding: '0 20px', background: processing ? '#ccc' : '#667eea', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer' }}>發送指令</button>
             </div>
         </div>
       )}
 
-      {schedule ? (
+      {schedule && Object.keys(schedule).length > 0 ? (
         <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                     <tr style={{ background: '#667eea', color: 'white' }}>
                         <th style={{ padding: '8px', minWidth: '80px', position: 'sticky', left: 0, background: '#667eea', zIndex: 10 }}>員工</th>
-                        {/* ★★★ 修改處：動態計算星期，並將六、日標示為淺紅色 ★★★ */}
                         {daysArray.map(d => {
-                            const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay(); // 0 是週日, 6 是週六
+                            const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay(); 
                             const dayStrs = ['日', '一', '二', '三', '四', '五', '六'];
                             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
                             
@@ -1533,16 +1486,22 @@ const handleUserChat = async () => {
                     </tr>
                 </thead>
                 <tbody>
-                    {/* ★ 只顯示虛擬代號 (Dxxx) ★ */}
-                    {Object.keys(schedule).sort().filter(rowId => {
-                        const isReal = staffData.some(s => s.staff_id === rowId);
-                        return !isReal; // 只顯示虛擬的
-                    }).map(rowId => {
+                    {Object.keys(schedule).sort().map(rowId => {
+                        const isVirtual = rowId.startsWith('D');
                         return (
-                            <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: '#fafafa' }}>
-                                <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: '#f9f9f9', zIndex: 5 }}>
-                                    <div style={{ color: '#888', fontWeight: 'bold', fontSize: '1rem' }}>🎲 待認領</div>
-                                    <div style={{ fontSize: '0.85rem', color: '#aaa', fontWeight: 'bold' }}>{rowId}</div>
+                            <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
+                                <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: isVirtual ? '#f9f9f9' : 'white', zIndex: 5 }}>
+                                    {isVirtual ? (
+                                        <>
+                                            <div style={{ color: '#888', fontWeight: 'bold', fontSize: '1rem' }}>🎲 待認領</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#aaa', fontWeight: 'bold' }}>{rowId}</div>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <div style={{ color: '#2c3e50', fontWeight: 'bold', fontSize: '1rem' }}>{staffData.find(s=>s.staff_id===rowId)?.name || rowId}</div>
+                                            <div style={{ fontSize: '0.85rem', color: '#667eea', fontWeight: 'bold' }}>{rowId}</div>
+                                        </>
+                                    )}
                                 </td>
                                 {daysArray.map(d => {
                                     const cellData = schedule[rowId]?.[d];
@@ -1586,7 +1545,10 @@ const handleUserChat = async () => {
                 </tfoot>
             </table>
         </div>
-      ) : <div style={{textAlign:'center', padding:'2rem', color:'#666'}}>尚未生成班表，請點擊「✨ 生成模擬排班」</div>}
+      ) : <div style={{textAlign:'center', padding:'3rem', color:'#888', background:'#f8f9fa', borderRadius:'8px', border:'2px dashed #ddd'}}>
+          <h3 style={{margin:0, color:'#666'}}>桌面空空如也 🌬️</h3>
+          <p>請點擊上方的「✨ 生成 AI 班表」開始排班，或是切換其他月份。</p>
+      </div>}
     </div>
   );
 };
