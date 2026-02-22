@@ -1,14 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
 
-// ============================================================================
-// 設定區
-// ============================================================================
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
 // ============================================================================
 // Firebase 設定區
 // ============================================================================
@@ -194,6 +190,82 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
 
   });
   return violations;
+};
+// ============================================================================
+// 壓力與公平風險運算引擎 (Soft Risk Engine)
+// ============================================================================
+const calculateScheduleRisks = (schedule, staffData, publicHolidays, year, month) => {
+  const risks = [];
+  const stats = {};
+  let totalN = 0, totalE = 0, totalHolidayWork = 0;
+  let validStaffCount = 0;
+  const daysInMonth = new Date(year, month, 0).getDate();
+
+  // 1. 收集全單位數據，建立「團隊平均基準線」
+  Object.keys(schedule).forEach(staffId => {
+    if (staffId.startsWith('D')) return; // 略過尚未認領的虛擬班表
+    
+    validStaffCount++;
+    stats[staffId] = { N: 0, E: 0, holidayWork: 0, maxConsecutive: 0 };
+    let currentConsecutive = 0;
+
+    for (let d = 1; d <= daysInMonth; d++) {
+      const cell = schedule[staffId][d];
+      const type = (typeof cell === 'object') ? (cell.type || 'OFF') : (cell || 'OFF');
+      const isWork = ['D', 'E', 'N', '支援'].includes(type) || type.includes('(OT)');
+      
+      const dayOfWeek = new Date(year, month - 1, d).getDay();
+      const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+      const dateStr = `${year}${String(month).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+      const isHoliday = publicHolidays.includes(dateStr);
+
+      if (type === 'N') { stats[staffId].N++; totalN++; }
+      if (type === 'E') { stats[staffId].E++; totalE++; }
+      if (isWork && (isWeekend || isHoliday)) { stats[staffId].holidayWork++; totalHolidayWork++; }
+
+      if (isWork) {
+        currentConsecutive++;
+        stats[staffId].maxConsecutive = Math.max(stats[staffId].maxConsecutive, currentConsecutive);
+      } else {
+        currentConsecutive = 0;
+      }
+    }
+  });
+
+  if (validStaffCount === 0) return [];
+
+  // 計算團隊平均值
+  const avgN = totalN / validStaffCount;
+  const avgHolidayWork = totalHolidayWork / validStaffCount;
+
+  // 2. 抓出「相對剝奪感」與「疲勞」極端值
+  Object.keys(stats).forEach(staffId => {
+    const staffStats = stats[staffId];
+    const staffName = staffData.find(s => s.staff_id === staffId)?.name || staffId;
+    const personalRisks = [];
+
+    // [風險 A: 連續工作疲勞] - 雖然沒違法(連7)，但連5、連6已經很累
+    if (staffStats.maxConsecutive === 5 || staffStats.maxConsecutive === 6) {
+       personalRisks.push({ label: '連六風險', desc: `連續工作達 ${staffStats.maxConsecutive} 天，接近法定疲勞臨界點。` });
+    }
+    
+    // [風險 B: 大夜班不均] - 高於單位平均 2 天以上
+    if (staffStats.N > avgN + 2) { 
+       personalRisks.push({ label: '大夜偏多', desc: `大夜班(${staffStats.N}天) 顯著高於團隊平均(${avgN.toFixed(1)}天)。` });
+    }
+
+    // [風險 C: 假日剝奪感] - 假日出勤高於平均 2 天以上
+    if (staffStats.holidayWork > avgHolidayWork + 2) {
+       personalRisks.push({ label: '假日班集中', desc: `週末/國定假日出勤(${staffStats.holidayWork}天) 高於單位平均(${avgHolidayWork.toFixed(1)}天)。` });
+    }
+
+    // 如果有中標，就推入風險清單
+    if (personalRisks.length > 0) {
+       risks.push({ staffId, staffName, tags: personalRisks });
+    }
+  });
+
+  return risks;
 };
 
 // ============================================================================
@@ -669,6 +741,7 @@ const NurseSchedulingSystem = () => {
   const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
+  const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
   const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
   const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
 
@@ -699,27 +772,18 @@ const NurseSchedulingSystem = () => {
     fetchHolidays();
   }, [selectedYear]);
 
-
-
-  // ★★★ 新增這段：法遵檢查自動化引擎 ★★★
+// ★★★ 法遵檢查與風險掃描自動化引擎 ★★★
   useEffect(() => {
-    // 只有當班表存在時才檢查
     if (schedule && Object.keys(schedule).length > 0) {
-      
-      // 執行檢查函式
-      const newViolations = checkLaborLawCompliance(
-        schedule, 
-        staffData, 
-        historyData, 
-        selectedYear, 
-        selectedMonth
-      );
-      
-      // 更新法遵頁面的資料
+      // 1. 跑硬性違規檢查 (紅燈)
+      const newViolations = checkLaborLawCompliance(schedule, staffData, historyData, selectedYear, selectedMonth);
       setViolations(newViolations);
+      
+      // 2. 跑軟性風險掃描 (黃燈)
+      const newRisks = calculateScheduleRisks(schedule, staffData, publicHolidays, selectedYear, selectedMonth);
+      setScheduleRisks(newRisks);
     }
-  }, [schedule, staffData, selectedYear, selectedMonth]); // <--- 監聽這些變數，一變就跑
-
+  }, [schedule, staffData, selectedYear, selectedMonth, publicHolidays]);
 // ☁️ 雲端引擎 1：即時讀取 Firestore (OnSnapshot 監聽)
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "NurseApp", "MainData"), (docSnap) => {
@@ -856,6 +920,7 @@ const NurseSchedulingSystem = () => {
             priorityConfig={priorityConfig}       // <--- 補上
             setPriorityConfig={setPriorityConfig} // <--- 補上
             publicHolidays={publicHolidays} // <--- ★★★ 補上這一行 ★★★
+            scheduleRisks={scheduleRisks} // <--- ★★★ 補上這行 ★★★
           />
         ) : (
           <StaffDashboard
@@ -880,13 +945,13 @@ const NurseSchedulingSystem = () => {
 const ManagerInterface = ({
   staffData, setStaffData, historyData, requirements, setRequirements,
   preferences, setPreferences, schedule, violations,
-  shiftOptions, setShiftOptions,priorityConfig, setPriorityConfig,publicHolidays, // <--- ★★★ 就是漏了這一個！請補上 ★★★ 
-  // 確保接收到所有需要的 props
+  scheduleRisks, // <--- ★ 確保這裡有風險資料
+  shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule
 }) => {
-  // 這裡控制目前顯示哪個分頁，預設為 'requirements'
+  // ★ 這裡宣告了 activeTab，所以下面的程式碼才認得它！
   const [activeTab, setActiveTab] = useState('requirements');
 
   return (
@@ -894,7 +959,7 @@ const ManagerInterface = ({
       
       {/* 1. 分頁導覽列 (Navigation Tabs) */}
       <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        {['requirements', 'staff', 'schedule', 'review', 'statistics'].map(tab => (
+        {['requirements', 'staff', 'schedule', 'review', 'statistics', 'simulation'].map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)} 
@@ -914,84 +979,73 @@ const ManagerInterface = ({
             {tab === 'requirements' && '⚙️ 人力需求'}
             {tab === 'staff' && '👥 員工管理'}
             {tab === 'schedule' && '🛠️ 排班工作桌'} 
-            {tab === 'review' && '✅ 審核與發布'}   {/* 這裡原本是 法遵檢查，現在改成 審核與發布 */}
+            {tab === 'review' && '✅ 審核與發布'}
             {tab === 'statistics' && '📊 統計報表'}
+            {tab === 'simulation' && '🔮 制度模擬'}
           </button>
         ))}
       </div>
 
       {/* 2. 頁面內容區 (Content Area) */}
       
-      {/* 分頁 1: 人力需求設定 */}
       {activeTab === 'requirements' && (
         <RequirementsPanel
           requirements={requirements} setRequirements={setRequirements}
           onGenerateSchedule={onGenerateSchedule} 
           onExportPreferences={onExportPreferences}
           onSaveSchedule={onSaveSchedule} 
-          selectedYear={selectedYear} 
-          setSelectedYear={setSelectedYear}
-          selectedMonth={selectedMonth} 
-          setSelectedMonth={setSelectedMonth}
+          selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+          selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
         />
       )}
       
-      {/* 分頁 2: 員工管理 */}
       {activeTab === 'staff' && (
-        <StaffManagementPanel 
-           staffData={staffData} 
-           setStaffData={setStaffData} 
-        />
+        <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
       )}
       
-      {/* 分頁 3: 總班表 (排班工作桌) */}
       {activeTab === 'schedule' && (
         <SchedulePanel
-          schedule={schedule} 
-          staffData={staffData} 
-          violations={violations}
-          requirements={requirements} 
-          onGenerateSchedule={onGenerateSchedule} 
-          onSaveSchedule={onSaveSchedule} 
-          setSchedule={setSchedule}
-          selectedYear={selectedYear} 
-          selectedMonth={selectedMonth}
-          setSelectedMonth={setSelectedMonth}
-          shiftOptions={shiftOptions}       // <--- 2. 傳給 SchedulePanel
-          setShiftOptions={setShiftOptions} // <--- 2. 傳給 SchedulePanel
-          setSelectedYear={setSelectedYear}
+          schedule={schedule} staffData={staffData} violations={violations}
+          requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
+          onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
+          selectedYear={selectedYear} selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
+          shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
         />
       )}
       
-      {/* 分頁 4: 審核與發布 (整合面板) - 取代原本的 ViolationsPanel */}
       {activeTab === 'review' && (
         <ScheduleReviewPanel 
-           schedule={schedule}
-           setSchedule={setSchedule} // 傳遞修改權限
-           staffData={staffData}
-           violations={violations}   // 傳遞違規資料
-           selectedYear={selectedYear}
-           selectedMonth={selectedMonth}
-           onSaveSchedule={onSaveSchedule}
-           shiftOptions={shiftOptions}       // <--- 3. 傳給 ScheduleReviewPanel
-           setShiftOptions={setShiftOptions} // <--- 3. 傳給 ScheduleReviewPanel
-           publicHolidays={publicHolidays} // <--- 2. 這裡傳遞下去
+           schedule={schedule} setSchedule={setSchedule} staffData={staffData}
+           violations={violations} scheduleRisks={scheduleRisks} 
+           selectedYear={selectedYear} selectedMonth={selectedMonth}
+           onSaveSchedule={onSaveSchedule} shiftOptions={shiftOptions} 
+           setShiftOptions={setShiftOptions} publicHolidays={publicHolidays} 
         />
       )}
       
-    {/* 分頁 5: 統計報表 (修改這裡) */}
       {activeTab === 'statistics' && (
         <StatisticsPanel 
-            staffData={staffData} 
-            priorityConfig={priorityConfig}       // <--- 2. 傳下去
-            setPriorityConfig={setPriorityConfig} // <--- 2. 傳下去
+            staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
+        />
+      )}
+
+      {/* ★ 制度模擬面板 ★ */}
+      {activeTab === 'simulation' && (
+        <SimulationPanel 
+            staffData={staffData}
+            requirements={requirements}
+            baseSalary={localStorage.getItem('globalBaseSalary') || 40000}
+            publicHolidays={publicHolidays}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
+            shiftOptions={shiftOptions}
         />
       )}
 
     </div>
   );
 };
-
 // ============================================================================
 // 人力需求設定面板 (含：年月選擇器 + 儲存按鈕)
 // ============================================================================
@@ -1244,11 +1298,27 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         try {
             attempts++;
             setLoadingStatus(attempts === 1 ? "🧠 AI 正在計算最佳排班陣列..." : `♻️ 第 ${attempts} 次嘗試...`);
-            const result = await chat.sendMessage(currentPrompt);
-            const text = result.response.text().replace(/```json|```/g, '').trim();
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            //const result = await chat.sendMessage(currentPrompt);
+            //const text = result.response.text().replace(/```json|```/g, '').trim();
+            //const jsonMatch = text.match(/\{[\s\S]*\}/);
             
-            if (!jsonMatch) throw new Error("JSON 格式錯誤");
+            //if (!jsonMatch) throw new Error("JSON 格式錯誤");
+            // 改成呼叫我們剛剛寫的 Vercel 後端 API：
+const response = await fetch('/api/gemini', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ prompt: currentPrompt })
+});
+
+if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.error || "伺服器連線失敗");
+}
+
+const data = await response.json();
+const text = data.text.replace(/```json|```/g, '').trim();
+const jsonMatch = text.match(/\{[\s\S]*\}/);
+if (!jsonMatch) throw new Error("JSON 格式錯誤");
             const parsed = JSON.parse(jsonMatch[0]);
             
             // ★★★ 用 JavaScript 瞬間「解壓縮」資料 ★★★
@@ -1297,15 +1367,23 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
     setProcessing(false); setLoadingStatus('');
   };
 const handleUserChat = async () => {
-      if (!geminiInput.trim() || !chatSessionRef.current) return;
+      if (!geminiInput.trim()) return;
       const userMsg = geminiInput;
       setGeminiInput(''); setProcessing(true);
       setLoadingStatus("🤖 AI 正在思考回應...");
       setGeminiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+      
       try {
-          const result = await chatSessionRef.current.sendMessage(userMsg);
-          const text = result.response.text();
-          setGeminiMessages(prev => [...prev, { role: 'assistant', content: text }]);
+          const response = await fetch('/api/gemini', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: userMsg })
+          });
+          
+          if (!response.ok) throw new Error("伺服器連線失敗");
+          
+          const data = await response.json();
+          setGeminiMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
       } catch (error) {
           setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 錯誤: " + error.message }]);
       } finally { setProcessing(false); setLoadingStatus(''); }
@@ -1873,7 +1951,7 @@ const ScheduleReviewPanel = ({
   schedule, setSchedule, 
   staffData, violations, 
   selectedYear, selectedMonth, onSaveSchedule,
-  shiftOptions, setShiftOptions,
+  shiftOptions, setShiftOptions,scheduleRisks, // <--- ★★★ 補上這行 ★★★
   publicHolidays = [] 
 }) => {
   
@@ -2247,30 +2325,267 @@ const ScheduleReviewPanel = ({
             </div>
           </div>
 
-          {/* 右側：法遵檢查 */}
-          <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c' }}>
-             <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.2rem', color: '#c0392b', display:'flex', alignItems:'center', gap:'10px' }}>
-                ⚖️ 法遵檢查結果
-                <span style={{ fontSize:'0.9rem', background:'#e74c3c', color:'white', padding:'2px 8px', borderRadius:'12px' }}>{violations.length}</span>
-             </h2>
+          
+             {/* 右側：檢查與風險控制台 */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
              
-             <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
-                {violations.length === 0 ? (
-                    <div style={{ color: 'green', textAlign:'center', marginTop:'20px', fontSize:'1.1rem' }}>✅ 完美！無任何違規</div>
-                ) : (
-                    violations.map((v, i) => (
-                      <div key={i} style={{ padding: '12px', background: '#fff5f5', marginBottom: '10px', borderRadius: '8px', borderLeft: '4px solid #e74c3c', fontSize: '0.9rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-                        <div style={{fontWeight:'bold', color:'#c0392b', marginBottom:'4px'}}>
-                            {v.staffName || `待認領(${v.staffId})`} <span style={{color:'#666', fontSize:'0.8rem'}}>({v.staffId})</span>
-                        </div>
-                        <div style={{color:'#333'}}>Day {v.day}: {v.message}</div>
-                      </div>
-                    ))
-                )}
+             {/* 上層：法規硬限制 (紅燈) */}
+             <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b', display:'flex', alignItems:'center', gap:'10px' }}>
+                   ⚖️ 法遵檢查結果 (硬限制)
+                   <span style={{ fontSize:'0.9rem', background:'#e74c3c', color:'white', padding:'2px 8px', borderRadius:'12px' }}>{violations.length}</span>
+                </h2>
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
+                   {violations.length === 0 ? (
+                       <div style={{ color: '#27ae60', textAlign:'center', marginTop:'20px', fontSize:'1rem', fontWeight:'bold' }}>✅ 完美！無勞基法違規</div>
+                   ) : (
+                       violations.map((v, i) => (
+                         <div key={i} style={{ padding: '10px', background: '#fff5f5', marginBottom: '8px', borderRadius: '8px', borderLeft: '3px solid #e74c3c', fontSize: '0.9rem' }}>
+                           <div style={{fontWeight:'bold', color:'#c0392b', marginBottom:'4px'}}>
+                               {v.staffName || `待認領(${v.staffId})`} <span style={{color:'#666', fontSize:'0.8rem'}}>({v.staffId})</span>
+                           </div>
+                           <div style={{color:'#333'}}>Day {v.day}: {v.message}</div>
+                         </div>
+                       ))
+                   )}
+                </div>
              </div>
+
+             {/* 下層：壓力與公平風險 (橘燈) */}
+             <div style={{ flex: 1.2, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #f39c12', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                <div style={{ marginBottom: '1rem' }}>
+                    <h2 style={{ margin: 0, fontSize: '1.1rem', color: '#d35400', display:'flex', alignItems:'center', gap:'10px' }}>
+                       ⚠️ 排班壓力與公平風險
+                       <span style={{ fontSize:'0.9rem', background:'#f39c12', color:'white', padding:'2px 8px', borderRadius:'12px' }}>{scheduleRisks?.length || 0}</span>
+                    </h2>
+                    <div style={{ fontSize: '0.8rem', color: '#7f8c8d', marginTop: '5px' }}>分析團隊相對負荷，預防結構性不滿</div>
+                </div>
+                
+                <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
+                   {(!scheduleRisks || scheduleRisks.length === 0) ? (
+                       <div style={{ color: '#f39c12', textAlign:'center', marginTop:'20px', fontSize:'1rem', fontWeight:'bold' }}>✨ 團隊班表負荷平均</div>
+                   ) : (
+                       scheduleRisks.map((risk, i) => (
+                         <div key={i} style={{ padding: '12px', background: '#fdf8e3', marginBottom: '10px', borderRadius: '8px', border: '1px solid #faebcc' }}>
+                           <div style={{fontWeight:'bold', color:'#8a6d3b', marginBottom:'8px', fontSize:'0.95rem'}}>
+                               {risk.staffName} <span style={{color:'#999', fontSize:'0.8rem'}}>({risk.staffId})</span>
+                           </div>
+                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flexDirection: 'column' }}>
+                               {risk.tags.map((tag, j) => (
+                                   <div key={j}>
+                                       <span style={{ display: 'inline-block', background: '#f39c12', color: 'white', fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', marginBottom: '4px' }}>
+                                           {tag.label}
+                                       </span>
+                                       <div style={{ fontSize: '0.85rem', color: '#666', marginLeft: '2px' }}>{tag.desc}</div>
+                                   </div>
+                               ))}
+                           </div>
+                         </div>
+                       ))
+                   )}
+                </div>
+             </div>
+
           </div>
       </div>
     </div>
   );
+};
+
+// ============================================================================
+// 制度模擬工作桌 (What-if Simulation Sandbox)
+// ============================================================================
+const SimulationPanel = ({ 
+    staffData, requirements, baseSalary, publicHolidays, 
+    selectedYear, selectedMonth, shiftOptions 
+}) => {
+    const [isSimulating, setIsSimulating] = useState(false);
+    const [simResult, setSimResult] = useState(null);
+
+    // 模擬參數 (沙盒狀態，預設載入目前真實設定)
+    const [simParams, setSimParams] = useState({
+        bedCount: 50,
+        ratioD: 10,
+        ratioE: 12,
+        ratioN: 15,
+        staffChange: 0, // -1 代表少一人, +1 代表多一人
+        banNightShift: false // 假設的情境：全面禁止大夜班
+    });
+
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
+    const runSimulation = async () => {
+        setIsSimulating(true);
+        setSimResult(null);
+
+        // 1. 計算模擬需求
+        const dailyD = Math.ceil(simParams.bedCount / simParams.ratioD);
+        const dailyE = Math.ceil(simParams.bedCount / simParams.ratioE);
+        const dailyN = simParams.banNightShift ? 0 : Math.ceil(simParams.bedCount / simParams.ratioN);
+        const totalNeededPerDay = dailyD + dailyE + dailyN;
+
+        // 2. 計算模擬可用人力
+        let availableStaffCount = staffData.filter(s => s.is_active).length + simParams.staffChange;
+        if (availableStaffCount < 1) availableStaffCount = 1;
+
+        // 3. 呼叫 AI 進行沙盒排班 (要求 AI 在極端條件下硬排)
+        const prompt = `
+            [制度模擬測試]
+            這是一個壓力測試。請為 ${availableStaffCount} 名護理人員排 ${daysInMonth} 天的班表。
+            每日需求：早班 ${dailyD} 人, 小夜 ${dailyE} 人, 大夜 ${dailyN} 人。
+            法規限制：盡量符合七休一與輪班間隔11小時。若人力極度不足，請硬排並允許違規，我們會將違規次數作為風險指標。
+            請只輸出 ${availableStaffCount} 個字串的陣列 (以逗號分隔班別 D,E,N,OFF)。
+            格式範例: {"patterns": ["D,D,D,OFF..."]}
+        `;
+
+        try {
+            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+            const result = await model.generateContent(prompt);
+            const text = result.response.text().replace(/```json|```/g, '').trim();
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch[0]);
+
+            // 4. 解析 AI 回傳的模擬班表
+            const virtualSchedule = {};
+            parsed.patterns.forEach((patternStr, index) => {
+                const shifts = patternStr.split(',').map(s => s.trim());
+                virtualSchedule[`SimStaff_${index}`] = {};
+                shifts.forEach((type, dIndex) => {
+                    virtualSchedule[`SimStaff_${index}`][dIndex + 1] = { type };
+                });
+            });
+
+            // 5. 執行衝擊分析 (Impact Analysis)
+            let totalOTCost = 0;
+            let totalViolations = 0;
+            let gapDays = 0;
+            const hourlyWage = Math.round((Number(baseSalary) || 40000) / 240);
+
+            // 掃描每一天的缺口
+            for (let d = 1; d <= daysInMonth; d++) {
+                let countD = 0, countE = 0, countN = 0;
+                Object.values(virtualSchedule).forEach(staff => {
+                    const t = staff[d]?.type;
+                    if (t === 'D') countD++;
+                    if (t === 'E') countE++;
+                    if (t === 'N') countN++;
+                });
+                if (countD < dailyD) gapDays += (dailyD - countD);
+                if (countE < dailyE) gapDays += (dailyE - countE);
+                if (countN < dailyN) gapDays += (dailyN - countN);
+            }
+
+            // 掃描違規與薪資成本
+            Object.keys(virtualSchedule).forEach(staffId => {
+                let workDays = 0;
+                let consecutive = 0;
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const type = virtualSchedule[staffId][d]?.type;
+                    if (['D', 'E', 'N'].includes(type)) {
+                        workDays++;
+                        consecutive++;
+                        if (consecutive > 6) totalViolations++; // 抓出連六違規
+                    } else {
+                        consecutive = 0;
+                    }
+                }
+                // 估算休息日加班費 (超過標準天數)
+                const stdDays = daysInMonth - 8;
+                if (workDays > stdDays) {
+                    const otDays = workDays - stdDays;
+                    const otPayPerDay = Math.round((hourlyWage * 1.34 * 2) + (hourlyWage * 1.67 * 6));
+                    totalOTCost += (otDays * otPayPerDay);
+                }
+            });
+
+            // 總結報告
+            setSimResult({
+                staffCount: availableStaffCount,
+                dailyNeeded: totalNeededPerDay,
+                gapShifts: gapDays,
+                violations: totalViolations,
+                estExtraCost: totalOTCost
+            });
+
+        } catch (e) {
+            alert("模擬失敗，請重試：" + e.message);
+        } finally {
+            setIsSimulating(false);
+        }
+    };
+
+    return (
+        <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', display: 'flex', gap: '20px', flexDirection: 'column' }}>
+            <div style={{ borderBottom: '2px solid #eee', paddingBottom: '1rem' }}>
+                <h2 style={{ margin: 0, color: '#8e44ad', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    🔮 制度變更模擬器 (What-if Analysis)
+                </h2>
+                <p style={{ color: '#666', marginTop: '5px' }}>在不影響正式班表的情況下，預測「如果改變管理制度」會對成本與合規性造成什麼衝擊。</p>
+            </div>
+
+            <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                {/* 左側：控制面板 */}
+                <div style={{ flex: 1, minWidth: '300px', background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', border: '1px solid #ddd' }}>
+                    <h3 style={{ marginTop: 0, color: '#333' }}>🎛️ 調整模擬參數</h3>
+                    
+                    <div style={{ marginBottom: '15px' }}>
+                        <label style={{ fontWeight: 'bold', display: 'block', color: 'black' }}>護病比與病床數 (目前: {simParams.bedCount}床)</label>
+                        <input type="range" min="10" max="100" value={simParams.bedCount} onChange={e => setSimParams({...simParams, bedCount: Number(e.target.value)})} style={{ width: '100%' }} />
+                        <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+                            <input type="number" value={simParams.ratioD} onChange={e => setSimParams({...simParams, ratioD: Number(e.target.value)})} placeholder="早班比" style={{ width: '33%', padding: '5px' }} />
+                            <input type="number" value={simParams.ratioE} onChange={e => setSimParams({...simParams, ratioE: Number(e.target.value)})} placeholder="小夜比" style={{ width: '33%', padding: '5px' }} />
+                            <input type="number" value={simParams.ratioN} onChange={e => setSimParams({...simParams, ratioN: Number(e.target.value)})} placeholder="大夜比" style={{ width: '33%', padding: '5px' }} />
+                        </div>
+                    </div>
+
+                    <div style={{ marginBottom: '15px' }}>
+                        <label style={{ fontWeight: 'bold', display: 'block', color: 'black' }}>人員異動模擬 (離職/擴編)</label>
+                        <select value={simParams.staffChange} onChange={e => setSimParams({...simParams, staffChange: Number(e.target.value)})} style={{ width: '100%', padding: '8px', marginTop: '5px' }}>
+                            <option value={-2}>減少 2 人 (模擬離職潮)</option>
+                            <option value={-1}>減少 1 人 (模擬請長假)</option>
+                            <option value={0}>維持現狀 ({staffData.length} 人)</option>
+                            <option value={1}>增加 1 人 (模擬招募)</option>
+                            <option value={2}>增加 2 人</option>
+                        </select>
+                    </div>
+
+                    <button onClick={runSimulation} disabled={isSimulating} style={{ width: '100%', padding: '12px', background: isSimulating ? '#ccc' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isSimulating ? 'not-allowed' : 'pointer', fontSize: '1.1rem' }}>
+                        {isSimulating ? '⏳ AI 正在進行平行時空運算...' : '🚀 執行衝擊模擬'}
+                    </button>
+                </div>
+
+                {/* 右側：分析報告 */}
+                <div style={{ flex: 1.5, minWidth: '300px', background: '#fff', padding: '1.5rem', borderRadius: '12px', border: '1px solid #8e44ad', boxShadow: '0 4px 15px rgba(142, 68, 173, 0.1)' }}>
+                    <h3 style={{ marginTop: 0, color: '#8e44ad' }}>📊 模擬衝擊報告</h3>
+                    
+                    {!simResult ? (
+                        <div style={{ height: '200px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999' }}>
+                            請調整左側參數並點擊執行，AI 將為您預測結果。
+                        </div>
+                    ) : (
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                            <div style={{ background: '#fdf2e9', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #e67e22' }}>
+                                <div style={{ fontSize: '0.9rem', color: '#666' }}>預估勞基法違規數</div>
+                                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#d35400' }}>{simResult.violations} <span style={{fontSize:'1rem'}}>次</span></div>
+                                <div style={{ fontSize: '0.8rem', color: '#e67e22' }}>{simResult.violations > 5 ? '⚠️ 法律風險極高' : '✅ 尚在可控範圍'}</div>
+                            </div>
+
+                            <div style={{ background: '#fce4ec', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #e91e63' }}>
+                                <div style={{ fontSize: '0.9rem', color: '#666' }}>預估人力缺口 (空班數)</div>
+                                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#c2185b' }}>{simResult.gapShifts} <span style={{fontSize:'1rem'}}>班</span></div>
+                                <div style={{ fontSize: '0.8rem', color: '#e91e63' }}>{simResult.gapShifts > 0 ? '⚠️ 需要請求外部支援' : '✅ 人力可順利覆蓋'}</div>
+                            </div>
+
+                            <div style={{ background: '#e8f8f5', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #1abc9c', gridColumn: '1 / -1' }}>
+                                <div style={{ fontSize: '0.9rem', color: '#666' }}>預估每月額外加班費成本</div>
+                                <div style={{ fontSize: '2rem', fontWeight: 'bold', color: '#16a085' }}>NT$ {simResult.estExtraCost.toLocaleString()}</div>
+                                <div style={{ fontSize: '0.8rem', color: '#1abc9c' }}>基於底薪 {baseSalary} 元估算休息日加班費</div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
 };
 export default NurseSchedulingSystem;
