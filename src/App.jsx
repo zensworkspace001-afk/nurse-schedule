@@ -2438,10 +2438,26 @@ const SimulationPanel = ({
             格式範例: {"patterns": ["D,D,D,OFF..."]}
         `;
 
+        //try {
+            //const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+            //const result = await model.generateContent(prompt);
+            //const text = result.response.text().replace(/```json|```/g, '').trim();
         try {
-            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
-            const result = await model.generateContent(prompt);
-            const text = result.response.text().replace(/```json|```/g, '').trim();
+            // 改成呼叫我們自己寫的安全後端 API
+            const response = await fetch('/api/gemini', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || "伺服器連線失敗");
+            }
+
+            const data = await response.json();
+            const text = data.text.replace(/```json|```/g, '').trim();
+            // ... 底下保留
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             const parsed = JSON.parse(jsonMatch[0]);
 
