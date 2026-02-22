@@ -1288,9 +1288,9 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 `;
 
     // ★★★ 改用 gemini-1.5-flash 模型，速度最快 ★★★
-    const model = genAI.getGenerativeModel({ model: "gemini-pro-latest" }); 
-    const chat = model.startChat();
-    chatSessionRef.current = chat;
+    //const model = genAI.getGenerativeModel({ model: "gemini-pro-latest" }); 
+    //const chat = model.startChat();
+    //chatSessionRef.current = chat;
 
     let attempts = 0; const MAX_RETRIES = 3; let isSuccess = false;
 
