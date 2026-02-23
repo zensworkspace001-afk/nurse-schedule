@@ -736,6 +736,25 @@ const NurseSchedulingSystem = () => {
   const [showAdminPwdModal, setShowAdminPwdModal] = useState(false);
   const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
+  // ★★★ 新增 1：儲存健康度歷史數據的狀態 ★★★
+  const [healthStats, setHealthStats] = useState([]); 
+
+  // ★★★ 新增 2：計算並更新當月健康度的函式 ★★★
+  const handleUpdateHealthStats = (year, month, avg, median) => {
+      setHealthStats(prev => {
+          const newData = [...prev];
+          const existingIndex = newData.findIndex(d => d.year === year && d.month === month);
+          if (existingIndex >= 0) {
+              newData[existingIndex] = { year, month, avg, median };
+          } else {
+              newData.push({ year, month, avg, median });
+          }
+          // 依照年月排序，並只保留最近 12 個月
+          newData.sort((a, b) => (a.year - b.year) || (a.month - b.month));
+          return newData.slice(-12); 
+      });
+  };
+
 
   const [shiftOptions, setShiftOptions] = useState([
     { code: 'D', name: '白班', color: '#FFD93D', time: '08:00-16:00' },
@@ -820,6 +839,7 @@ const NurseSchedulingSystem = () => {
         if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
         if (data.publishedDate) setPublishedDate(data.publishedDate);
         if (data.adminPassword) setAdminPassword(data.adminPassword); // ★ 補上這行
+        if (data.healthStats) setHealthStats(data.healthStats); // ★ 讀取健康度
       }
       setIsCloudLoaded(true); // 標記為：已成功從雲端抓取到資料
     });
@@ -840,10 +860,11 @@ const NurseSchedulingSystem = () => {
       schedule: schedule || {},
       finalizedSchedule: finalizedSchedule || null,
       publishedDate: publishedDate || { year: 2026, month: 2 },
-      adminPassword: adminPassword || 'admin' // ★ 補上這行
+      adminPassword: adminPassword || 'admin', // ★ 補上這行
+      healthStats: healthStats || []           // ★ 補上這行寫入
     });
 
-  }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded]);
+  }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded,healthStats]);
 
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
@@ -1006,6 +1027,8 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} adminPassword=
             scheduleRisks={scheduleRisks} // <--- ★★★ 補上這行 ★★★
             finalizedSchedule={finalizedSchedule}       // <--- ★ 補上這行
             setFinalizedSchedule={setFinalizedSchedule} // <--- ★ 補上這行
+            healthStats={healthStats}                     // ★★★ 補上這行
+            onUpdateHealthStats={handleUpdateHealthStats} // ★★★ 補上這行
           />
         ) : (
           <StaffDashboard
@@ -1036,7 +1059,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule
+  setFinalizedSchedule,healthStats, onUpdateHealthStats
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
@@ -1101,11 +1124,14 @@ const ManagerInterface = ({
            setSchedule={setFinalizedSchedule}
            setDraftSchedule={setSchedule}              // ★ 傳遞草稿區修改權限給審核頁
            setFinalizedSchedule={setFinalizedSchedule} // ★ 傳遞發布區修改權限給審核頁
+           onUpdateHealthStats={onUpdateHealthStats} // ★ 傳遞觸發器
         />
       )}
       
       {activeTab === 'statistics' && (
-        <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} />
+        <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
+        healthStats={healthStats} // ★ 傳遞歷年數據給報表畫圖
+        />
       )}
 
       {activeTab === 'simulation' && (
@@ -1797,17 +1823,15 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
   );
 };
 // ============================================================================
-// 統計報表面板 (含：優先選班控制台 - 多選版 + 黑色字體)
+// 統計報表面板 (包含優先選班與 SVG 班表健康度折線圖)
 // ============================================================================
-const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
+const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [] }) => {
   
-  // 計算統計數據
+  // -- (1) 計算統計數據 (保持原樣) --
   const calculateStats = (data, key) => {
     const validData = data.map(s => ({ ...s, value: Number(s[key]) || 0 })).sort((a, b) => b.value - a.value);
     const values = validData.map(d => d.value);
-    
     if (values.length === 0) return { avg: 0, median: 0, top5: [], bottom5: [], allRank: [] };
-
     const sum = values.reduce((acc, curr) => acc + curr, 0);
     const avg = (sum / values.length).toFixed(1);
     const floorValues = values.map(v => Math.floor(v));
@@ -1815,7 +1839,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
     const median = floorValues.length % 2 !== 0 ? floorValues[mid] : ((floorValues[mid - 1] + floorValues[mid]) / 2).toFixed(1);
     const top5 = [...validData].slice(0, 5); 
     const bottom5 = [...validData].reverse().slice(0, 5);
-    
     return { avg, median, top5, bottom5, allRank: validData };
   };
 
@@ -1837,7 +1860,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
           }
       });
   }
-  
   const priorityList = Array.from(allowedStaffMap.values());
 
   const RankingList = ({ title, data, color }) => (
@@ -1852,10 +1874,80 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
     </div>
   );
 
+  // -- (2) 繪製健康度折線圖 --
+  const renderLineChart = () => {
+      if (!healthStats || healthStats.length === 0) {
+          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無健康度結算紀錄。<br/>請先至「✅ 審核與發布」按下「💰 薪資與加班費結算」按鈕以產生數據。</div>;
+      }
+
+      const svgWidth = 800;
+      const svgHeight = 350;
+      const padding = 50;
+      const chartWidth = svgWidth - padding * 2;
+      const chartHeight = svgHeight - padding * 2;
+
+      const allScores = healthStats.flatMap(d => [d.avg, d.median]);
+      const minScore = Math.max(0, Math.floor(Math.min(...allScores) / 5) * 5 - 5); 
+      const maxScore = 100;
+
+      const getX = (index) => padding + (index * (chartWidth / Math.max(1, healthStats.length - 1)));
+      const getY = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
+
+      const avgPoints = healthStats.map((d, i) => `${getX(i)},${getY(d.avg)}`).join(' ');
+      const medianPoints = healthStats.map((d, i) => `${getX(i)},${getY(d.median)}`).join(' ');
+
+      return (
+          <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', background: 'white', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+              {/* Y軸背景格線 */}
+              {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+                  const y = padding + chartHeight - (chartHeight * ratio);
+                  const val = Math.round(minScore + (maxScore - minScore) * ratio);
+                  return (
+                      <g key={ratio}>
+                          <line x1={padding} y1={y} x2={svgWidth - padding} y2={y} stroke="#ecf0f1" strokeDasharray="5 5" strokeWidth="1.5" />
+                          <text x={padding - 10} y={y + 4} fontSize="12" fill="#7f8c8d" textAnchor="end">{val}</text>
+                      </g>
+                  );
+              })}
+              
+              {/* 繪製折線 */}
+              <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+              <polyline points={medianPoints} fill="none" stroke="#e74c3c" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
+
+              {/* 資料點與標籤 */}
+              {healthStats.map((d, i) => {
+                  const x = getX(i);
+                  const yAvg = getY(d.avg);
+                  const yMed = getY(d.median);
+                  const isAvgHigher = d.avg >= d.median;
+
+                  return (
+                      <g key={i}>
+                          <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
+                          <circle cx={x} cy={yMed} r="5" fill="#e74c3c" stroke="white" strokeWidth="2" />
+                          
+                          <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
+                          <text x={x} y={isAvgHigher ? yAvg - 12 : yAvg + 20} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
+                          <text x={x} y={isAvgHigher ? yMed + 20 : yMed - 12} fontSize="12" fill="#c0392b" textAnchor="middle" fontWeight="bold">{d.median}</text>
+                      </g>
+                  );
+              })}
+
+              {/* 圖例 */}
+              <g transform={`translate(${svgWidth / 2 - 120}, ${padding - 20})`}>
+                  <line x1="0" y1="0" x2="30" y2="0" stroke="#3498db" strokeWidth="4" strokeLinecap="round" />
+                  <text x="40" y="4" fontSize="14" fill="#2c3e50" fontWeight="bold">平均健康度</text>
+                  <line x1="150" y1="0" x2="180" y2="0" stroke="#e74c3c" strokeWidth="4" strokeLinecap="round" />
+                  <text x="190" y="4" fontSize="14" fill="#2c3e50" fontWeight="bold">中位數</text>
+              </g>
+          </svg>
+      );
+  };
+
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       
-      {/* 優先選班控制台 */}
+      {/* 優先選班控制台 (保持原樣) */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #667eea', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'20px'}}>
              <div>
@@ -1870,68 +1962,28 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
                  ) : (
                      <span style={{color:'#e67e22', fontWeight:'bold', display:'flex', alignItems:'center', gap:'5px'}}>🔒 僅限優先人員 ({priorityList.length}人)</span>
                  )}
-                 <button 
-                    onClick={() => setPriorityConfig({...priorityConfig, isOpenToAll: !priorityConfig.isOpenToAll})}
-                    style={{ 
-                        marginLeft:'10px', padding:'5px 15px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'bold',
-                        background: priorityConfig.isOpenToAll ? '#e74c3c' : '#27ae60', color:'white'
-                    }}
-                 >
+                 <button onClick={() => setPriorityConfig({...priorityConfig, isOpenToAll: !priorityConfig.isOpenToAll})} style={{ marginLeft:'10px', padding:'5px 15px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'bold', background: priorityConfig.isOpenToAll ? '#e74c3c' : '#27ae60', color:'white' }}>
                     {priorityConfig.isOpenToAll ? '改為限制模式' : '開啟全面開放'}
                  </button>
              </div>
           </div>
 
           <div style={{ marginTop:'20px', display:'flex', gap:'30px', flexWrap:'wrap' }}>
-              {/* 設定區域 */}
               <div style={{ flex:1, minWidth:'250px' }}>
-                  {/* ★★★ 修改處：強制設定顏色為黑色 ★★★ */}
                   <label style={{display:'block', fontWeight:'bold', marginBottom:'10px', color: 'black'}}>優先依據指標 (可多選):</label>
-                  
                   <div style={{display:'flex', gap:'10px', flexDirection:'column'}}>
                       <label style={{cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', fontSize:'1rem', color: 'black'}}>
-                          <input 
-                              type="checkbox" 
-                              checked={priorityConfig.types.includes('accumulated_ot')}
-                              onChange={e => {
-                                  const newTypes = e.target.checked 
-                                      ? [...priorityConfig.types, 'accumulated_ot']
-                                      : priorityConfig.types.filter(t => t !== 'accumulated_ot');
-                                  setPriorityConfig({...priorityConfig, types: newTypes});
-                              }}
-                              style={{width:'18px', height:'18px'}}
-                          />
+                          <input type="checkbox" checked={priorityConfig.types.includes('accumulated_ot')} onChange={e => { const newTypes = e.target.checked ? [...priorityConfig.types, 'accumulated_ot'] : priorityConfig.types.filter(t => t !== 'accumulated_ot'); setPriorityConfig({...priorityConfig, types: newTypes}); }} style={{width:'18px', height:'18px'}} />
                           🔥 積借休時數 (OT) 前 {priorityConfig.count} 名
                       </label>
-                      
                       <label style={{cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', fontSize:'1rem', color: 'black'}}>
-                          <input 
-                              type="checkbox" 
-                              checked={priorityConfig.types.includes('night_shift_balance')}
-                              onChange={e => {
-                                  const newTypes = e.target.checked 
-                                      ? [...priorityConfig.types, 'night_shift_balance']
-                                      : priorityConfig.types.filter(t => t !== 'night_shift_balance');
-                                  setPriorityConfig({...priorityConfig, types: newTypes});
-                              }}
-                              style={{width:'18px', height:'18px'}}
-                          />
+                          <input type="checkbox" checked={priorityConfig.types.includes('night_shift_balance')} onChange={e => { const newTypes = e.target.checked ? [...priorityConfig.types, 'night_shift_balance'] : priorityConfig.types.filter(t => t !== 'night_shift_balance'); setPriorityConfig({...priorityConfig, types: newTypes}); }} style={{width:'18px', height:'18px'}} />
                           🌙 夜班結餘 (Night) 前 {priorityConfig.count} 名
                       </label>
                   </div>
-
-                  {/* ★★★ 修改處：強制設定顏色為黑色 ★★★ */}
                   <label style={{display:'block', fontWeight:'bold', marginBottom:'5px', marginTop:'20px', color: 'black'}}>優先入閘人數 (Top N):</label>
-                  <input 
-                    type="number" min="1" max={staffData.length}
-                    value={priorityConfig.count}
-                    onChange={e => setPriorityConfig({...priorityConfig, count: Number(e.target.value)})}
-                    style={{ width:'100%', padding:'8px', borderRadius:'6px', border:'1px solid #ccc', fontSize:'1rem', color: 'white' }}
-                  />
-                  <div style={{fontSize:'0.8rem', color:'#888', marginTop:'5px'}}>若勾選多項，系統將取聯集 (人數可能會大於N)</div>
+                  <input type="number" min="1" max={staffData.length} value={priorityConfig.count} onChange={e => setPriorityConfig({...priorityConfig, count: Number(e.target.value)})} style={{ width:'100%', padding:'8px', borderRadius:'6px', border:'1px solid #ccc', fontSize:'1rem', color: 'black' }} />
               </div>
-
-              {/* 預覽名單 */}
               <div style={{ flex:2, background:'#f1f3f5', padding:'15px', borderRadius:'8px' }}>
                   <div style={{fontWeight:'bold', marginBottom:'10px', color:'#555'}}>📋 目前符合優先資格名單 ({priorityList.length}人):</div>
                   <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
@@ -1945,7 +1997,15 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
           </div>
       </div>
 
-      {/* 統計圖表區塊 (保持不變) */}
+      {/* ★★★ 新增：健康度歷史趨勢圖 ★★★ */}
+      <div style={{ background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e0e0e0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+          <h3 style={{ marginTop: 0, color: '#34495e', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📈 過去 12 個月班表健康度趨勢
+          </h3>
+          {renderLineChart()}
+      </div>
+
+      {/* 統計圖表區塊 */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
         <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', color: 'black' }}>
           <TrendingUp color="#667eea" /> 團隊人力統計報表
@@ -1983,7 +2043,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
     </div>
   );
 };
-
 // ============================================================================
 // 新增：班表審核與發布面板 - 已加入「科學化班表健康度評分」
 // ============================================================================
@@ -2002,6 +2061,31 @@ const ScheduleReviewPanel = ({
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
   const [showSettlement, setShowSettlement] = useState(false);
+
+  // ★★★ 新增：攔截結算按鈕，同步計算當月全體平均與中位數 ★★★
+  const handleOpenSettlement = () => {
+      const scores = [];
+      Object.keys(schedule).forEach(rowId => {
+          if (!rowId.startsWith('D')) {
+             const { score } = calculateHealthScore(schedule[rowId]);
+             scores.push(score);
+          }
+      });
+      
+      let avg = 0, median = 0;
+      if (scores.length > 0) {
+          avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+          scores.sort((a, b) => a - b);
+          const mid = Math.floor(scores.length / 2);
+          median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
+      }
+      
+      // 呼叫主系統記錄這個月的數值
+      if (onUpdateHealthStats) onUpdateHealthStats(selectedYear, selectedMonth, avg, median);
+      
+      // 打開原有的結算視窗
+      setShowSettlement(true);
+  };
 
   const [baseSalary, setBaseSalary] = useState(() => {
       const saved = localStorage.getItem('globalBaseSalary');
@@ -2278,7 +2362,7 @@ const ScheduleReviewPanel = ({
            <div style={{ display:'flex', gap:'10px' }}>
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
-              <button onClick={() => setShowSettlement(true)} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
+              <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel (含結算)</button>
            </div>
       </div>
