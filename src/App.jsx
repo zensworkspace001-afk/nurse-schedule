@@ -1044,6 +1044,81 @@ const ManagerInterface = ({
   );
 };
 // ============================================================================
+// 人力需求設定面板 (含：年月選擇器 + 儲存按鈕)
+// ============================================================================
+const RequirementsPanel = ({ 
+  requirements, setRequirements, 
+  selectedYear, setSelectedYear, selectedMonth, setSelectedMonth,
+  onSaveSchedule 
+}) => {
+ 
+  const [bedCount, setBedCount] = useState(50);
+  const [ratioD, setRatioD] = useState(10);
+  const [ratioE, setRatioE] = useState(12);
+  const [ratioN, setRatioN] = useState(15);
+
+  const dailyD = Math.ceil(bedCount / ratioD);
+  const dailyE = Math.ceil(bedCount / ratioE);
+  const dailyN = Math.ceil(bedCount / ratioN);
+
+  useEffect(() => {
+    setRequirements({
+      ...requirements, D: dailyD, E: dailyE, N: dailyN,
+      optimalD: Math.ceil(dailyD * 1.4), optimalE: Math.ceil(dailyE * 1.4), optimalN: Math.ceil(dailyN * 1.4)
+    });
+  }, [bedCount, ratioD, ratioE, ratioN]);
+
+
+  return (
+    <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
+      <h2 style={{ color: 'black', marginBottom: '1.5rem' }}>人力需求與排班設定</h2>
+      
+
+      <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem', color: 'black', fontSize: '1.1rem' }}>
+              病床數: <span style={{fontSize:'1.3rem'}}>{bedCount}</span>
+            </label>
+            <input 
+              type="range" min="0" max="100" value={bedCount} 
+              onChange={e=>setBedCount(Number(e.target.value))} 
+              style={{ width:'100%', cursor: 'pointer' }}
+            />
+        </div>
+
+        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+            {/* 早班 */}
+            <div style={{ flex: 1, background: '#FFD93D', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyD} 人</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
+                   <span>早班 1 :</span>
+                   <input type="number" value={ratioD} onChange={e => setRatioD(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                </div>
+            </div>
+
+            {/* 小夜 */}
+            <div style={{ flex: 1, background: '#FF6B9D', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyE} 人</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
+                   <span>小夜 1 :</span>
+                   <input type="number" value={ratioE} onChange={e => setRatioE(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                </div>
+            </div>
+
+            {/* 大夜 */}
+            <div style={{ flex: 1, background: '#4D96FF', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyN} 人</div>
+                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
+                   <span>大夜 1 :</span>
+                   <input type="number" value={ratioN} onChange={e => setRatioN(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+// ============================================================================
 // 總班表顯示面板 (精簡版：移除認領清單，專注於 AI 排班工作桌)
 // ============================================================================
 const SchedulePanel = ({ 
