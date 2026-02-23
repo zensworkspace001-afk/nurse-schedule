@@ -953,13 +953,15 @@ const NurseSchedulingSystem = () => {
 const ManagerInterface = ({
   staffData, setStaffData, historyData, requirements, setRequirements,
   preferences, setPreferences, schedule, violations,
-  scheduleRisks, // <--- ★ 確保這裡有風險資料
+  scheduleRisks,
   shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
-  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, setFinalizedSchedule, finalizedSchedule, // <--- ★★★ 就是漏了這個！補上它 ★★★// <--- ★ 補上這行接收變數
+  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, 
+  finalizedSchedule, // ★★★ 就是這個！這次補上了 ★★★
+  setFinalizedSchedule
 }) => {
-  // ★ 這裡宣告了 activeTab，所以下面的程式碼才認得它！
+  // 控制目前顯示哪個分頁
   const [activeTab, setActiveTab] = useState('requirements');
 
   return (
@@ -1029,8 +1031,8 @@ const ManagerInterface = ({
            selectedYear={selectedYear} selectedMonth={selectedMonth}
            onSaveSchedule={onSaveSchedule} shiftOptions={shiftOptions} 
            setShiftOptions={setShiftOptions} publicHolidays={publicHolidays}
-           schedule={finalizedSchedule || schedule} // <--- ★ 改為讀取正式版(有認領名字的)
-           setSchedule={setFinalizedSchedule}       // <--- ★ 任何手動微調都只存到正式版，不影響草稿 
+           schedule={finalizedSchedule || schedule} 
+           setSchedule={setFinalizedSchedule}       
         />
       )}
       
