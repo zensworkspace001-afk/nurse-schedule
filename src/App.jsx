@@ -776,18 +776,22 @@ const NurseSchedulingSystem = () => {
     fetchHolidays();
   }, [selectedYear]);
 
-// ★★★ 法遵檢查與風險掃描自動化引擎 ★★★
+// ★★★ 法遵檢查與風險掃描自動化引擎 (修正：優先監聽已發布/認領班表) ★★★
   useEffect(() => {
-    if (schedule && Object.keys(schedule).length > 0) {
+    const targetSchedule = finalizedSchedule || schedule; // 如果有已發布/認領的班表就用它，否則用草稿
+    if (targetSchedule && Object.keys(targetSchedule).length > 0) {
       // 1. 跑硬性違規檢查 (紅燈)
-      const newViolations = checkLaborLawCompliance(schedule, staffData, historyData, selectedYear, selectedMonth);
+      const newViolations = checkLaborLawCompliance(targetSchedule, staffData, historyData, selectedYear, selectedMonth);
       setViolations(newViolations);
       
       // 2. 跑軟性風險掃描 (黃燈)
-      const newRisks = calculateScheduleRisks(schedule, staffData, publicHolidays, selectedYear, selectedMonth);
+      const newRisks = calculateScheduleRisks(targetSchedule, staffData, publicHolidays, selectedYear, selectedMonth);
       setScheduleRisks(newRisks);
+    } else {
+      setViolations([]);
+      setScheduleRisks([]);
     }
-  }, [schedule, staffData, selectedYear, selectedMonth, publicHolidays]);
+  }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
 // ☁️ 雲端引擎 1：即時讀取 Firestore (OnSnapshot 監聽)
   useEffect(() => {
     const unsub = onSnapshot(doc(db, "NurseApp", "MainData"), (docSnap) => {
@@ -834,7 +838,7 @@ const NurseSchedulingSystem = () => {
   const handleExportPreferences = () => {};
   const handleLogout = () => setCurrentUser(null);
 
-// ★★★ 核心修復：員工認領後，新增 Nxxx 並刪除對應的 Dxxx ★★★
+// ★★★ 核心修復：員工認領後，只更新「發布版(finalizedSchedule)」，不污染「排班工作桌(schedule)」 ★★★
   const handleStaffScheduleUpdate = (result) => {
     const updateLogic = (prev) => {
       const next = { ...(prev || {}) };
@@ -843,7 +847,6 @@ const NurseSchedulingSystem = () => {
       next[result.staffId] = result.fullMonthData;
       
       // 2. 刪除：將被選走的那個虛擬代號 (Dxxx) 移除
-      // 我們從 result.chosenSchedule.id 取得員工選的是哪一個 (例如 "D001")
       const targetVirtualId = result.chosenSchedule?.id;
 
       if (targetVirtualId && next[targetVirtualId]) {
@@ -853,12 +856,11 @@ const NurseSchedulingSystem = () => {
           const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
           if (fallbackId) delete next[fallbackId];
       }
-      
       return next;
     };
 
-    setSchedule(updateLogic);
-    setFinalizedSchedule(updateLogic); // 同步更新
+    // setSchedule(updateLogic); // ❌ 已經刪除這行！徹底切斷與排班工作桌的連動
+    setFinalizedSchedule(updateLogic); // ✅ 只更新發布狀態的班表
 
     // 更新員工資料 (保持不變)
     setStaffData(prevData => {
@@ -872,7 +874,7 @@ const NurseSchedulingSystem = () => {
       }];
     });
 
-    alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，該時段已從工作桌移除。`);
+    alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
   };
 
   const handleSaveAndPublish = () => {
@@ -925,6 +927,8 @@ const NurseSchedulingSystem = () => {
             setPriorityConfig={setPriorityConfig} // <--- 補上
             publicHolidays={publicHolidays} // <--- ★★★ 補上這一行 ★★★
             scheduleRisks={scheduleRisks} // <--- ★★★ 補上這行 ★★★
+            finalizedSchedule={finalizedSchedule}       // <--- ★ 補上這行
+            setFinalizedSchedule={setFinalizedSchedule} // <--- ★ 補上這行
           />
         ) : (
           <StaffDashboard
@@ -953,7 +957,7 @@ const ManagerInterface = ({
   shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
-  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule
+  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, setFinalizedSchedule, // <--- ★ 補上這行接收變數
 }) => {
   // ★ 這裡宣告了 activeTab，所以下面的程式碼才認得它！
   const [activeTab, setActiveTab] = useState('requirements');
@@ -1020,11 +1024,13 @@ const ManagerInterface = ({
       
       {activeTab === 'review' && (
         <ScheduleReviewPanel 
-           schedule={schedule} setSchedule={setSchedule} staffData={staffData}
+           staffData={staffData}
            violations={violations} scheduleRisks={scheduleRisks} 
            selectedYear={selectedYear} selectedMonth={selectedMonth}
            onSaveSchedule={onSaveSchedule} shiftOptions={shiftOptions} 
-           setShiftOptions={setShiftOptions} publicHolidays={publicHolidays} 
+           setShiftOptions={setShiftOptions} publicHolidays={publicHolidays}
+           schedule={finalizedSchedule || schedule} // <--- ★ 改為讀取正式版(有認領名字的)
+           setSchedule={setFinalizedSchedule}       // <--- ★ 任何手動微調都只存到正式版，不影響草稿 
         />
       )}
       
