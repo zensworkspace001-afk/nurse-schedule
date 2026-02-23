@@ -1911,7 +1911,7 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
 };
 
 // ============================================================================
-// 新增：班表審核與發布面板
+// 新增：班表審核與發布面板 - 已加入「科學化班表健康度評分」
 // ============================================================================
 const ScheduleReviewPanel = ({ 
   schedule, setSchedule, 
@@ -1919,7 +1919,7 @@ const ScheduleReviewPanel = ({
   selectedYear, selectedMonth, onSaveSchedule,
   shiftOptions, setShiftOptions, scheduleRisks,
   publicHolidays = [],
-  setDraftSchedule, setFinalizedSchedule // ★ 接收剛才傳下來的權限
+  setDraftSchedule, setFinalizedSchedule 
 }) => {
   
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -1936,7 +1936,90 @@ const ScheduleReviewPanel = ({
 
   useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
 
-  // ★★★ 新增：專屬審核頁面的「雙殺拔除名字」功能 ★★★
+  // ★★★ 核心新增：科學化班表健康度評分引擎 (Penalty Point System) ★★★
+  const calculateHealthScore = (staffSchedule) => {
+      let score = 100;
+      const deductions = [];
+      const shifts = []; 
+
+      for (let d = 1; d <= daysInMonth; d++) {
+          const cell = staffSchedule[d];
+          shifts.push((typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF'));
+      }
+
+      const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
+      const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
+
+      // 1. 極限短間隔 (Quick Return)
+      for (let i = 0; i < shifts.length - 1; i++) {
+          if ((shifts[i] === 'E' && shifts[i+1] === 'D') || 
+              (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) {
+              score -= 20; deductions.push(`[-20] 短間隔 (Day ${i+1}-${i+2})`);
+          }
+      }
+
+      // 2. 逆時鐘輪班 (Backward Rotation)
+      let lastWork = null;
+      for (let i = 0; i < shifts.length; i++) {
+          if (isWork(shifts[i])) {
+              if (lastWork === 'N' && shifts[i] === 'E') { score -= 10; deductions.push(`[-10] 逆時鐘 N接E (Day ${i+1})`); }
+              if (lastWork === 'E' && shifts[i] === 'D') { score -= 10; deductions.push(`[-10] 逆時鐘 E接D (Day ${i+1})`); }
+              lastWork = shifts[i];
+          }
+      }
+
+      // 3. 極端花花班 (Mixed Shifts)
+      for (let i = 0; i <= shifts.length - 7; i++) {
+          const window = shifts.slice(i, i + 7);
+          const workTypes = new Set(window.filter(s => ['D', 'E', 'N'].includes(s)));
+          if (workTypes.size === 3) {
+              score -= 15; deductions.push(`[-15] 花花班 (Day ${i+1}-${i+7})`);
+              i += 6; 
+          }
+      }
+
+      // 4. 連續大夜班過長 & 7. 連續工作日過長
+      let consecutiveN = 0;
+      let consecutiveWork = 0;
+      for (let i = 0; i <= shifts.length; i++) {
+          const s = shifts[i];
+          if (s === 'N') consecutiveN++;
+          else {
+              if (consecutiveN > 3) { score -= 15; deductions.push(`[-15] 連續大夜過長 (Day ${i - consecutiveN + 1}-${i})`); }
+              consecutiveN = 0;
+          }
+          if (s && isWork(s)) consecutiveWork++;
+          else {
+              if (consecutiveWork >= 5) { score -= 5; deductions.push(`[-5] 連上 ${consecutiveWork} 天`); }
+              consecutiveWork = 0;
+          }
+      }
+
+      // 5. 孤立休假 & 6. 大夜後無連休
+      for (let i = 1; i < shifts.length - 1; i++) {
+          if (isWork(shifts[i-1]) && isOff(shifts[i]) && isWork(shifts[i+1])) {
+              score -= 5; deductions.push(`[-5] 孤立休假 (Day ${i+1})`);
+              if (shifts[i-1] === 'N') {
+                  score -= 15; deductions.push(`[-15] 大夜後無連休 (Day ${i+1})`);
+              }
+          }
+      }
+
+      // 8. 週末零休假
+      let hasFullWeekendOff = false;
+      for (let d = 1; d <= daysInMonth - 1; d++) {
+          const date = new Date(selectedYear, selectedMonth - 1, d);
+          if (date.getDay() === 6) { 
+              if (isOff(shifts[d-1]) && isOff(shifts[d])) { 
+                  hasFullWeekendOff = true; break;
+              }
+          }
+      }
+      if (!hasFullWeekendOff) { score -= 10; deductions.push(`[-10] 週末零休假`); }
+
+      return { score, deductions };
+  };
+
   const handleReset = () => {
     if (!schedule || Object.keys(schedule).length === 0) {
         alert("目前沒有班表可重置。");
@@ -1958,14 +2041,12 @@ const ScheduleReviewPanel = ({
           index++;
       });
       
-      // 同時清除草稿與發布區，保證不留殘影！
       if (setDraftSchedule) setDraftSchedule(newSchedule);
       if (setFinalizedSchedule) setFinalizedSchedule(null); 
       alert("✅ 系統已重置！");
     }
   };
 
-  // ... (保留中間原有的 handleAddOption 等函式) ...
   const handleAddOption = () => {
     if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
     if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
@@ -2015,13 +2096,11 @@ const ScheduleReviewPanel = ({
       setSchedule(newSchedule);
   };
 
-const getSettlementData = () => {
+  const getSettlementData = () => {
       const data = [];
       const currentBaseSalary = Number(baseSalary) || 0; 
-      
-      // 1. 計算日薪與時薪 (依據勞基法慣例：月薪除以30天)
       const dailyWage = Math.round(currentBaseSalary / 30);
-      const hourlyWage = Math.round(dailyWage / 8); // 或 currentBaseSalary / 240
+      const hourlyWage = Math.round(dailyWage / 8); 
 
       Object.keys(schedule).forEach(rowId => {
           if (rowId.startsWith('D')) return; 
@@ -2029,40 +2108,24 @@ const getSettlementData = () => {
           const staff = staffData.find(s => s.staff_id === rowId);
           const name = (staff && staff.name && staff.name.trim() !== '') ? staff.name : '未知姓名'; 
           
-          let workDays = 0;
-          let nationalHolidayWorkDays = 0; 
-          let explicitOtDays = 0; 
-          
-          // ✨ 新增：統計請假天數
-          let personalLeaveDays = 0; // 事假
-          let sickLeaveDays = 0;     // 病假
+          let workDays = 0, nationalHolidayWorkDays = 0, explicitOtDays = 0; 
+          let personalLeaveDays = 0, sickLeaveDays = 0;     
 
           for (let d = 1; d <= daysInMonth; d++) {
               const cell = schedule[rowId]?.[d];
               const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
-              
               const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
               const isNationalHoliday = publicHolidays.includes(dateStr);
 
               if (['D', 'E', 'N', '支援'].includes(type)) {
                   workDays++;
-                  if (isNationalHoliday) {
-                      nationalHolidayWorkDays++;
-                  }
+                  if (isNationalHoliday) nationalHolidayWorkDays++;
               }
-              else if (type.includes('(OT)')) {
-                   explicitOtDays++;
-              }
-              // ✨ 統計假別
-              else if (type === '事假') {
-                  personalLeaveDays++;
-              }
-              else if (type === '病假') {
-                  sickLeaveDays++;
-              }
+              else if (type.includes('(OT)')) explicitOtDays++;
+              else if (type === '事假') personalLeaveDays++;
+              else if (type === '病假') sickLeaveDays++;
           }
 
-          // --- 加班費計算 ---
           const nationalHolidayPay = nationalHolidayWorkDays * (hourlyWage * 8);
           const regularWorkDays = workDays - nationalHolidayWorkDays;
           const standardWorkDays = daysInMonth - 8;
@@ -2072,26 +2135,14 @@ const getSettlementData = () => {
           const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
           const totalOtPay = restDayOtPay + nationalHolidayPay;
 
-          // --- ✨ 扣薪計算 (核心邏輯) ---
-          // 事假扣全薪，病假扣半薪
           const deduction = Math.round((personalLeaveDays * dailyWage) + (sickLeaveDays * dailyWage * 0.5));
-
-          // 實領薪資 (底薪 + 加班費 - 扣薪)
           const finalSalary = currentBaseSalary + totalOtPay - deduction;
 
           data.push({
               staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
-              workDays: workDays + explicitOtDays,
-              standardWorkDays, 
-              otDays: totalRestOtDays,
-              restDayOtPay,
-              nationalHolidayWorkDays, nationalHolidayPay,
-              totalOtPay, 
-              // ✨ 新增欄位資料
-              personalLeaveDays,
-              sickLeaveDays,
-              deduction,
-              totalSalary: finalSalary
+              workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
+              restDayOtPay, nationalHolidayWorkDays, nationalHolidayPay, totalOtPay, 
+              personalLeaveDays, sickLeaveDays, deduction, totalSalary: finalSalary
           });
       });
       return data;
@@ -2100,7 +2151,6 @@ const getSettlementData = () => {
   const handleExportExcel = () => {
     if (!schedule) return alert("無資料可匯出");
     const settlementData = getSettlementData(); 
-
     let csv = "\uFEFF工號,姓名,";
     for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
     csv += "總上班天數,標準天數,休息日加班(天),國定假日出勤(天),預估總加班費,預估總薪資\n"; 
@@ -2109,28 +2159,21 @@ const getSettlementData = () => {
         const isVirtual = rowId.startsWith('D');
         const realStaff = staffData.find(s => s.staff_id === rowId);
         const displayName = isVirtual ? `待認領(${rowId})` : (realStaff?.name || rowId);
-        
         let row = `${rowId},${displayName},`;
-        let workDaysCount = 0;
-        let explicitOtCount = 0;
+        let workDaysCount = 0, explicitOtCount = 0;
         
         for (let d = 1; d <= daysInMonth; d++) {
             const cell = schedule[rowId]?.[d];
             const type = (typeof cell === 'object') ? cell.type : (cell || '');
             row += `${type},`;
             if (['D', 'E', 'N', '支援'].includes(type)) workDaysCount++;
-            else if (type.includes('(OT)')) {
-                explicitOtCount++;
-            }
+            else if (type.includes('(OT)')) explicitOtCount++;
         }
 
         if (!isVirtual) {
             const sData = settlementData.find(s => s.staff_id === rowId);
-            if (sData) {
-                row += `${sData.workDays},${sData.standardWorkDays},${sData.otDays},${sData.nationalHolidayWorkDays},${sData.totalOtPay},${sData.totalSalary}`;
-            } else {
-                row += "0,0,0,0,0,0";
-            }
+            if (sData) row += `${sData.workDays},${sData.standardWorkDays},${sData.otDays},${sData.nationalHolidayWorkDays},${sData.totalOtPay},${sData.totalSalary}`;
+            else row += "0,0,0,0,0,0";
         } else {
             const stdDays = daysInMonth - 8;
             const otDays = Math.max(0, workDaysCount - stdDays) + explicitOtCount;
@@ -2160,9 +2203,9 @@ const getSettlementData = () => {
            
            <div style={{ display:'flex', gap:'10px' }}>
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
+              <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
               <button onClick={() => setShowSettlement(true)} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel (含結算)</button>
-              <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
            </div>
       </div>
 
@@ -2187,13 +2230,12 @@ const getSettlementData = () => {
                       4. 休息日加班費：前2小時 1.34 倍，後6小時 1.67 倍。本月標準上班天數為 {daysInMonth - 8} 天，超出且非國定假日者計入。
                   </div>
 
-<table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.9rem' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.9rem' }}>
                       <thead style={{ background: '#34495e', color: 'white' }}>
                           <tr>
                               <th style={{ padding: '10px' }}>員工姓名</th>
                               <th style={{ padding: '10px' }}>上班/國定</th>
                               <th style={{ padding: '10px', background: '#e74c3c' }}>加班費</th>
-                              {/* ✨ 新增標頭 */}
                               <th style={{ padding: '10px', background: '#95a5a6' }}>請假 (事/病)</th>
                               <th style={{ padding: '10px', background: '#7f8c8d' }}>扣薪</th>
                               <th style={{ padding: '10px', background: '#27ae60' }}>實領薪資</th>
@@ -2212,13 +2254,11 @@ const getSettlementData = () => {
                                   <td style={{ padding: '10px', color: row.totalOtPay > 0 ? '#e74c3c' : '#ccc', fontWeight: 'bold' }}>
                                       NT$ {row.totalOtPay.toLocaleString()}
                                   </td>
-                                  {/* ✨ 新增內容：請假天數 */}
                                   <td style={{ padding: '10px', color: (row.personalLeaveDays + row.sickLeaveDays) > 0 ? '#555' : '#ccc' }}>
                                       {row.personalLeaveDays > 0 && <div>事假: {row.personalLeaveDays}天</div>}
                                       {row.sickLeaveDays > 0 && <div>病假: {row.sickLeaveDays}天</div>}
                                       {(row.personalLeaveDays === 0 && row.sickLeaveDays === 0) && '-'}
                                   </td>
-                                  {/* ✨ 新增內容：扣薪金額 */}
                                   <td style={{ padding: '10px', color: row.deduction > 0 ? 'red' : '#ccc', fontWeight: row.deduction > 0 ? 'bold' : 'normal' }}>
                                       {row.deduction > 0 ? `- $${row.deduction.toLocaleString()}` : '-'}
                                   </td>
@@ -2264,6 +2304,9 @@ const getSettlementData = () => {
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                         <tr style={{ background: '#34495e', color: 'white' }}>
                             <th style={{ padding: '8px', minWidth: '130px', position: 'sticky', left: 0, background: '#34495e', zIndex: 11 }}>員工指派</th>
+                            {/* ★★★ 健康度表頭移至此處 ★★★ */}
+                            <th style={{ padding: '8px', minWidth: '50px', background: '#2c3e50', zIndex: 10, borderRight: '2px solid #555' }}>健康度</th>
+
                             {daysArray.map(d => {
                                 const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay();
                                 const dayStrs = ['日', '一', '二', '三', '四', '五', '六'];
@@ -2284,11 +2327,16 @@ const getSettlementData = () => {
                         {Object.keys(schedule).sort((a, b) => {
                             const aIsVirtual = a.startsWith('D');
                             const bIsVirtual = b.startsWith('D');
-                            if (aIsVirtual && !bIsVirtual) return 1;  // D 永遠墊底
-                            if (!aIsVirtual && bIsVirtual) return -1; // 員工永遠置頂
+                            if (aIsVirtual && !bIsVirtual) return 1;
+                            if (!aIsVirtual && bIsVirtual) return -1;
                             return a.localeCompare(b);
                         }).map(rowId => {
                             const isVirtual = rowId.startsWith('D');
+                            
+                            // ★★★ 呼叫健康度引擎計算分數 ★★★
+                            const { score, deductions } = calculateHealthScore(schedule[rowId]);
+                            const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
+
                             return (
                                 <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
                                     <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: isVirtual ? '#f9f9f9' : 'white', zIndex: 5 }}>
@@ -2310,6 +2358,15 @@ const getSettlementData = () => {
                                             </optgroup>
                                         </select>
                                     </td>
+
+                                    {/* ★★★ 健康度分數儲存格 ★★★ */}
+                                    <td 
+                                        style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold', color: scoreColor, borderRight: '2px solid #ddd', cursor: 'help', background: isVirtual ? '#fafafa' : 'white', fontSize: '1.1rem' }}
+                                        title={deductions.length > 0 ? `扣分明細：\n${deductions.join('\n')}` : '✨ 完美班表！無身心損耗'}
+                                    >
+                                        {score}
+                                    </td>
+
                                     {daysArray.map(d => {
                                         const cellData = schedule[rowId]?.[d];
                                         const type = (typeof cellData === 'object') ? cellData.type : (cellData || '');
@@ -2402,7 +2459,6 @@ const getSettlementData = () => {
     </div>
   );
 };
-
 // ============================================================================
 // 制度模擬工作桌 (What-if Simulation Sandbox)
 // ============================================================================
