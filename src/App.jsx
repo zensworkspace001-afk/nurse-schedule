@@ -968,6 +968,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} adminPassword=
             </div>
         </div>
       )}
+
       <div style={{ maxWidth: '1400px', margin: '0 auto 2rem', background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Calendar size={28} color="#667eea" />
@@ -975,6 +976,10 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} adminPassword=
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <span style={{ color: '#555', fontWeight: 'bold' }}>👋 {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
+            {/* 就是這裡！判斷如果是 admin 才會顯示這個按鈕 */}
+            {currentUser.role === 'admin' && (
+                <button onClick={() => setShowAdminPwdModal(true)} style={{ background: '#f8f9fa', border: '1px solid #ddd', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.85rem', color: '#555', fontWeight: 'bold' }}>⚙️ 修改密碼</button>
+            )}
             <button onClick={handleLogout} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>登出</button>
           </div>
       </div>
@@ -2054,7 +2059,7 @@ const ScheduleReviewPanel = ({
           const s = shifts[i];
           if (s === 'N') consecutiveN++;
           else {
-              if (consecutiveN > 4) { score -= 5; deductions.push(`[-5] 連續大夜過長 (Day ${i - consecutiveN + 1}-${i})`); }
+              if (consecutiveN >= 4) { score -= 5; deductions.push(`[-5] 連續大夜過長 (Day ${i - consecutiveN + 1}-${i})`); }
               consecutiveN = 0;
           }
           if (s && isWork(s)) consecutiveWork++;
