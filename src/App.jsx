@@ -959,29 +959,22 @@ const ManagerInterface = ({
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, 
-  finalizedSchedule, // ★★★ 就是這個！這次補上了 ★★★
+  finalizedSchedule, 
   setFinalizedSchedule
 }) => {
-  // 控制目前顯示哪個分頁
   const [activeTab, setActiveTab] = useState('requirements');
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
-      {/* 1. 分頁導覽列 (Navigation Tabs) */}
       <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
         {['requirements', 'staff', 'schedule', 'review', 'statistics', 'simulation'].map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)} 
             style={{
-              flex: 1, 
-              padding: '1rem', 
-              border: 'none', 
-              borderRadius: '10px', 
-              cursor: 'pointer',
-              fontWeight: 'bold',
-              transition: 'all 0.2s',
+              flex: 1, padding: '1rem', border: 'none', borderRadius: '10px', cursor: 'pointer',
+              fontWeight: 'bold', transition: 'all 0.2s',
               background: activeTab === tab ? '#667eea' : 'transparent', 
               color: activeTab === tab ? 'white' : '#666',
               boxShadow: activeTab === tab ? '0 4px 6px rgba(102, 126, 234, 0.3)' : 'none'
@@ -997,15 +990,11 @@ const ManagerInterface = ({
         ))}
       </div>
 
-      {/* 2. 頁面內容區 (Content Area) */}
-      
       {activeTab === 'requirements' && (
         <RequirementsPanel
           requirements={requirements} setRequirements={setRequirements}
-          onGenerateSchedule={onGenerateSchedule} 
-          onExportPreferences={onExportPreferences}
-          onSaveSchedule={onSaveSchedule} 
-          selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+          onGenerateSchedule={onGenerateSchedule} onExportPreferences={onExportPreferences}
+          onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
           selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
         />
       )}
@@ -1014,7 +1003,7 @@ const ManagerInterface = ({
         <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
       )}
       
-{activeTab === 'schedule' && (
+      {activeTab === 'schedule' && (
         <SchedulePanel
           schedule={schedule} staffData={staffData} violations={violations}
           requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
@@ -1022,7 +1011,8 @@ const ManagerInterface = ({
           selectedYear={selectedYear} selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-          setFinalizedSchedule={setFinalizedSchedule} // ★★★ 關鍵修復 2：補上這行
+          finalizedSchedule={finalizedSchedule}       // ★★★ 關鍵傳遞 ★★★
+          setFinalizedSchedule={setFinalizedSchedule} // ★★★ 關鍵傳遞 ★★★
         />
       )}
       
@@ -1039,24 +1029,17 @@ const ManagerInterface = ({
       )}
       
       {activeTab === 'statistics' && (
-        <StatisticsPanel 
-            staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
-        />
+        <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} />
       )}
 
-      {/* ★ 制度模擬面板 ★ */}
       {activeTab === 'simulation' && (
         <SimulationPanel 
-            staffData={staffData}
-            requirements={requirements}
+            staffData={staffData} requirements={requirements}
             baseSalary={localStorage.getItem('globalBaseSalary') || 40000}
-            publicHolidays={publicHolidays}
-            selectedYear={selectedYear}
-            selectedMonth={selectedMonth}
-            shiftOptions={shiftOptions}
+            publicHolidays={publicHolidays} selectedYear={selectedYear}
+            selectedMonth={selectedMonth} shiftOptions={shiftOptions}
         />
       )}
-
     </div>
   );
 };
@@ -1170,22 +1153,26 @@ const SchedulePanel = ({
     }
   };
 
-  // ★★★ 修改：拔除名字 ★★★
-  const handleReset = () => {
-    if (!schedule || Object.keys(schedule).length === 0) {
+const handleReset = () => {
+    // ★★★ 抓取畫面上「最新」的狀態 (包含員工已認領的發布區，或是剛生成的草稿區)
+    const targetSchedule = finalizedSchedule || schedule; 
+    
+    if (!targetSchedule || Object.keys(targetSchedule).length === 0) {
         alert("目前沒有班表可重置。");
         return;
     }
     if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？\n\n執行後：\n1. 班表內容將全數保留。\n2. 但所有員工的名字會被拔除，全部變回待認領的虛擬空缺 (Dxxx)。")) {
       const newSchedule = {};
       let index = 1;
-      Object.keys(schedule).sort().forEach(key => {
+      
+      Object.keys(targetSchedule).sort().forEach(key => {
           const virtualId = `D${String(index).padStart(3, '0')}`;
-          newSchedule[virtualId] = schedule[key];
+          newSchedule[virtualId] = targetSchedule[key];
           index++;
       });
+      
       setSchedule(newSchedule); 
-      if (setFinalizedSchedule) setFinalizedSchedule(null); // ★ 關鍵修復 4：清空審核面板的舊記錄
+      if (setFinalizedSchedule) setFinalizedSchedule(null); // ★★★ 同步清除發布區，防止舊資料干擾
       alert("✅ 系統已重置！所有班次已退回待認領狀態。");
     }
   };
