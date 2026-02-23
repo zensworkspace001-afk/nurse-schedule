@@ -1424,8 +1424,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
            <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 選項</button>
            
            <button id="gemini-trigger-btn" onClick={handleGeminiSolve} disabled={processing} style={{ padding: '0.5rem 1rem', background: processing ? '#ccc' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(142,68,173,0.3)' }}>{processing ? '⏳' : '✨ 生成 AI 班表'}</button>
-           <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
-           {/* 新增的清空按鈕 */}
+          
            <button onClick={handleClearAll} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 清空舊班表</button>
            
            <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 Excel</button>
