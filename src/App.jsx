@@ -2054,12 +2054,12 @@ const ScheduleReviewPanel = ({
           const s = shifts[i];
           if (s === 'N') consecutiveN++;
           else {
-              if (consecutiveN > 3) { score -= 15; deductions.push(`[-15] 連續大夜過長 (Day ${i - consecutiveN + 1}-${i})`); }
+              if (consecutiveN > 4) { score -= 5; deductions.push(`[-5] 連續大夜過長 (Day ${i - consecutiveN + 1}-${i})`); }
               consecutiveN = 0;
           }
           if (s && isWork(s)) consecutiveWork++;
           else {
-              if (consecutiveWork >= 5) { score -= 5; deductions.push(`[-5] 連上 ${consecutiveWork} 天`); }
+              if (consecutiveWork >= 6) { score -= 5; deductions.push(`[-5] 連上 ${consecutiveWork} 天`); }
               consecutiveWork = 0;
           }
       }
@@ -2084,7 +2084,7 @@ const ScheduleReviewPanel = ({
               }
           }
       }
-      if (!hasFullWeekendOff) { score -= 10; deductions.push(`[-10] 週末零休假`); }
+      if (!hasFullWeekendOff) { score -= 5; deductions.push(`[-5] 週末零休假`); }
 
       return { score, deductions };
   };
