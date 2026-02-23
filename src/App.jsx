@@ -269,20 +269,20 @@ const calculateScheduleRisks = (schedule, staffData, publicHolidays, year, month
 };
 
 // ============================================================================
-// 1. LoginPanel (登入介面 - 含 OT/夜班 Top 5 排行榜)
+// 1. LoginPanel (登入介面 - 含 OT/夜班 Top 5 排行榜與忘記密碼機制)
 // ============================================================================
-const LoginPanel = ({ onLogin, staffData = [] }) => { 
+const LoginPanel = ({ onLogin, staffData = [], adminPassword = 'admin' }) => { 
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [showForgotModal, setShowForgotModal] = useState(false); // ★ 新增：忘記密碼彈窗狀態
 
-  // ★★★ 新增：計算 Top 5 邏輯 ★★★
   const getTop5 = (key) => {
     if (!staffData || staffData.length === 0) return [];
     return [...staffData]
-      .map(s => ({ name: s.name, id: s.staff_id, value: Number(s[key]) || 0 })) // 轉換數值
-      .sort((a, b) => b.value - a.value) // 由大到小排序
-      .slice(0, 5); // 取前 5 名
+      .map(s => ({ name: s.name, id: s.staff_id, value: Number(s[key]) || 0 })) 
+      .sort((a, b) => b.value - a.value) 
+      .slice(0, 5); 
   };
 
   const otTop5 = getTop5('accumulated_ot');
@@ -292,9 +292,15 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
     e.preventDefault();
     setError('');
 
-    if (employeeId === 'admin' && password === 'admin') {
-      onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
-      return;
+    // ★★★ 修改：管理員登入邏輯 (比對 Firebase 密碼，或使用緊急救援金鑰 admin999) ★★★
+    if (employeeId.toLowerCase() === 'admin') {
+      if (password === adminPassword || password === 'admin999') {
+        onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
+        return;
+      } else {
+        setError('管理員密碼錯誤！');
+        return;
+      }
     }
 
     if (!staffData || staffData.length === 0) {
@@ -303,14 +309,12 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
     }
 
     const staff = staffData.find(s => 
-      (s.staff_id && s.staff_id.trim() === employeeId.trim()) || 
+      (s.staff_id && s.staff_id.trim().toLowerCase() === employeeId.trim().toLowerCase()) || 
       (s.name && s.name.trim() === employeeId.trim())
     );
     
-if (staff) {
-      // ★★★ 修改：讀取員工專屬密碼，若無則預設為 1234 ★★★
+    if (staff) {
       const correctPassword = staff.password || '1234'; 
-      
       if (password === correctPassword) {
         onLogin({ 
             id: staff.staff_id, 
@@ -338,7 +342,28 @@ if (staff) {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', position:'relative', padding:'20px' }}>
       
-      {/* 登入框 (保持原樣) */}
+      {/* 忘記密碼 Modal */}
+      {showForgotModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '400px', position: 'relative' }}>
+                <button onClick={() => setShowForgotModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666' }}>✖</button>
+                <h3 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>🔐 忘記密碼救援機制</h3>
+                <div style={{ marginTop: '15px', color: '#333', fontSize: '0.95rem', lineHeight: '1.6' }}>
+                    <div style={{ marginBottom: '15px', background: '#e3f2fd', padding: '10px', borderRadius: '8px' }}>
+                        <strong>👩‍⚕️ 護理師 / 員工：</strong><br/>
+                        請直接聯絡護理長或系統管理員，管理員可從「員工管理」介面為您一鍵重置密碼為預設值。
+                    </div>
+                    <div style={{ background: '#fdf2e9', padding: '10px', borderRadius: '8px' }}>
+                        <strong>👑 系統管理員 (Admin)：</strong><br/>
+                        若您忘記了管理員密碼，請在登入框輸入帳號 <code>admin</code>，並使用緊急救援密碼：<br/>
+                        <code style={{ fontSize:'1.2rem', color:'#d35400', fontWeight:'bold', display:'block', marginTop:'5px' }}>admin999</code>
+                        <span style={{ fontSize:'0.8rem', color:'#e67e22' }}>登入後請務必盡速前往右上角「⚙️修改密碼」重新設定。</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
       <div style={{ background: 'white', padding: '3rem', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', textAlign: 'center', marginBottom:'30px', zIndex: 10 }}>
         <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>護理排班系統</h2>
         <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.8rem', color: '#666', textAlign: 'left' }}>
@@ -356,50 +381,36 @@ if (staff) {
           <input 
             type="password" value={password} onChange={(e) => setPassword(e.target.value)} 
             placeholder="密碼 (預設: 1234)" 
-            style={{ width: '100%', padding: '12px', marginBottom: '1.5rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+            style={{ width: '100%', padding: '12px', marginBottom: '0.5rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
           />
+          
+          <div style={{ textAlign: 'right', marginBottom: '1.5rem' }}>
+              <span onClick={() => setShowForgotModal(true)} style={{ color: '#667eea', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 'bold' }}>忘記密碼？</span>
+          </div>
+
           {error && <div style={{ color: '#e74c3c', background: '#fdecea', padding: '10px', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'left' }}>❌ {error}</div>}
           <button type="submit" style={{ width: '100%', padding: '14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem' }}>登入系統</button>
         </form>
       </div>
 
-      {/* ★★★ 新增：排行榜顯示區塊 ★★★ */}
       {staffData.length > 0 && (
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '850px' }}>
-            
-            {/* 左側：積假 Top 5 */}
             <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ margin: '0 0 1rem 0', color: '#e67e22', borderBottom: '2px solid #e67e22', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>
-                   🔥 積假 (OT) Top 5
-                </h3>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#e67e22', borderBottom: '2px solid #e67e22', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>🔥 積假 (OT) Top 5</h3>
                 {otTop5.map((s, i) => (
-                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
-                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span>
-                        <span style={{fontWeight:'bold', color:'#e67e22', background:'#fff3e0', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
-                    </div>
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}><span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span><span style={{fontWeight:'bold', color:'#e67e22', background:'#fff3e0', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span></div>
                 ))}
             </div>
-
-            {/* 右側：夜班 Top 5 */}
             <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ margin: '0 0 1rem 0', color: '#8e44ad', borderBottom: '2px solid #8e44ad', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>
-                   🌙 夜班 (Night) Top 5
-                </h3>
+                <h3 style={{ margin: '0 0 1rem 0', color: '#8e44ad', borderBottom: '2px solid #8e44ad', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>🌙 夜班 (Night) Top 5</h3>
                 {nightTop5.map((s, i) => (
-                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
-                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span>
-                        <span style={{fontWeight:'bold', color:'#8e44ad', background:'#f3e5f5', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
-                    </div>
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}><span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span><span style={{fontWeight:'bold', color:'#8e44ad', background:'#f3e5f5', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span></div>
                 ))}
             </div>
-
         </div>
       )}
 
-      {/* 清除資料按鈕 (放在右下角) */}
-      <button onClick={handleClearData} style={{ position: 'fixed', bottom: '20px', right: '20px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', backdropFilter:'blur(4px)' }}>
-         🗑️ 重置系統
-      </button>
+      <button onClick={handleClearData} style={{ position: 'fixed', bottom: '20px', right: '20px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', backdropFilter:'blur(4px)' }}>🗑️ 重置系統</button>
     </div>
   );
 };
@@ -720,6 +731,11 @@ const NurseSchedulingSystem = () => {
 
 // --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
   const [isCloudLoaded, setIsCloudLoaded] = useState(false);
+  // ★★★ 新增：Admin 密碼狀態與修改視窗 ★★★
+  const [adminPassword, setAdminPassword] = useState('admin');
+  const [showAdminPwdModal, setShowAdminPwdModal] = useState(false);
+  const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
+  const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
 
   const [shiftOptions, setShiftOptions] = useState([
     { code: 'D', name: '白班', color: '#FFD93D', time: '08:00-16:00' },
@@ -803,6 +819,7 @@ const NurseSchedulingSystem = () => {
         if (data.schedule) setSchedule(data.schedule);
         if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
         if (data.publishedDate) setPublishedDate(data.publishedDate);
+        if (data.adminPassword) setAdminPassword(data.adminPassword); // ★ 補上這行
       }
       setIsCloudLoaded(true); // 標記為：已成功從雲端抓取到資料
     });
@@ -822,7 +839,8 @@ const NurseSchedulingSystem = () => {
       staffData: staffData || [],
       schedule: schedule || {},
       finalizedSchedule: finalizedSchedule || null,
-      publishedDate: publishedDate || { year: 2026, month: 2 }
+      publishedDate: publishedDate || { year: 2026, month: 2 },
+      adminPassword: adminPassword || 'admin' // ★ 補上這行
     });
 
   }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded]);
@@ -892,13 +910,64 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
+  const handleAdminPasswordSubmit = (e) => {
+      e.preventDefault();
+      // 允許使用原密碼或緊急密碼來修改
+      if (adminPwdData.old !== adminPassword && adminPwdData.old !== 'admin999') {
+          return setAdminPwdMsg({ type: 'error', text: '舊密碼輸入錯誤！' });
+      }
+      if (adminPwdData.new !== adminPwdData.confirm) {
+          return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
+      }
+      if (adminPwdData.new.length < 4) {
+          return setAdminPwdMsg({ type: 'error', text: '新密碼長度至少需 4 碼！' });
+      }
+
+      setAdminPassword(adminPwdData.new); // 更新密碼，觸發 useEffect 存入 Firebase
+      setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
+
+      setTimeout(() => {
+          setShowAdminPwdModal(false);
+          setAdminPwdData({ old: '', new: '', confirm: '' });
+          setAdminPwdMsg({ type: '', text: '' });
+      }, 2000);
+  };
 
   if (!currentUser) {
-    return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />;
+return <LoginPanel onLogin={setCurrentUser} staffData={staffData} adminPassword={adminPassword} />; // ★ 傳入 adminPassword
   }
 
   return (
     <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '2rem', fontFamily: 'sans-serif' }}>
+      {/* ★★★ 新增：Admin 修改密碼 Modal ★★★ */}
+      {showAdminPwdModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '400px', position: 'relative' }}>
+                <button onClick={() => setShowAdminPwdModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666' }}>✖</button>
+                <h3 style={{ marginTop: 0, color: '#333' }}>⚙️ 修改管理員密碼</h3>
+                <form onSubmit={handleAdminPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼 (預設: admin)</label>
+                        <input type="password" value={adminPwdData.old} onChange={e=>setAdminPwdData({...adminPwdData, old: e.target.value})} required style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼 (至少 4 碼)</label>
+                        <input type="password" value={adminPwdData.new} onChange={e=>setAdminPwdData({...adminPwdData, new: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>確認新密碼</label>
+                        <input type="password" value={adminPwdData.confirm} onChange={e=>setAdminPwdData({...adminPwdData, confirm: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    {adminPwdMsg.text && (
+                        <div style={{ color: adminPwdMsg.type === 'error' ? '#e74c3c' : '#27ae60', background: adminPwdMsg.type === 'error' ? '#fdecea' : '#e8f8f5', padding: '10px', borderRadius: '8px', fontSize: '0.9rem' }}>
+                            {adminPwdMsg.text}
+                        </div>
+                    )}
+                    <button type="submit" style={{ padding: '12px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>儲存修改</button>
+                </form>
+            </div>
+        </div>
+      )}
       <div style={{ maxWidth: '1400px', margin: '0 auto 2rem', background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Calendar size={28} color="#667eea" />
