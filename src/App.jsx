@@ -1011,8 +1011,6 @@ const ManagerInterface = ({
           selectedYear={selectedYear} selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-          finalizedSchedule={finalizedSchedule}       // ★★★ 關鍵傳遞 ★★★
-          setFinalizedSchedule={setFinalizedSchedule} // ★★★ 關鍵傳遞 ★★★
         />
       )}
       
@@ -1024,7 +1022,9 @@ const ManagerInterface = ({
            onSaveSchedule={onSaveSchedule} shiftOptions={shiftOptions} 
            setShiftOptions={setShiftOptions} publicHolidays={publicHolidays}
            schedule={finalizedSchedule || schedule} 
-           setSchedule={setFinalizedSchedule}       
+           setSchedule={setFinalizedSchedule}
+           setDraftSchedule={setSchedule}              // ★ 傳遞草稿區修改權限給審核頁
+           setFinalizedSchedule={setFinalizedSchedule} // ★ 傳遞發布區修改權限給審核頁
         />
       )}
       
@@ -1040,82 +1040,6 @@ const ManagerInterface = ({
             selectedMonth={selectedMonth} shiftOptions={shiftOptions}
         />
       )}
-    </div>
-  );
-};
-// ============================================================================
-// 人力需求設定面板 (含：年月選擇器 + 儲存按鈕)
-// ============================================================================
-const RequirementsPanel = ({ 
-  requirements, setRequirements, 
-  selectedYear, setSelectedYear, selectedMonth, setSelectedMonth,
-  onSaveSchedule // ★ 接收存檔功能
-}) => {
- 
-  const [bedCount, setBedCount] = useState(50);
-  const [ratioD, setRatioD] = useState(10);
-  const [ratioE, setRatioE] = useState(12);
-  const [ratioN, setRatioN] = useState(15);
-
-  const dailyD = Math.ceil(bedCount / ratioD);
-  const dailyE = Math.ceil(bedCount / ratioE);
-  const dailyN = Math.ceil(bedCount / ratioN);
-
-  useEffect(() => {
-    setRequirements({
-      ...requirements, D: dailyD, E: dailyE, N: dailyN,
-      optimalD: Math.ceil(dailyD * 1.4), optimalE: Math.ceil(dailyE * 1.4), optimalN: Math.ceil(dailyN * 1.4)
-    });
-  }, [bedCount, ratioD, ratioE, ratioN]);
-
-
-  return (
-    <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
-      <h2 style={{ color: 'black', marginBottom: '1.5rem' }}>人力需求與排班設定</h2>
-      
-
-      <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem' }}>
-        {/* 病床數與護病比設定 (保持不變) */}
-        <div style={{ marginBottom: '1.5rem' }}>
-            <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem', color: 'black', fontSize: '1.1rem' }}>
-              病床數: <span style={{fontSize:'1.3rem'}}>{bedCount}</span>
-            </label>
-            <input 
-              type="range" min="0" max="100" value={bedCount} 
-              onChange={e=>setBedCount(Number(e.target.value))} 
-              style={{ width:'100%', cursor: 'pointer' }}
-            />
-        </div>
-
-        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-            {/* 早班 */}
-            <div style={{ flex: 1, background: '#FFD93D', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyD} 人</div>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
-                   <span>早班 1 :</span>
-                   <input type="number" value={ratioD} onChange={e => setRatioD(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
-                </div>
-            </div>
-
-            {/* 小夜 */}
-            <div style={{ flex: 1, background: '#FF6B9D', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyE} 人</div>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
-                   <span>小夜 1 :</span>
-                   <input type="number" value={ratioE} onChange={e => setRatioE(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
-                </div>
-            </div>
-
-            {/* 大夜 */}
-            <div style={{ flex: 1, background: '#4D96FF', padding: '1rem', borderRadius: '8px', textAlign: 'center', color: 'black', boxShadow:'0 2px 5px rgba(0,0,0,0.1)' }}>
-                <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyN} 人</div>
-                <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
-                   <span>大夜 1 :</span>
-                   <input type="number" value={ratioN} onChange={e => setRatioN(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
-                </div>
-            </div>
-        </div>
-      </div>
     </div>
   );
 };
@@ -1490,7 +1414,13 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                     </tr>
                 </thead>
                 <tbody>
-                    {Object.keys(schedule).sort().map(rowId => {
+                   {Object.keys(schedule).sort((a, b) => {
+                        const aIsVirtual = a.startsWith('D');
+                        const bIsVirtual = b.startsWith('D');
+                        if (aIsVirtual && !bIsVirtual) return 1;  // D 永遠墊底
+                        if (!aIsVirtual && bIsVirtual) return -1; // 員工永遠置頂
+                        return a.localeCompare(b);
+                    }).map(rowId => {
                         const isVirtual = rowId.startsWith('D');
                         return (
                             <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
@@ -1904,15 +1834,13 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
   );
 };
 
-// ============================================================================
-// 新增：班表審核與發布面板 (可編輯版 + 員工指派 + 自動連網國定假日結算 + 自訂月薪)
-// ============================================================================
 const ScheduleReviewPanel = ({ 
   schedule, setSchedule, 
   staffData, violations, 
   selectedYear, selectedMonth, onSaveSchedule,
   shiftOptions, setShiftOptions, scheduleRisks,
-  publicHolidays = [] 
+  publicHolidays = [],
+  setDraftSchedule, setFinalizedSchedule // ★ 新增接收這兩個參數
 }) => {
   
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -1927,10 +1855,37 @@ const ScheduleReviewPanel = ({
       return saved ? Number(saved) : 40000;
   });
 
-  useEffect(() => {
-      localStorage.setItem('globalBaseSalary', baseSalary);
-  }, [baseSalary]);
+  useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
 
+  // ★★★ 新增：將拔除名字功能移至此處，並確保雙向同步清空 ★★★
+  const handleReset = () => {
+    if (!schedule || Object.keys(schedule).length === 0) {
+        alert("目前沒有班表可重置。");
+        return;
+    }
+    if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？\n\n執行後：\n1. 班表內容將全數保留。\n2. 但所有員工的名字會被拔除，全部變回待認領的虛擬空缺 (Dxxx)。")) {
+      const newSchedule = {};
+      let index = 1;
+      
+      // 確保重置時依然維持原有的排序邏輯
+      Object.keys(schedule).sort((a, b) => {
+          const aIsVirtual = a.startsWith('D');
+          const bIsVirtual = b.startsWith('D');
+          if (aIsVirtual && !bIsVirtual) return 1;
+          if (!aIsVirtual && bIsVirtual) return -1;
+          return a.localeCompare(b);
+      }).forEach(key => {
+          const virtualId = `D${String(index).padStart(3, '0')}`;
+          newSchedule[virtualId] = schedule[key];
+          index++;
+      });
+      
+      // 徹底清除雙邊資料，避免疊加
+      if (setDraftSchedule) setDraftSchedule(newSchedule);
+      if (setFinalizedSchedule) setFinalizedSchedule(null); 
+      alert("✅ 系統已重置！所有班次已退回待認領狀態。");
+    }
+  };
   const handleAddOption = () => {
     if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
     if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
@@ -2127,6 +2082,7 @@ const getSettlementData = () => {
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={() => setShowSettlement(true)} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel (含結算)</button>
+              <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
            </div>
       </div>
 
@@ -2245,7 +2201,13 @@ const getSettlementData = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {Object.keys(schedule).sort().map(rowId => {
+                        {Object.keys(schedule).sort((a, b) => {
+                            const aIsVirtual = a.startsWith('D');
+                            const bIsVirtual = b.startsWith('D');
+                            if (aIsVirtual && !bIsVirtual) return 1;  // D 永遠墊底
+                            if (!aIsVirtual && bIsVirtual) return -1; // 員工永遠置頂
+                            return a.localeCompare(b);
+                        }).map(rowId => {
                             const isVirtual = rowId.startsWith('D');
                             return (
                                 <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
