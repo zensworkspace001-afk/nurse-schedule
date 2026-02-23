@@ -809,19 +809,21 @@ const NurseSchedulingSystem = () => {
     return () => unsub(); // 關閉元件時取消監聽
   }, []);
 
-  // ☁️ 雲端引擎 2：資料變更時，自動寫入 Firestore
+ // ☁️ 雲端引擎 2：資料變更時，自動寫入 Firestore
   useEffect(() => {
     // 防呆：如果雲端資料還沒載入完畢，不要寫入，以免把雲端資料洗白
     if (!isCloudLoaded) return; 
 
+    // ★★★ 核心修復：移除 { merge: true }，改為「完全覆蓋」 ★★★
+    // 這樣當我們把 D021 換成 N001 時，Firebase 才會乖乖把 D021 真正刪除！
     setDoc(doc(db, "NurseApp", "MainData"), {
-      shiftOptions,
-      priorityConfig,
-      staffData,
-      schedule,
-      finalizedSchedule,
-      publishedDate
-    }, { merge: true });
+      shiftOptions: shiftOptions || [],
+      priorityConfig: priorityConfig || {},
+      staffData: staffData || [],
+      schedule: schedule || {},
+      finalizedSchedule: finalizedSchedule || null,
+      publishedDate: publishedDate || { year: 2026, month: 2 }
+    });
 
   }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded]);
 
@@ -1909,13 +1911,16 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig }) => {
   );
 };
 
+// ============================================================================
+// 新增：班表審核與發布面板
+// ============================================================================
 const ScheduleReviewPanel = ({ 
   schedule, setSchedule, 
   staffData, violations, 
   selectedYear, selectedMonth, onSaveSchedule,
   shiftOptions, setShiftOptions, scheduleRisks,
   publicHolidays = [],
-  setDraftSchedule, setFinalizedSchedule // ★ 新增接收這兩個參數
+  setDraftSchedule, setFinalizedSchedule // ★ 接收剛才傳下來的權限
 }) => {
   
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -1932,17 +1937,16 @@ const ScheduleReviewPanel = ({
 
   useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
 
-  // ★★★ 新增：將拔除名字功能移至此處，並確保雙向同步清空 ★★★
+  // ★★★ 新增：專屬審核頁面的「雙殺拔除名字」功能 ★★★
   const handleReset = () => {
     if (!schedule || Object.keys(schedule).length === 0) {
         alert("目前沒有班表可重置。");
         return;
     }
-    if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？\n\n執行後：\n1. 班表內容將全數保留。\n2. 但所有員工的名字會被拔除，全部變回待認領的虛擬空缺 (Dxxx)。")) {
+    if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？\n\n執行後：所有的員工名字將被拔除，退回 D001 等待認領狀態。")) {
       const newSchedule = {};
       let index = 1;
       
-      // 確保重置時依然維持原有的排序邏輯
       Object.keys(schedule).sort((a, b) => {
           const aIsVirtual = a.startsWith('D');
           const bIsVirtual = b.startsWith('D');
@@ -1955,12 +1959,14 @@ const ScheduleReviewPanel = ({
           index++;
       });
       
-      // 徹底清除雙邊資料，避免疊加
+      // 同時清除草稿與發布區，保證不留殘影！
       if (setDraftSchedule) setDraftSchedule(newSchedule);
       if (setFinalizedSchedule) setFinalizedSchedule(null); 
-      alert("✅ 系統已重置！所有班次已退回待認領狀態。");
+      alert("✅ 系統已重置！");
     }
   };
+
+  // ... (保留中間原有的 handleAddOption 等函式) ...
   const handleAddOption = () => {
     if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
     if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
