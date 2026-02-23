@@ -728,7 +728,11 @@ const NurseSchedulingSystem = () => {
     { code: 'RG', name: '例假', color: '#2ecc71', time: '例假' }, 
     { code: 'RC', name: '休假', color: '#d5f5e3', time: '休假' },
     { code: 'OFF', name: '空班', color: '#E8E8E8', time: '空班' },
-    { code: '支援', name: '支援', color: '#D4AC0D', time: '09:00-18:00' }
+    { code: '支援', name: '支援', color: '#D4AC0D', time: '09:00-18:00' },
+    { code: '事假', name: '事假', color: '#95a5a6', time: '扣全薪' }, // ✨ 新增
+    { code: '病假', name: '病假', color: '#bdc3c7', time: '扣半薪' }, // ✨ 新增
+     { code: '特休', name: '特休', color: '#9af33b', time: '全薪' }, // ✨ 新增
+
   ]);
   const [priorityConfig, setPriorityConfig] = useState({ types: ['accumulated_ot'], count: 5, isOpenToAll: false });
   const [staffData, setStaffData] = useState([]);
@@ -1976,10 +1980,13 @@ const ScheduleReviewPanel = ({
       setSchedule(newSchedule);
   };
 
-  const getSettlementData = () => {
+const getSettlementData = () => {
       const data = [];
       const currentBaseSalary = Number(baseSalary) || 0; 
-      const hourlyWage = Math.round(currentBaseSalary / 240); 
+      
+      // 1. 計算日薪與時薪 (依據勞基法慣例：月薪除以30天)
+      const dailyWage = Math.round(currentBaseSalary / 30);
+      const hourlyWage = Math.round(dailyWage / 8); // 或 currentBaseSalary / 240
 
       Object.keys(schedule).forEach(rowId => {
           if (rowId.startsWith('D')) return; 
@@ -1990,6 +1997,10 @@ const ScheduleReviewPanel = ({
           let workDays = 0;
           let nationalHolidayWorkDays = 0; 
           let explicitOtDays = 0; 
+          
+          // ✨ 新增：統計請假天數
+          let personalLeaveDays = 0; // 事假
+          let sickLeaveDays = 0;     // 病假
 
           for (let d = 1; d <= daysInMonth; d++) {
               const cell = schedule[rowId]?.[d];
@@ -2007,10 +2018,17 @@ const ScheduleReviewPanel = ({
               else if (type.includes('(OT)')) {
                    explicitOtDays++;
               }
+              // ✨ 統計假別
+              else if (type === '事假') {
+                  personalLeaveDays++;
+              }
+              else if (type === '病假') {
+                  sickLeaveDays++;
+              }
           }
 
+          // --- 加班費計算 ---
           const nationalHolidayPay = nationalHolidayWorkDays * (hourlyWage * 8);
-          
           const regularWorkDays = workDays - nationalHolidayWorkDays;
           const standardWorkDays = daysInMonth - 8;
           const overStandardDays = Math.max(0, regularWorkDays - standardWorkDays);
@@ -2019,15 +2037,26 @@ const ScheduleReviewPanel = ({
           const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
           const totalOtPay = restDayOtPay + nationalHolidayPay;
 
+          // --- ✨ 扣薪計算 (核心邏輯) ---
+          // 事假扣全薪，病假扣半薪
+          const deduction = Math.round((personalLeaveDays * dailyWage) + (sickLeaveDays * dailyWage * 0.5));
+
+          // 實領薪資 (底薪 + 加班費 - 扣薪)
+          const finalSalary = currentBaseSalary + totalOtPay - deduction;
+
           data.push({
-              staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, 
+              staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
               workDays: workDays + explicitOtDays,
               standardWorkDays, 
               otDays: totalRestOtDays,
               restDayOtPay,
               nationalHolidayWorkDays, nationalHolidayPay,
               totalOtPay, 
-              totalSalary: currentBaseSalary + totalOtPay
+              // ✨ 新增欄位資料
+              personalLeaveDays,
+              sickLeaveDays,
+              deduction,
+              totalSalary: finalSalary
           });
       });
       return data;
@@ -2122,32 +2151,44 @@ const ScheduleReviewPanel = ({
                       4. 休息日加班費：前2小時 1.34 倍，後6小時 1.67 倍。本月標準上班天數為 {daysInMonth - 8} 天，超出且非國定假日者計入。
                   </div>
 
-                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.95rem' }}>
+<table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.9rem' }}>
                       <thead style={{ background: '#34495e', color: 'white' }}>
                           <tr>
                               <th style={{ padding: '10px' }}>員工姓名</th>
-                              <th style={{ padding: '10px' }}>總上班</th>
-                              <th style={{ padding: '10px', background: '#e67e22' }}>國定出勤 (加倍)</th>
-                              <th style={{ padding: '10px', background: '#e74c3c' }}>休息日加班</th>
-                              <th style={{ padding: '10px' }}>總加班費</th>
-                              <th style={{ padding: '10px', background: '#27ae60' }}>預估總薪資</th>
+                              <th style={{ padding: '10px' }}>上班/國定</th>
+                              <th style={{ padding: '10px', background: '#e74c3c' }}>加班費</th>
+                              {/* ✨ 新增標頭 */}
+                              <th style={{ padding: '10px', background: '#95a5a6' }}>請假 (事/病)</th>
+                              <th style={{ padding: '10px', background: '#7f8c8d' }}>扣薪</th>
+                              <th style={{ padding: '10px', background: '#27ae60' }}>實領薪資</th>
                           </tr>
                       </thead>
                       <tbody>
                           {getSettlementData().map(row => (
                               <tr key={row.staff_id} style={{ borderBottom: '1px solid #eee' }}>
-                                  <td style={{ padding: '10px', fontWeight: 'bold', color: 'black' }}>{row.name} <span style={{fontSize:'0.8rem', color:'#888'}}>({row.staff_id})</span></td>
-                                  <td style={{ padding: '10px', color: 'black', fontWeight: 'bold' }}>{row.workDays}</td>
-                                  <td style={{ padding: '10px', color: row.nationalHolidayWorkDays > 0 ? '#e67e22' : 'black', fontWeight: row.nationalHolidayWorkDays > 0 ? 'bold' : 'normal' }}>
-                                      {row.nationalHolidayWorkDays} 天 <br/>
-                                      {row.nationalHolidayPay > 0 && <span style={{fontSize:'0.8rem'}}>(+{row.nationalHolidayPay.toLocaleString()})</span>}
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: 'black' }}>
+                                      {row.name} <div style={{fontSize:'0.8rem', color:'#888'}}>({row.staff_id})</div>
                                   </td>
-                                  <td style={{ padding: '10px', color: row.otDays > 0 ? '#e74c3c' : 'black', fontWeight: row.otDays > 0 ? 'bold' : 'normal' }}>
-                                      {row.otDays} 天 <br/>
-                                      {row.restDayOtPay > 0 && <span style={{fontSize:'0.8rem'}}>(+{row.restDayOtPay.toLocaleString()})</span>}
+                                  <td style={{ padding: '10px', color: 'black' }}>
+                                      <div>總工時: {row.workDays} 天</div>
+                                      {row.nationalHolidayWorkDays > 0 && <div style={{fontSize:'0.8rem', color:'#e67e22'}}>含國定: {row.nationalHolidayWorkDays}天</div>}
                                   </td>
-                                  <td style={{ padding: '10px', color: row.totalOtPay > 0 ? '#e74c3c' : 'black', fontWeight: 'bold' }}>NT$ {row.totalOtPay.toLocaleString()}</td>
-                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#27ae60', fontSize: '1.1rem' }}>NT$ {row.totalSalary.toLocaleString()}</td>
+                                  <td style={{ padding: '10px', color: row.totalOtPay > 0 ? '#e74c3c' : '#ccc', fontWeight: 'bold' }}>
+                                      NT$ {row.totalOtPay.toLocaleString()}
+                                  </td>
+                                  {/* ✨ 新增內容：請假天數 */}
+                                  <td style={{ padding: '10px', color: (row.personalLeaveDays + row.sickLeaveDays) > 0 ? '#555' : '#ccc' }}>
+                                      {row.personalLeaveDays > 0 && <div>事假: {row.personalLeaveDays}天</div>}
+                                      {row.sickLeaveDays > 0 && <div>病假: {row.sickLeaveDays}天</div>}
+                                      {(row.personalLeaveDays === 0 && row.sickLeaveDays === 0) && '-'}
+                                  </td>
+                                  {/* ✨ 新增內容：扣薪金額 */}
+                                  <td style={{ padding: '10px', color: row.deduction > 0 ? 'red' : '#ccc', fontWeight: row.deduction > 0 ? 'bold' : 'normal' }}>
+                                      {row.deduction > 0 ? `- $${row.deduction.toLocaleString()}` : '-'}
+                                  </td>
+                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#27ae60', fontSize: '1.1rem' }}>
+                                      NT$ {row.totalSalary.toLocaleString()}
+                                  </td>
                               </tr>
                           ))}
                           {getSettlementData().length === 0 && (
