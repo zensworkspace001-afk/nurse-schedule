@@ -2052,7 +2052,7 @@ const ScheduleReviewPanel = ({
   selectedYear, selectedMonth, onSaveSchedule,
   shiftOptions, setShiftOptions, scheduleRisks,
   publicHolidays = [],
-  setDraftSchedule, setFinalizedSchedule 
+  setDraftSchedule, setFinalizedSchedule, onUpdateHealthStats
 }) => {
   
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
