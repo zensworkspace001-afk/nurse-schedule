@@ -957,7 +957,7 @@ const ManagerInterface = ({
   shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
-  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, setFinalizedSchedule, // <--- ★ 補上這行接收變數
+  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, setFinalizedSchedule, finalizedSchedule, // <--- ★★★ 就是漏了這個！補上它 ★★★// <--- ★ 補上這行接收變數
 }) => {
   // ★ 這裡宣告了 activeTab，所以下面的程式碼才認得它！
   const [activeTab, setActiveTab] = useState('requirements');
