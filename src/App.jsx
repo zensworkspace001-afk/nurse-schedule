@@ -825,11 +825,12 @@ const NurseSchedulingSystem = () => {
 
   }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded]);
 
-  const handleGenerateSchedule = (providedSchedule = null) => {
+const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
     if (!newSchedule) { return; }
     if (newSchedule) {
         setSchedule(newSchedule);
+        setFinalizedSchedule(null); // ★★★ 關鍵修復 1：生成新班表時，連帶把發布區的幽靈資料殺掉
         const newViolations = checkLaborLawCompliance(newSchedule, staffData, historyData, selectedYear, selectedMonth);
         setViolations(newViolations);
     }
@@ -1013,7 +1014,7 @@ const ManagerInterface = ({
         <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
       )}
       
-      {activeTab === 'schedule' && (
+{activeTab === 'schedule' && (
         <SchedulePanel
           schedule={schedule} staffData={staffData} violations={violations}
           requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
@@ -1021,6 +1022,7 @@ const ManagerInterface = ({
           selectedYear={selectedYear} selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+          setFinalizedSchedule={setFinalizedSchedule} // ★★★ 關鍵修復 2：補上這行
         />
       )}
       
@@ -1140,7 +1142,7 @@ const RequirementsPanel = ({
 const SchedulePanel = ({ 
     onSaveSchedule, schedule, setSchedule, staffData, violations, requirements, 
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
-    shiftOptions, setShiftOptions
+    shiftOptions, setShiftOptions,setFinalizedSchedule // ★ 接收參數
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
@@ -1160,13 +1162,15 @@ const SchedulePanel = ({
   const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
   const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
-  // ★★★ 新增：一鍵清空整張班表 ★★★
+// ★★★ 修改：一鍵清空整張班表 ★★★
   const handleClearAll = () => {
     if (window.confirm(`⚠️ 確定要【清空 ${selectedMonth}月 的所有班表】嗎？\n\n這將刪除目前工作桌上的所有資料，讓您有一張乾淨的空白桌面。\n(此操作不可逆)`)) {
         setSchedule({});
+        if (setFinalizedSchedule) setFinalizedSchedule(null); // ★ 關鍵修復 3：連發布區一起殺乾淨
     }
   };
 
+  // ★★★ 修改：拔除名字 ★★★
   const handleReset = () => {
     if (!schedule || Object.keys(schedule).length === 0) {
         alert("目前沒有班表可重置。");
@@ -1181,6 +1185,7 @@ const SchedulePanel = ({
           index++;
       });
       setSchedule(newSchedule); 
+      if (setFinalizedSchedule) setFinalizedSchedule(null); // ★ 關鍵修復 4：清空審核面板的舊記錄
       alert("✅ 系統已重置！所有班次已退回待認領狀態。");
     }
   };
