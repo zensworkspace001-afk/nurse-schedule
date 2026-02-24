@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
 
 import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
+import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "firebase/firestore";
 // ★ 新增：引入 Firebase Auth 功能
 import { getAuth, signInWithEmailAndPassword, updatePassword } from "firebase/auth";
 
@@ -888,44 +888,68 @@ const NurseSchedulingSystem = () => {
       setScheduleRisks([]);
     }
   }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
-// ☁️ 雲端引擎 1：即時讀取 Firestore (OnSnapshot 監聽)
+// ☁️ 雲端引擎 1：即時讀取 Firestore (拆分為三個監聽器)
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, "NurseApp", "MainData"), (docSnap) => {
+    // 1. 監聽系統設定
+    const unsubSettings = onSnapshot(doc(db, "NurseApp", "Settings"), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
+        if (data.publishedDate) setPublishedDate(data.publishedDate);
+      }
+    });
+
+    // 2. 監聽員工資料
+    const unsubStaff = onSnapshot(doc(db, "NurseApp", "Staff"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         if (data.staffData) setStaffData(data.staffData);
+        if (data.healthStats) setHealthStats(data.healthStats);
+      }
+    });
+
+    // 3. 監聽當月班表 (隨年份與月份變動)
+    const scheduleDocId = `${selectedYear}-${selectedMonth}`;
+    const unsubSchedule = onSnapshot(doc(db, "Schedules", scheduleDocId), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
         if (data.schedule) setSchedule(data.schedule);
         if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
-        if (data.publishedDate) setPublishedDate(data.publishedDate);
-
-        if (data.healthStats) setHealthStats(data.healthStats); // ★ 讀取健康度
+      } else {
+        setSchedule({}); // 若該月無資料則清空桌面
+        setFinalizedSchedule(null);
       }
-      setIsCloudLoaded(true); // 標記為：已成功從雲端抓取到資料
+      setIsCloudLoaded(true);
     });
-    return () => unsub(); // 關閉元件時取消監聽
-  }, []);
 
- // ☁️ 雲端引擎 2：資料變更時，自動寫入 Firestore
+    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); };
+  }, [selectedYear, selectedMonth]); // 依賴年月變動
+
+
+  // ☁️ 雲端引擎 2：資料變更時，自動寫入 Firestore (★ 僅限 Admin)
   useEffect(() => {
-    // 防呆：如果雲端資料還沒載入完畢，不要寫入，以免把雲端資料洗白
-    if (!isCloudLoaded) return; 
+    // 防呆：必須載入完成，且「必須是 admin」才能觸發全域自動存檔
+    if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
 
-    // ★★★ 核心修復：移除 { merge: true }，改為「完全覆蓋」 ★★★
-    // 這樣當我們把 D021 換成 N001 時，Firebase 才會乖乖把 D021 真正刪除！
-    setDoc(doc(db, "NurseApp", "MainData"), {
+    setDoc(doc(db, "NurseApp", "Settings"), {
       shiftOptions: shiftOptions || [],
       priorityConfig: priorityConfig || {},
-      staffData: staffData || [],
-      schedule: schedule || {},
-      finalizedSchedule: finalizedSchedule || null,
-      publishedDate: publishedDate || { year: 2026, month: 2 },
-
-      healthStats: healthStats || []           // ★ 補上這行寫入
+      publishedDate: publishedDate || { year: 2026, month: 2 }
     });
 
-  }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, isCloudLoaded,healthStats]);
+    setDoc(doc(db, "NurseApp", "Staff"), {
+      staffData: staffData || [],
+      healthStats: healthStats || []
+    });
+
+    const scheduleDocId = `${selectedYear}-${selectedMonth}`;
+    setDoc(doc(db, "Schedules", scheduleDocId), {
+      schedule: schedule || {},
+      finalizedSchedule: finalizedSchedule || null
+    });
+
+  }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
 
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
@@ -938,34 +962,29 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     }
   };
 
-  const handleExportPreferences = () => {};
+ const handleExportPreferences = () => {};
   const handleLogout = () => setCurrentUser(null);
 
-// ★★★ 核心修復：員工認領後，只更新「發布版(finalizedSchedule)」，不污染「排班工作桌(schedule)」 ★★★
-  const handleStaffScheduleUpdate = (result) => {
+  // ★★★ 核心修復：員工認領班表 (僅更新當月 Schedules) ★★★
+  const handleStaffScheduleUpdate = async (result) => { 
     const updateLogic = (prev) => {
       const next = { ...(prev || {}) };
-      
-      // 1. 新增：將該員工 (Nxxx) 的班表寫入
       next[result.staffId] = result.fullMonthData;
       
-      // 2. 刪除：將被選走的那個虛擬代號 (Dxxx) 移除
       const targetVirtualId = result.chosenSchedule?.id;
-
       if (targetVirtualId && next[targetVirtualId]) {
-          delete next[targetVirtualId]; // 精準刪除被選走的那個
+          delete next[targetVirtualId]; 
       } else {
-          // 如果抓不到 ID (防呆)，則刪除第一個找到的 D 開頭空缺
           const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
           if (fallbackId) delete next[fallbackId];
       }
       return next;
     };
 
-    // setSchedule(updateLogic); // ❌ 已經刪除這行！徹底切斷與排班工作桌的連動
-    setFinalizedSchedule(updateLogic); // ✅ 只更新發布狀態的班表
+    const newFinalizedSchedule = updateLogic(finalizedSchedule);
+    setFinalizedSchedule(newFinalizedSchedule); // 更新本地畫面
 
-    // 更新員工資料 (保持不變)
+    // 更新員工資料 (如果該名員工是新來的，加進陣列裡)
     setStaffData(prevData => {
       const exists = prevData.find(s => s.staff_id === result.staffId);
       if (exists) return prevData;
@@ -977,8 +996,18 @@ const handleGenerateSchedule = (providedSchedule = null) => {
       }];
     });
 
-    alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
-  };
+    // 新增：手動將更新推送到 Firebase
+    try {
+        const scheduleDocId = `${publishedDate.year}-${publishedDate.month}`;
+        await updateDoc(doc(db, "Schedules", scheduleDocId), {
+            finalizedSchedule: newFinalizedSchedule
+        });
+        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
+    } catch (error) {
+        console.error("寫入失敗:", error);
+        alert("❌ 認領失敗：權限不足或網路異常。");
+    }
+  }; // <--- 函式要在這裡才真正結束！
 
   const handleSaveAndPublish = () => {
     if (!schedule || Object.keys(schedule).length === 0) {
@@ -986,30 +1015,31 @@ const handleGenerateSchedule = (providedSchedule = null) => {
       return;
     }
     setFinalizedSchedule(JSON.parse(JSON.stringify(schedule)));
-  const newPubDate = { year: selectedYear, month: selectedMonth };
+    const newPubDate = { year: selectedYear, month: selectedMonth };
     setPublishedDate(newPubDate);
     localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
-// ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
+
+  // ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
   const handleAdminPasswordSubmit = async (e) => {
       e.preventDefault();
       
       if (adminPwdData.new !== adminPwdData.confirm) {
           return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
       }
-      if (adminPwdData.new.length < 6) { // Firebase 規定至少 6 碼
-          return setAdminPwdMsg({ type: 'error', text: 'Firebase 安全規定：新密碼長度至少需 6 碼！' });
+      
+      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
+      if (!strongPasswordRegex.test(adminPwdData.new)) {
+          return setAdminPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
       }
 
       try {
           const user = auth.currentUser;
           if (user) {
               await updatePassword(user, adminPwdData.new);
-              
               setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
-
               setTimeout(() => {
                   setShowAdminPwdModal(false);
                   setAdminPwdData({ old: '', new: '', confirm: '' });
@@ -1027,7 +1057,7 @@ const handleGenerateSchedule = (providedSchedule = null) => {
           }
       }
   };
-
+  
   if (!currentUser) {
 return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
   }
