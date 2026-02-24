@@ -26,5 +26,5 @@ dist-electron/
 dist/
 .vercel
 .env
-.env.local
+.env.*local
 .env.production
