@@ -779,7 +779,7 @@ const NurseSchedulingSystem = () => {
 // --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
   const [isCloudLoaded, setIsCloudLoaded] = useState(false);
   // ★★★ 新增：Admin 密碼狀態與修改視窗 ★★★
-  const [adminPassword, setAdminPassword] = useState('admin');
+
   const [showAdminPwdModal, setShowAdminPwdModal] = useState(false);
   const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
@@ -892,7 +892,7 @@ const NurseSchedulingSystem = () => {
         if (data.schedule) setSchedule(data.schedule);
         if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
         if (data.publishedDate) setPublishedDate(data.publishedDate);
-        if (data.adminPassword) setAdminPassword(data.adminPassword); // ★ 補上這行
+
         if (data.healthStats) setHealthStats(data.healthStats); // ★ 讀取健康度
       }
       setIsCloudLoaded(true); // 標記為：已成功從雲端抓取到資料
@@ -914,7 +914,7 @@ const NurseSchedulingSystem = () => {
       schedule: schedule || {},
       finalizedSchedule: finalizedSchedule || null,
       publishedDate: publishedDate || { year: 2026, month: 2 },
-      adminPassword: adminPassword || 'admin', // ★ 補上這行
+
       healthStats: healthStats || []           // ★ 補上這行寫入
     });
 
@@ -985,31 +985,44 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
-  const handleAdminPasswordSubmit = (e) => {
+// ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
+  const handleAdminPasswordSubmit = async (e) => {
       e.preventDefault();
-      // 允許使用原密碼或緊急密碼來修改
-      if (adminPwdData.old !== adminPassword && adminPwdData.old !== 'admin999') {
-          return setAdminPwdMsg({ type: 'error', text: '舊密碼輸入錯誤！' });
-      }
+      
       if (adminPwdData.new !== adminPwdData.confirm) {
           return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
       }
-      if (adminPwdData.new.length < 4) {
-          return setAdminPwdMsg({ type: 'error', text: '新密碼長度至少需 4 碼！' });
+      if (adminPwdData.new.length < 6) { // Firebase 規定至少 6 碼
+          return setAdminPwdMsg({ type: 'error', text: 'Firebase 安全規定：新密碼長度至少需 6 碼！' });
       }
 
-      setAdminPassword(adminPwdData.new); // 更新密碼，觸發 useEffect 存入 Firebase
-      setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
+      try {
+          const user = auth.currentUser;
+          if (user) {
+              await updatePassword(user, adminPwdData.new);
+              
+              setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
 
-      setTimeout(() => {
-          setShowAdminPwdModal(false);
-          setAdminPwdData({ old: '', new: '', confirm: '' });
-          setAdminPwdMsg({ type: '', text: '' });
-      }, 2000);
+              setTimeout(() => {
+                  setShowAdminPwdModal(false);
+                  setAdminPwdData({ old: '', new: '', confirm: '' });
+                  setAdminPwdMsg({ type: '', text: '' });
+              }, 2000);
+          } else {
+              setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
+          }
+      } catch (error) {
+          console.error("修改密碼失敗:", error);
+          if (error.code === 'auth/requires-recent-login') {
+              setAdminPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
+          } else {
+              setAdminPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
+          }
+      }
   };
 
   if (!currentUser) {
-return <LoginPanel onLogin={setCurrentUser} staffData={staffData} adminPassword={adminPassword} />; // ★ 傳入 adminPassword
+return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
   }
 
   return (
