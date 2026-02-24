@@ -1409,10 +1409,13 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         try {
             attempts++;
             setLoadingStatus(attempts === 1 ? "🧠 AI 正在計算最佳排班陣列..." : `♻️ 第 ${attempts} 次嘗試...`);
-            
+            const auth = getAuth();
+            const token = await auth.currentUser.getIdToken();
             const response = await fetch('/api/gemini', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
+                },
                 body: JSON.stringify({ prompt: currentPrompt })
             });
 
@@ -1471,9 +1474,13 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
       setGeminiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
       
       try {
+        const auth = getAuth();
+          const token = await auth.currentUser.getIdToken();
           const response = await fetch('/api/gemini', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
+               },
               body: JSON.stringify({ prompt: userMsg })
           });
           
