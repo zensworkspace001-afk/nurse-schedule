@@ -642,11 +642,11 @@ const handlePasswordSubmit = async (e) => {
                 <h3 style={{ marginTop: 0, color: '#333' }}>⚙️ 修改密碼</h3>
                 <form onSubmit={handlePasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
                     <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼 (預設: 1234)</label>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼 (預設: 123456)</label>
                         <input type="password" value={pwdData.old} onChange={e=>setPwdData({...pwdData, old: e.target.value})} required style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼 (至少 4 碼)</label>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼</label>
                         <input type="password" value={pwdData.new} onChange={e=>setPwdData({...pwdData, new: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
                     </div>
                     <div>
@@ -1031,7 +1031,7 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
-  
+
 // ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
   const handleAdminPasswordSubmit = async (e) => {
       e.preventDefault();
@@ -1097,11 +1097,11 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
                 <h3 style={{ marginTop: 0, color: '#333' }}>⚙️ 修改管理員密碼</h3>
                 <form onSubmit={handleAdminPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
                     <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼 (預設: admin)</label>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼</label>
                         <input type="password" value={adminPwdData.old} onChange={e=>setAdminPwdData({...adminPwdData, old: e.target.value})} required style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
                     </div>
                     <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼 (至少 4 碼)</label>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼</label>
                         <input type="password" value={adminPwdData.new} onChange={e=>setAdminPwdData({...adminPwdData, new: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
                     </div>
                     <div>
