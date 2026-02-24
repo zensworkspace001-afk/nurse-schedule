@@ -192,6 +192,59 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
   return violations;
 };
 // ============================================================================
+// 護理專業安全檢查：資歷搭配 (Skill Mix)
+// ============================================================================
+const checkSkillMixSafety = (schedule, staffData, year, month) => {
+  const mixViolations = [];
+  // 取得當月天數
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const targetShifts = ['D', 'E', 'N']; // 主要檢查這三個臨床班別
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    targetShifts.forEach(shiftType => {
+      const workingStaffIds = [];
+      let hasSenior = false;
+
+      // 掃描這天、這個班別有誰上班
+      Object.keys(schedule).forEach(staffId => {
+        if (staffId.startsWith('D')) return; // 忽略尚未指派真人的虛擬空缺
+        
+        const cell = schedule[staffId]?.[day];
+        const type = (typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF');
+        
+        if (type === shiftType) {
+          workingStaffIds.push(staffId);
+          // 找出該員工的詳細資料
+          const staff = staffData.find(s => s.staff_id === staffId);
+          
+          if (staff) {
+            // ★ 定義「資深人員」：擔任組長，或是職階為 N2, N3, N4
+            const isLeader = staff.is_leader === true || staff.is_leader === 'True';
+            const isSeniorLevel = ['N2', 'N3', 'N4'].includes(staff.level);
+            
+            if (isLeader || isSeniorLevel) {
+              hasSenior = true;
+            }
+          }
+        }
+      });
+
+      // 判斷邏輯：若該班次有人上班 (非空班)，但「全都是新人」，觸發警報！
+      if (workingStaffIds.length > 0 && !hasSenior) {
+        mixViolations.push({
+            staffId: '🏥 單位排班',
+            staffName: '⚠️ 臨床安全警告',
+            day: day,
+            type: 'SKILL_MIX',
+            message: `[${shiftType === 'D' ? '早班' : shiftType === 'E' ? '小夜' : '大夜'}] 全為新人(N0/N1)，無資深人員(N2+)或組長坐鎮！`
+        });
+      }
+    });
+  }
+  
+  return mixViolations;
+};
+// ============================================================================
 // 壓力與公平風險運算引擎 (Soft Risk Engine)
 // ============================================================================
 const calculateScheduleRisks = (schedule, staffData, publicHolidays, year, month) => {
@@ -811,17 +864,24 @@ const NurseSchedulingSystem = () => {
     fetchHolidays();
   }, [selectedYear]);
 
-// ★★★ 法遵檢查與風險掃描自動化引擎 (修正：優先監聽已發布/認領班表) ★★★
+// ★★★ 法遵檢查、安全防護與風險掃描自動化引擎 ★★★
   useEffect(() => {
-    const targetSchedule = finalizedSchedule || schedule; // 如果有已發布/認領的班表就用它，否則用草稿
+    const targetSchedule = finalizedSchedule || schedule; 
     if (targetSchedule && Object.keys(targetSchedule).length > 0) {
-      // 1. 跑硬性違規檢查 (紅燈)
-      const newViolations = checkLaborLawCompliance(targetSchedule, staffData, historyData, selectedYear, selectedMonth);
-      setViolations(newViolations);
       
-      // 2. 跑軟性風險掃描 (黃燈)
+      // 1. 跑硬性違規檢查 (勞基法紅燈)
+      const lawViolations = checkLaborLawCompliance(targetSchedule, staffData, historyData, selectedYear, selectedMonth);
+      
+      // 2. 跑護理專業安全檢查 (資歷搭配紅燈) ★ 這裡呼叫我們剛寫的引擎
+      const mixViolations = checkSkillMixSafety(targetSchedule, staffData, selectedYear, selectedMonth);
+      
+      // 將兩種警告合併顯示
+      setViolations([...lawViolations, ...mixViolations]);
+      
+      // 3. 跑軟性風險掃描 (壓力與公平性黃燈)
       const newRisks = calculateScheduleRisks(targetSchedule, staffData, publicHolidays, selectedYear, selectedMonth);
       setScheduleRisks(newRisks);
+      
     } else {
       setViolations([]);
       setScheduleRisks([]);
