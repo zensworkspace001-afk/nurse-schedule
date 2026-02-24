@@ -4,6 +4,7 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "firebase/firestore";
 // ★ 新增：引入 Firebase Auth 功能
+// ✅ 請替換為這行完整的 Import：
 import { getAuth, signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 
 
@@ -1030,21 +1031,34 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
-const handleAdminPasswordSubmit = async (e) => {
-try {
+  
+// ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
+  const handleAdminPasswordSubmit = async (e) => {
+      e.preventDefault();
+
+      // 1. 基本防呆與強度檢查
+      if (adminPwdData.new !== adminPwdData.confirm) {
+          return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
+      }
+      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
+      if (!strongPasswordRegex.test(adminPwdData.new)) {
+          return setAdminPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
+      }
+
+      try {
           const auth = getAuth();
           const user = auth.currentUser;
-          
+
           if (user) {
-              // ★ 核心修補：先用舊密碼進行重新驗證
+              // ★ 核心修補：先用「舊密碼」向 Firebase 進行重新驗證 (防護 Session 劫持)
               const credential = EmailAuthProvider.credential(user.email, adminPwdData.old);
               await reauthenticateWithCredential(user, credential);
 
-              // 驗證通過後，更新密碼
+              // 驗證通過後，正式更新密碼
               await updatePassword(user, adminPwdData.new);
-              
+
               setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
-              
+
               setTimeout(() => {
                   setShowAdminPwdModal(false);
                   setAdminPwdData({ old: '', new: '', confirm: '' });
@@ -1054,11 +1068,11 @@ try {
               setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
           }
       } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error("修改密碼失敗:", error);
+          // 在 Production 環境隱藏詳細錯誤碼，避免資安外洩
+          if (import.meta.env.DEV) {
+              console.error("修改密碼失敗:", error);
           }
-          
-          // ★ 處理常見的驗證錯誤
+
           if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
               setAdminPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
           } else if (error.code === 'auth/requires-recent-login') {
@@ -1067,7 +1081,7 @@ try {
               setAdminPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
           }
       }
-    }  
+  };
 
   if (!currentUser) {
 return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
