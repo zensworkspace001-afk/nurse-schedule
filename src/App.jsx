@@ -333,17 +333,6 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
 
-  const getTop5 = (key) => {
-    if (!staffData || staffData.length === 0) return [];
-    return [...staffData]
-      .map(s => ({ name: s.name, id: s.staff_id, value: Number(s[key]) || 0 })) 
-      .sort((a, b) => b.value - a.value) 
-      .slice(0, 5); 
-  };
-
-  const otTop5 = getTop5('accumulated_ot');
-  const nightTop5 = getTop5('night_shift_balance');
-
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
