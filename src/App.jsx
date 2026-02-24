@@ -376,7 +376,9 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
             }
         }
     } catch (err) {
+        if (import.meta.env.DEV) {
         console.error("登入錯誤:", err.code);
+        }
         // 翻譯 Firebase 的錯誤訊息
         switch (err.code) {
             case 'auth/invalid-credential':
@@ -500,7 +502,9 @@ const handlePasswordSubmit = async (e) => {
               setPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
           }
       } catch (error) {
+        if (import.meta.env.DEV) {
           console.error("修改密碼失敗:", error);
+          }
           
           // ★ 處理常見的驗證錯誤
           if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
@@ -1050,7 +1054,9 @@ try {
               setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
           }
       } catch (error) {
+        if (import.meta.env.DEV) {
           console.error("修改密碼失敗:", error);
+          }
           
           // ★ 處理常見的驗證錯誤
           if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
