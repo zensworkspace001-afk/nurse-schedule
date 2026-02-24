@@ -5,6 +5,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
 // ★ 新增：引入 Firebase Auth 功能
 import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, updatePassword } from "firebase/auth";
 
 
 // ============================================================================
@@ -456,31 +457,48 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
 
-  const handlePasswordSubmit = (e) => {
+const handlePasswordSubmit = async (e) => {
       e.preventDefault();
-      const staff = staffData.find(s => s.staff_id === currentUser.id);
-      const currentPwd = staff?.password || '1234'; // 預設 1234
-
-      if (pwdData.old !== currentPwd) {
-          return setPwdMsg({ type: 'error', text: '舊密碼輸入錯誤！' });
-      }
+      
+      // 1. 基本防呆檢查
       if (pwdData.new !== pwdData.confirm) {
           return setPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
       }
-      if (pwdData.new.length < 4) {
-          return setPwdMsg({ type: 'error', text: '新密碼長度至少需 4 碼！' });
+      // ★ 注意：Firebase 強制規定密碼至少需要 6 碼！
+      if (pwdData.new.length < 6) {
+          return setPwdMsg({ type: 'error', text: 'Firebase 安全規定：新密碼長度至少需 6 碼！' });
       }
 
-      // 更新密碼到 staffData
-      setStaffData(prev => prev.map(s => s.staff_id === currentUser.id ? { ...s, password: pwdData.new } : s));
-      setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
+      try {
+          // 2. 呼叫 Firebase Auth 修改真實密碼
+          const auth = getAuth();
+          const user = auth.currentUser;
+          
+          if (user) {
+              await updatePassword(user, pwdData.new);
+              
+              // 3. (選用) 同步更新 Firestore 裡的備用紀錄 (如果您還想在員工列表看到密碼的話)
+              setStaffData(prev => prev.map(s => s.staff_id === currentUser.id ? { ...s, password: pwdData.new } : s));
+              
+              setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
 
-      // 2秒後自動關閉視窗
-      setTimeout(() => {
-          setShowPwdModal(false);
-          setPwdData({ old: '', new: '', confirm: '' });
-          setPwdMsg({ type: '', text: '' });
-      }, 2000);
+              setTimeout(() => {
+                  setShowPwdModal(false);
+                  setPwdData({ old: '', new: '', confirm: '' });
+                  setPwdMsg({ type: '', text: '' });
+              }, 2000);
+          } else {
+              setPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
+          }
+      } catch (error) {
+          console.error("修改密碼失敗:", error);
+          // Firebase 安全機制：如果使用者登入太久沒動作，修改密碼時會要求「重新驗證」
+          if (error.code === 'auth/requires-recent-login') {
+              setPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
+          } else {
+              setPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
+          }
+      }
   };
 
   // 優先選班權限檢查
