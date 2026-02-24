@@ -8,20 +8,19 @@ import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
 
 // ============================================================================
-// Firebase 設定區
+// Firebase 設定區 (安全升級版：使用環境變數)
 // ============================================================================
 const firebaseConfig = {
-  apiKey: "AIzaSyBMLUjaOLYXL7aUaKl0RE8efXTZVxixvUo",
-  authDomain: "scheduling-systembachelor.firebaseapp.com",
-  projectId: "scheduling-systembachelor",
-  storageBucket: "scheduling-systembachelor.firebasestorage.app",
-  messagingSenderId: "273758593077",
-  appId: "1:273758593077:web:f100cef98b01f4b8dad17c"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const auth = getAuth(app); // ★ 新增：初始化驗證服務
-
+const auth = getAuth(app);
 // ============================================================================
 // 資料結構與常數定義
 // ============================================================================
