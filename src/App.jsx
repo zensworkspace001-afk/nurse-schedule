@@ -3,6 +3,8 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
+// ★ 新增：引入 Firebase Auth 功能
+import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 
 
 // ============================================================================
@@ -18,6 +20,7 @@ const firebaseConfig = {
 };
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
+const auth = getAuth(app); // ★ 新增：初始化驗證服務
 
 // ============================================================================
 // 資料結構與常數定義
@@ -322,13 +325,13 @@ const calculateScheduleRisks = (schedule, staffData, publicHolidays, year, month
 };
 
 // ============================================================================
-// 1. LoginPanel (登入介面 - 含 OT/夜班 Top 5 排行榜與忘記密碼機制)
+// 1. LoginPanel (安全升級版 - 串接 Firebase Auth)
 // ============================================================================
-const LoginPanel = ({ onLogin, staffData = [], adminPassword = 'admin' }) => { 
+const LoginPanel = ({ onLogin, staffData = [] }) => { 
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const [showForgotModal, setShowForgotModal] = useState(false); // ★ 新增：忘記密碼彈窗狀態
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const getTop5 = (key) => {
     if (!staffData || staffData.length === 0) return [];
@@ -341,108 +344,85 @@ const LoginPanel = ({ onLogin, staffData = [], adminPassword = 'admin' }) => {
   const otTop5 = getTop5('accumulated_ot');
   const nightTop5 = getTop5('night_shift_balance');
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    setIsLoggingIn(true);
 
-    // ★★★ 修改：管理員登入邏輯 (比對 Firebase 密碼，或使用緊急救援金鑰 admin999) ★★★
-    if (employeeId.toLowerCase() === 'admin') {
-      if (password === adminPassword || password === 'admin999') {
-        onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
-        return;
-      } else {
-        setError('管理員密碼錯誤！');
-        return;
-      }
-    }
-
-    if (!staffData || staffData.length === 0) {
-      setError('⚠️ 系統錯誤：員工資料尚未載入。請先使用 admin / admin 登入檢查。');
-      return;
-    }
-
-    const staff = staffData.find(s => 
-      (s.staff_id && s.staff_id.trim().toLowerCase() === employeeId.trim().toLowerCase()) || 
-      (s.name && s.name.trim() === employeeId.trim())
-    );
+    const inputId = employeeId.trim().toLowerCase();
     
-    if (staff) {
-      const correctPassword = staff.password || '1234'; 
-      if (password === correctPassword) {
-        onLogin({ 
-            id: staff.staff_id, 
-            name: staff.name, 
-            role: 'staff',
-            rule: staff.special_status === 'Standard' ? 'Standard' : 'BiWeekly'
-        });
-      } else {
-        setError('密碼錯誤！請確認您輸入的密碼。');
-      }
-    } else {
-      setError(`找不到工號或姓名 "${employeeId}"`);
-    }
-  };
+    // ★ 系統轉換：將工號 (如 N001 或 admin) 轉換為 Firebase 需要的 Email 格式
+    const emailToLogin = `${inputId}@hospital.com`;
 
- const handleClearData = () => {
-    if(window.confirm('確定要重置排班資料嗎？\n\n注意：這將清除目前的「總班表」與「發布狀態」，但會【保留】員工名單與基本設定。')) {
-        localStorage.removeItem('schedule');
-        localStorage.removeItem('finalizedSchedule');
-        localStorage.removeItem('publishedDate'); 
-        window.location.reload();
+    try {
+        // ★ 呼叫 Firebase 伺服器進行真實密碼比對！
+        await signInWithEmailAndPassword(auth, emailToLogin, password);
+        
+        // 登入成功後，判斷角色權限
+        if (inputId === 'admin') {
+            onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
+        } else {
+            // 從 staffData 中找出這名員工的中文姓名與設定
+            const staff = staffData.find(s => s.staff_id.toLowerCase() === inputId);
+            if (staff) {
+                onLogin({ 
+                    id: staff.staff_id, 
+                    name: staff.name, 
+                    role: 'staff',
+                    rule: staff.special_status === 'Standard' ? 'Standard' : 'BiWeekly'
+                });
+            } else {
+                // 如果 Firebase 登入成功，但資料庫沒這個人 (通常是舊測試資料)
+                onLogin({ id: inputId.toUpperCase(), name: '未知員工', role: 'staff' });
+            }
+        }
+    } catch (err) {
+        console.error("登入錯誤:", err.code);
+        // 翻譯 Firebase 的錯誤訊息
+        switch (err.code) {
+            case 'auth/invalid-credential':
+            case 'auth/wrong-password':
+            case 'auth/user-not-found':
+                setError('帳號或密碼錯誤！');
+                break;
+            case 'auth/too-many-requests':
+                setError('失敗次數過多，請稍後再試。');
+                break;
+            case 'auth/invalid-email':
+                setError('請輸入正確的工號格式。');
+                break;
+            default:
+                setError('登入失敗，請聯絡系統管理員。');
+        }
+    } finally {
+        setIsLoggingIn(false);
     }
   };
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', position:'relative', padding:'20px' }}>
-      
-      {/* 忘記密碼 Modal */}
-      {showForgotModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '400px', position: 'relative' }}>
-                <button onClick={() => setShowForgotModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666' }}>✖</button>
-                <h3 style={{ marginTop: 0, color: '#2c3e50', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>🔐 忘記密碼救援機制</h3>
-                <div style={{ marginTop: '15px', color: '#333', fontSize: '0.95rem', lineHeight: '1.6' }}>
-                    <div style={{ marginBottom: '15px', background: '#e3f2fd', padding: '10px', borderRadius: '8px' }}>
-                        <strong>👩‍⚕️ 護理師 / 員工：</strong><br/>
-                        請直接聯絡護理長或系統管理員，管理員可從「員工管理」介面為您一鍵重置密碼為預設值。
-                    </div>
-                    <div style={{ background: '#fdf2e9', padding: '10px', borderRadius: '8px' }}>
-                        <strong>👑 系統管理員 (Admin)：</strong><br/>
-                        若您忘記了管理員密碼，請在登入框輸入帳號 <code>admin</code>，並使用緊急救援密碼：<br/>
-                        <code style={{ fontSize:'1.2rem', color:'#d35400', fontWeight:'bold', display:'block', marginTop:'5px' }}>admin999</code>
-                        <span style={{ fontSize:'0.8rem', color:'#e67e22' }}>登入後請務必盡速前往右上角「⚙️修改密碼」重新設定。</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-      )}
-
       <div style={{ background: 'white', padding: '3rem', borderRadius: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', textAlign: 'center', marginBottom:'30px', zIndex: 10 }}>
-        <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>護理排班系統</h2>
-        <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '8px', marginBottom: '1.5rem', fontSize: '0.8rem', color: '#666', textAlign: 'left' }}>
-          <strong>💡 測試帳號提示：</strong><br/>
-          1. 管理員：admin / admin<br/>
-          2. 員工：請輸入工號 (如 N001) / 1234
-        </div>
+        <h2 style={{ color: '#333', marginBottom: '0.5rem' }}>護理排班系統 <span style={{fontSize:'0.9rem', background:'#e8f8f5', color:'#27ae60', padding:'2px 8px', borderRadius:'10px'}}>安全版</span></h2>
         
-        <form onSubmit={handleLogin}>
+        <form onSubmit={handleLogin} style={{ marginTop: '20px' }}>
           <input 
             type="text" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} 
-            placeholder="工號 (例如: N001 或 admin)" 
+            placeholder="請輸入工號 (例如: N001 或 admin)" 
+            required
             style={{ width: '100%', padding: '12px', marginBottom: '1rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
           />
           <input 
             type="password" value={password} onChange={(e) => setPassword(e.target.value)} 
-            placeholder="密碼 (預設: 1234)" 
-            style={{ width: '100%', padding: '12px', marginBottom: '0.5rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+            placeholder="請輸入密碼" 
+            required
+            style={{ width: '100%', padding: '12px', marginBottom: '1.5rem', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
           />
-          
-          <div style={{ textAlign: 'right', marginBottom: '1.5rem' }}>
-              <span onClick={() => setShowForgotModal(true)} style={{ color: '#667eea', fontSize: '0.85rem', cursor: 'pointer', fontWeight: 'bold' }}>忘記密碼？</span>
-          </div>
 
           {error && <div style={{ color: '#e74c3c', background: '#fdecea', padding: '10px', borderRadius: '6px', marginBottom: '1rem', fontSize: '0.9rem', textAlign: 'left' }}>❌ {error}</div>}
-          <button type="submit" style={{ width: '100%', padding: '14px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem' }}>登入系統</button>
+          
+          <button type="submit" disabled={isLoggingIn} style={{ width: '100%', padding: '14px', background: isLoggingIn ? '#ccc' : '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isLoggingIn ? 'not-allowed' : 'pointer', fontSize: '1rem' }}>
+              {isLoggingIn ? '驗證中...' : '登入系統'}
+          </button>
         </form>
       </div>
 
@@ -462,8 +442,6 @@ const LoginPanel = ({ onLogin, staffData = [], adminPassword = 'admin' }) => {
             </div>
         </div>
       )}
-
-      <button onClick={handleClearData} style={{ position: 'fixed', bottom: '20px', right: '20px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.2)', color: 'white', padding: '8px 15px', borderRadius: '8px', cursor: 'pointer', fontSize: '0.85rem', backdropFilter:'blur(4px)' }}>🗑️ 重置系統</button>
     </div>
   );
 };
