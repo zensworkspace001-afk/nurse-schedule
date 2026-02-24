@@ -4,7 +4,6 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
 // ★ 新增：引入 Firebase Auth 功能
-import { getAuth, signInWithEmailAndPassword } from "firebase/auth";
 import { getAuth, signInWithEmailAndPassword, updatePassword } from "firebase/auth";
 
 
