@@ -24,8 +24,6 @@ dist-ssr
 *.sw?
 dist-electron/
 dist/
-
 .vercel
-
 .env
 .env.local
