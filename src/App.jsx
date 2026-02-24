@@ -1767,17 +1767,48 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
     }
   };
 
-  // ★★★ 新增：重置密碼功能 ★★★
-  const handleResetPassword = (id, name) => {
-      if (window.confirm(`確定要將員工「${name} (${id})」的密碼重置為預設值 (1234) 嗎？`)) {
+  // ★★★ 修改：呼叫後端 API 進行真實密碼重置 ★★★
+  const handleResetPassword = async (id, name) => {
+      if (!window.confirm(`確定要將員工「${name} (${id})」的登入密碼強制重置為 123456 嗎？\n\n注意：這將直接修改系統通行驗證碼。`)) {
+          return;
+      }
+
+      try {
+          // 1. 取得管理員自己的 Token
+          const { getAuth } = await import('firebase/auth');
+          const auth = getAuth();
+          const token = await auth.currentUser.getIdToken();
+
+          // 2. 呼叫我們自己寫的 Vercel 後端 API
+          const response = await fetch('/api/reset-password', {
+              method: 'POST',
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}` // 帶上管理員證明
+              },
+              body: JSON.stringify({ staffId: id })
+          });
+
+          const data = await response.json();
+
+          if (!response.ok) {
+              throw new Error(data.error || '重置失敗');
+          }
+
+          // 3. API 執行成功後，同步更新畫面上的 Firestore 備用資料 (顯示用)
           setLocalStaff(prev => prev.map(staff => {
               if (staff.staff_id === id) {
-                  return { ...staff, password: '1234' };
+                  return { ...staff, password: '123456' }; // ★ 改為 6 碼
               }
               return staff;
           }));
           setIsDirty(true);
-          alert(`✅ 員工 ${name} 密碼已重置為 1234！\n⚠️ 請記得點擊右上角「💾 儲存變更」才會正式生效。`);
+          
+          alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。\n⚠️ 記得點擊右上角「💾 儲存變更」同步本地資料表。`);
+
+      } catch (error) {
+          console.error(error);
+          alert(`❌ 重置密碼失敗：${error.message}`);
       }
   };
 
