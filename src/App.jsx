@@ -425,18 +425,26 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
         </form>
       </div>
 
-      {staffData.length > 0 && (
+{staffData.length > 0 && (
         <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '850px' }}>
             <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
                 <h3 style={{ margin: '0 0 1rem 0', color: '#e67e22', borderBottom: '2px solid #e67e22', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>🔥 積假 (OT) Top 5</h3>
                 {otTop5.map((s, i) => (
-                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}><span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span><span style={{fontWeight:'bold', color:'#e67e22', background:'#fff3e0', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span></div>
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
+                        {/* ★ 安全修復：只顯示工號，不顯示真實姓名 */}
+                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.id}</span>
+                        <span style={{fontWeight:'bold', color:'#e67e22', background:'#fff3e0', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
+                    </div>
                 ))}
             </div>
             <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
                 <h3 style={{ margin: '0 0 1rem 0', color: '#8e44ad', borderBottom: '2px solid #8e44ad', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>🌙 夜班 (Night) Top 5</h3>
                 {nightTop5.map((s, i) => (
-                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}><span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.name}</span><span style={{fontWeight:'bold', color:'#8e44ad', background:'#f3e5f5', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span></div>
+                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
+                        {/* ★ 安全修復：只顯示工號，不顯示真實姓名 */}
+                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.id}</span>
+                        <span style={{fontWeight:'bold', color:'#8e44ad', background:'#f3e5f5', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
+                    </div>
                 ))}
             </div>
         </div>
@@ -464,8 +472,9 @@ const handlePasswordSubmit = async (e) => {
           return setPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
       }
       // ★ 注意：Firebase 強制規定密碼至少需要 6 碼！
-      if (pwdData.new.length < 6) {
-          return setPwdMsg({ type: 'error', text: 'Firebase 安全規定：新密碼長度至少需 6 碼！' });
+      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
+     if (!strongPasswordRegex.test(pwdData.new)) {
+          return setPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
       }
 
       try {
@@ -476,9 +485,7 @@ const handlePasswordSubmit = async (e) => {
           if (user) {
               await updatePassword(user, pwdData.new);
               
-              // 3. (選用) 同步更新 Firestore 裡的備用紀錄 (如果您還想在員工列表看到密碼的話)
-              setStaffData(prev => prev.map(s => s.staff_id === currentUser.id ? { ...s, password: pwdData.new } : s));
-              
+
               setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
 
               setTimeout(() => {
@@ -1765,8 +1772,7 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
       staff_id: newId, name: '新員工', level: 'N0', tenure_years: 0, is_leader: false,
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
-      prevMonthLeave: [false, false, false, false, false, false, false],
-      password: '1234' // 預設密碼
+      prevMonthLeave: [false, false, false, false, false, false, false,]
     };
     setLocalStaff([...localStaff, newStaff]);
     setIsDirty(true);
@@ -1807,17 +1813,10 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
               throw new Error(data.error || '重置失敗');
           }
 
-          // 3. API 執行成功後，同步更新畫面上的 Firestore 備用資料 (顯示用)
-          setLocalStaff(prev => prev.map(staff => {
-              if (staff.staff_id === id) {
-                  return { ...staff, password: '123456' }; // ★ 改為 6 碼
-              }
-              return staff;
-          }));
-          setIsDirty(true);
-          
-          alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。\n⚠️ 記得點擊右上角「💾 儲存變更」同步本地資料表。`);
 
+          
+          // 3. API 執行成功後，只需通知使用者即可，前端不保留密碼狀態
+alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。`);
       } catch (error) {
           console.error(error);
           alert(`❌ 重置密碼失敗：${error.message}`);
