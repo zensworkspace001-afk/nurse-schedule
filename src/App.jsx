@@ -4,7 +4,7 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, setDoc, onSnapshot, updateDoc } from "firebase/firestore";
 // ★ 新增：引入 Firebase Auth 功能
-import { getAuth, signInWithEmailAndPassword, updatePassword } from "firebase/auth";
+import { getAuth, signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 
 
 // ============================================================================
@@ -477,15 +477,18 @@ const handlePasswordSubmit = async (e) => {
           return setPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
       }
 
-      try {
-          // 2. 呼叫 Firebase Auth 修改真實密碼
+    try {
           const auth = getAuth();
           const user = auth.currentUser;
           
           if (user) {
+              // ★ 核心修補：先用舊密碼進行重新驗證 (Re-authenticate)
+              const credential = EmailAuthProvider.credential(user.email, pwdData.old);
+              await reauthenticateWithCredential(user, credential);
+              
+              // 驗證通過後，才允許更新密碼
               await updatePassword(user, pwdData.new);
               
-
               setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
 
               setTimeout(() => {
@@ -498,15 +501,17 @@ const handlePasswordSubmit = async (e) => {
           }
       } catch (error) {
           console.error("修改密碼失敗:", error);
-          // Firebase 安全機制：如果使用者登入太久沒動作，修改密碼時會要求「重新驗證」
-          if (error.code === 'auth/requires-recent-login') {
+          
+          // ★ 處理常見的驗證錯誤
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+              setPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
+          } else if (error.code === 'auth/requires-recent-login') {
               setPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
           } else {
               setPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
           }
       }
-  };
-
+     }
   // 優先選班權限檢查
   if (priorityConfig && !priorityConfig.isOpenToAll) {
       const allowedIds = new Set();
@@ -1021,25 +1026,21 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
-
-  // ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
-  const handleAdminPasswordSubmit = async (e) => {
-      e.preventDefault();
-      
-      if (adminPwdData.new !== adminPwdData.confirm) {
-          return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
-      }
-      
-      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
-      if (!strongPasswordRegex.test(adminPwdData.new)) {
-          return setAdminPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
-      }
-
-      try {
+const handleAdminPasswordSubmit = async (e) => {
+try {
+          const auth = getAuth();
           const user = auth.currentUser;
+          
           if (user) {
+              // ★ 核心修補：先用舊密碼進行重新驗證
+              const credential = EmailAuthProvider.credential(user.email, adminPwdData.old);
+              await reauthenticateWithCredential(user, credential);
+
+              // 驗證通過後，更新密碼
               await updatePassword(user, adminPwdData.new);
+              
               setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
+              
               setTimeout(() => {
                   setShowAdminPwdModal(false);
                   setAdminPwdData({ old: '', new: '', confirm: '' });
@@ -1050,14 +1051,18 @@ const handleGenerateSchedule = (providedSchedule = null) => {
           }
       } catch (error) {
           console.error("修改密碼失敗:", error);
-          if (error.code === 'auth/requires-recent-login') {
+          
+          // ★ 處理常見的驗證錯誤
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+              setAdminPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
+          } else if (error.code === 'auth/requires-recent-login') {
               setAdminPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
           } else {
               setAdminPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
           }
       }
-  };
-  
+    }  
+
   if (!currentUser) {
 return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
   }
