@@ -1459,7 +1459,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
             const response = await fetch('/api/gemini', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
+                           'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
                 },
                 body: JSON.stringify({ prompt: prompt })
             });
@@ -2678,6 +2678,7 @@ const SimulationPanel = ({
         `;
 
         try {
+            const token = await auth.currentUser?.getIdToken();
             const response = await fetch('/api/gemini', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2692,7 +2693,9 @@ const SimulationPanel = ({
             const data = await response.json();
             const text = data.text.replace(/```json|```/g, '').trim();
             const jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error("AI 回傳格式錯誤"); // ★ 補上防呆
             const parsed = JSON.parse(jsonMatch[0]);
+            if (!parsed.patterns || !Array.isArray(parsed.patterns)) throw new Error("AI 未回傳 patterns"); 
 
             const virtualSchedule = {};
             parsed.patterns.forEach((patternStr, index) => {
