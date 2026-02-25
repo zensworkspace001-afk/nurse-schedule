@@ -1461,7 +1461,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 headers: { 'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
                 },
-                body: JSON.stringify({ prompt: currentPrompt })
+                body: JSON.stringify({ prompt: prompt })
             });
 
             if (!response.ok) {
