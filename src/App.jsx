@@ -890,6 +890,7 @@ const NurseSchedulingSystem = () => {
 // ☁️ 雲端引擎 1：即時讀取 Firestore (拆分為三個監聽器)
   useEffect(() => {
     // ★ 核心修復：使用三個標記，確保所有資料都下載完畢後，才允許自動存檔引擎啟動
+    if (!currentUser) return;
     let isSettingsLoaded = false;
     let isStaffLoaded = false;
     let isScheduleLoaded = false;
@@ -944,7 +945,7 @@ const NurseSchedulingSystem = () => {
       unsubSchedule(); 
       setIsCloudLoaded(false); // ★ 當切換月份時，重新鎖上存檔引擎
     };
-  }, [selectedYear, selectedMonth]); // 依賴年月變動
+  }, [selectedYear, selectedMonth,currentUser]); // 依賴年月變動
 
 
   // ☁️ 雲端引擎 2：資料變更時，自動寫入 Firestore (★ 僅限 Admin)
