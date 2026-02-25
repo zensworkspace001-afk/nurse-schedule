@@ -429,7 +429,6 @@ const handlePasswordSubmit = async (e) => {
       }
 
     try {
-          const auth = getAuth();
           const user = auth.currentUser;
           
           if (user) {
@@ -987,7 +986,6 @@ const handleGenerateSchedule = (providedSchedule = null) => {
       }
 
       try {
-          const auth = getAuth();
           const user = auth.currentUser;
 
           if (user) {
@@ -1441,7 +1439,6 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         try {
             attempts++;
             setLoadingStatus(attempts === 1 ? "🧠 AI 正在計算最佳排班陣列..." : `♻️ 第 ${attempts} 次嘗試...`);
-            const auth = getAuth();
             const token = await auth.currentUser.getIdToken();
             const response = await fetch('/api/gemini', {
                 method: 'POST',
@@ -1506,7 +1503,6 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
       setGeminiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
       
       try {
-        const auth = getAuth();
           const token = await auth.currentUser.getIdToken();
           const response = await fetch('/api/gemini', {
               method: 'POST',
@@ -1790,7 +1786,6 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
       try {
           // 1. 取得管理員自己的 Token
           const { getAuth } = await import('firebase/auth');
-          const auth = getAuth();
           const token = await auth.currentUser.getIdToken();
 
           // 2. 呼叫我們自己寫的 Vercel 後端 API
