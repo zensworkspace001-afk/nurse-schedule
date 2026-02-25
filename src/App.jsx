@@ -2681,7 +2681,9 @@ const SimulationPanel = ({
             const token = await auth.currentUser?.getIdToken();
             const response = await fetch('/api/gemini', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`  // ★ 補上這行
+                 },
                 body: JSON.stringify({ prompt: prompt })
             });
 
