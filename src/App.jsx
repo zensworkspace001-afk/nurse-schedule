@@ -3,8 +3,7 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule } from './api/database';
-const db = getFirestore(app);
-const auth = getAuth(app);
+
 // ============================================================================
 // 資料結構與常數定義
 // ============================================================================
@@ -951,18 +950,15 @@ const handleGenerateSchedule = (providedSchedule = null) => {
       }];
     });
 
-    // 新增：手動將更新推送到 Firebase
+// 新增：透過 API 手動將更新推送到資料庫
     try {
-        const scheduleDocId = `${publishedDate.year}-${publishedDate.month}`;
-        await updateDoc(doc(db, "Schedules", scheduleDocId), {
-            finalizedSchedule: newFinalizedSchedule
-        });
+        await updateStaffSchedule(publishedDate.year, publishedDate.month, newFinalizedSchedule);
         alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
     } catch (error) {
         console.error("寫入失敗:", error);
         alert("❌ 認領失敗：權限不足或網路異常。");
     }
-  }; // <--- 函式要在這裡才真正結束！
+  }
 
   const handleSaveAndPublish = () => {
     if (!schedule || Object.keys(schedule).length === 0) {
