@@ -3,6 +3,7 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule } from './api/database';
+import { signOut } from "firebase/auth"; // 加到 import
 
 // ============================================================================
 // 資料結構與常數定義
@@ -86,7 +87,8 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
       // 判斷是否為週一 (若是週一，重置週工時計數器)
       const currentDayOfWeek = new Date(year, month - 1, day).getDay(); // 0=週日, 1=週一
       if (currentDayOfWeek === 1) { 
-          currentWeekHours = 0; 
+          currentWeekHours = 0;
+          isWeeklyViolationReported = false; // ← 補上這行 
       }
       
       currentWeekHours += dailyHours;
@@ -473,7 +475,6 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       if (!strongPasswordRegex.test(pwdData.new)) return setPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
 
       try {
-          const auth = getAuth();
           const user = auth.currentUser;
           if (user) {
               const credential = EmailAuthProvider.credential(user.email, pwdData.old);
@@ -548,13 +549,26 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       }
       return { valid: true };
   };
+
+  const isForbiddenSeq = (a, b) => (a==='E'&&b==='D') || (a==='N'&&b==='D') || (a==='N'&&b==='E');
+for (let i = 0; i < pattern.length - 1; i++) {
+    if (isForbiddenSeq(pattern[i], pattern[i+1])) {
+        return { valid: false, reason: `第${i+1}天 ${pattern[i]} 接 ${pattern[i+2]} 輪班間隔不足` };
+    }
+}
   
   const filteredOptions = selectedShiftType === 'ALL' ? aiSlots : aiSlots.filter(opt => opt.shift === selectedShiftType);
 
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
   const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = s); setPreviewSchedule(map); setCurrentStep(3); };
   const handleFinalSubmit = () => {
-      const choice = aiSlots.find(opt => opt.id === selectedOption);
+    const choice = aiSlots.find(opt => opt.id === selectedOption);
+    if (!choice) {
+        alert("⚠️ 此班表已被他人認領，請返回重新選擇！");
+        setCurrentStep(2);
+        return;
+    }
+
       onConfirmSchedule({ staffId: currentUser.id, staffName: currentUser.name, shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType, chosenSchedule: { id: choice.id, title: choice.title }, fullMonthData: previewSchedule });
       setCurrentStep(4);
   };
@@ -910,7 +924,10 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     }
   };
 
-  const handleLogout = () => setCurrentUser(null);
+const handleLogout = async () => {
+    await signOut(auth);
+    setCurrentUser(null);
+};
 
   // ★★★ 核心修復：員工認領班表 (僅更新當月 Schedules) ★★★
   const handleStaffScheduleUpdate = async (result) => { 
@@ -1172,6 +1189,7 @@ const ManagerInterface = ({
           selectedYear={selectedYear} selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+          finalizedSchedule={finalizedSchedule}
 
         />
       )}
@@ -1228,10 +1246,11 @@ const RequirementsPanel = ({
   const dailyN = Math.ceil(bedCount / ratioN);
 
   useEffect(() => {
-    setRequirements({
-      ...requirements, D: dailyD, E: dailyE, N: dailyN,
+    setRequirements(prev =>({
+      ...prev,
+       D: dailyD, E: dailyE, N: dailyN,
       optimalD: Math.ceil(dailyD * 1.4), optimalE: Math.ceil(dailyE * 1.4), optimalN: Math.ceil(dailyN * 1.4)
-    });
+    }));
   }, [bedCount, ratioD, ratioE, ratioN]);
 
 
@@ -1442,7 +1461,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 headers: { 'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
                 },
-                body: JSON.stringify({ prompt: currentPrompt })
+                body: JSON.stringify({ prompt: Prompt })
             });
 
             if (!response.ok) {
@@ -2640,9 +2659,10 @@ const SimulationPanel = ({
         setIsSimulating(true);
         setSimResult(null);
 
-        const dailyD = Math.ceil(simParams.bedCount / simParams.ratioD);
-        const dailyE = Math.ceil(simParams.bedCount / simParams.ratioE);
-        const dailyN = simParams.banNightShift ? 0 : Math.ceil(simParams.bedCount / simParams.ratioN);
+        const safeD = Math.max(1, simParams.ratioD);
+        const safeE = Math.max(1, simParams.ratioE);
+        const safeN = Math.max(1, simParams.ratioN);
+        const dailyD = Math.ceil(simParams.bedCount / safeD);
         const totalNeededPerDay = dailyD + dailyE + dailyN;
 
         let availableStaffCount = staffData.filter(s => s.is_active).length + simParams.staffChange;
