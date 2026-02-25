@@ -417,30 +417,7 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
         </form>
       </div>
 
-{staffData.length > 0 && (
-        <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', justifyContent: 'center', width: '100%', maxWidth: '850px' }}>
-            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ margin: '0 0 1rem 0', color: '#e67e22', borderBottom: '2px solid #e67e22', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>🔥 積假 (OT) Top 5</h3>
-                {otTop5.map((s, i) => (
-                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
-                        {/* ★ 安全修復：只顯示工號，不顯示真實姓名 */}
-                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.id}</span>
-                        <span style={{fontWeight:'bold', color:'#e67e22', background:'#fff3e0', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
-                    </div>
-                ))}
-            </div>
-            <div style={{ flex: 1, minWidth: '300px', background: 'rgba(255,255,255,0.95)', padding: '1.5rem', borderRadius: '16px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
-                <h3 style={{ margin: '0 0 1rem 0', color: '#8e44ad', borderBottom: '2px solid #8e44ad', paddingBottom: '0.5rem', fontSize:'1.1rem', display:'flex', alignItems:'center', gap:'8px' }}>🌙 夜班 (Night) Top 5</h3>
-                {nightTop5.map((s, i) => (
-                    <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #eee', fontSize:'0.95rem' }}>
-                        {/* ★ 安全修復：只顯示工號，不顯示真實姓名 */}
-                        <span style={{fontWeight:'bold', color:'#444'}}>{i+1}. {s.id}</span>
-                        <span style={{fontWeight:'bold', color:'#8e44ad', background:'#f3e5f5', padding:'2px 8px', borderRadius:'10px'}}>{s.value}</span>
-                    </div>
-                ))}
-            </div>
-        </div>
-      )}
+
     </div>
   );
 };
