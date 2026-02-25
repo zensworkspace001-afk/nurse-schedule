@@ -1076,7 +1076,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             schedule={schedule} violations={violations}
             selectedYear={selectedYear} 
             selectedMonth={selectedMonth}
-            onGenerateSchedule={handleGenerateSchedule} onExportPreferences={handleExportPreferences}
+            onGenerateSchedule={handleGenerateSchedule} 
             setSchedule={setSchedule} setViolations={setViolations}
             setSelectedYear={setSelectedYear}   // <--- 補上這行 (讓子元件能修改年份)
             setSelectedMonth={setSelectedMonth} // <--- 補上這行 (讓子元件能修改月份)
@@ -1119,7 +1119,7 @@ const ManagerInterface = ({
   shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
-  onGenerateSchedule, onExportPreferences, onSaveSchedule, setSchedule, 
+  onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
   setFinalizedSchedule,healthStats, onUpdateHealthStats
 }) => {
