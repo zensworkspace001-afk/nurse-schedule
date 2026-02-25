@@ -1461,7 +1461,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 headers: { 'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
                 },
-                body: JSON.stringify({ prompt: Prompt })
+                body: JSON.stringify({ prompt: currentPrompt })
             });
 
             if (!response.ok) {
@@ -2659,10 +2659,10 @@ const SimulationPanel = ({
         setIsSimulating(true);
         setSimResult(null);
 
-        const safeD = Math.max(1, simParams.ratioD);
-        const safeE = Math.max(1, simParams.ratioE);
-        const safeN = Math.max(1, simParams.ratioN);
-        const dailyD = Math.ceil(simParams.bedCount / safeD);
+        const dailyD = Math.max(1, simParams.ratioD);
+        const dailyE = Math.max(1, simParams.ratioE);
+        const dailyN = Math.max(1, simParams.ratioN);
+        const ttD = Math.ceil(simParams.bedCount / dailyD);
         const totalNeededPerDay = dailyD + dailyE + dailyN;
 
         let availableStaffCount = staffData.filter(s => s.is_active).length + simParams.staffChange;
