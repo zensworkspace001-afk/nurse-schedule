@@ -889,6 +889,17 @@ const NurseSchedulingSystem = () => {
   }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
 // ☁️ 雲端引擎 1：即時讀取 Firestore (拆分為三個監聽器)
   useEffect(() => {
+    // ★ 核心修復：使用三個標記，確保所有資料都下載完畢後，才允許自動存檔引擎啟動
+    let isSettingsLoaded = false;
+    let isStaffLoaded = false;
+    let isScheduleLoaded = false;
+
+    const checkAllLoaded = () => {
+       if (isSettingsLoaded && isStaffLoaded && isScheduleLoaded) {
+           setIsCloudLoaded(true);
+       }
+    };
+
     // 1. 監聽系統設定
     const unsubSettings = onSnapshot(doc(db, "NurseApp", "Settings"), (docSnap) => {
       if (docSnap.exists()) {
@@ -897,6 +908,8 @@ const NurseSchedulingSystem = () => {
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         if (data.publishedDate) setPublishedDate(data.publishedDate);
       }
+      isSettingsLoaded = true; 
+      checkAllLoaded(); // 拿回第一把鑰匙
     });
 
     // 2. 監聽員工資料
@@ -906,6 +919,8 @@ const NurseSchedulingSystem = () => {
         if (data.staffData) setStaffData(data.staffData);
         if (data.healthStats) setHealthStats(data.healthStats);
       }
+      isStaffLoaded = true; 
+      checkAllLoaded(); // 拿回第二把鑰匙
     });
 
     // 3. 監聽當月班表 (隨年份與月份變動)
@@ -919,10 +934,16 @@ const NurseSchedulingSystem = () => {
         setSchedule({}); // 若該月無資料則清空桌面
         setFinalizedSchedule(null);
       }
-      setIsCloudLoaded(true);
+      isScheduleLoaded = true; 
+      checkAllLoaded(); // 拿回第三把鑰匙，解開存檔鎖！
     });
 
-    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); };
+    return () => { 
+      unsubSettings(); 
+      unsubStaff(); 
+      unsubSchedule(); 
+      setIsCloudLoaded(false); // ★ 當切換月份時，重新鎖上存檔引擎
+    };
   }, [selectedYear, selectedMonth]); // 依賴年月變動
 
 
