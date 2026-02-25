@@ -1070,3 +1070,27 @@ const ViolationsPanel = ({ violations }) => {
 };
 
 export default NurseSchedulingSystem;
+
+
+
+// ============================================================================
+// 工具函數
+// ============================================================================
+
+const parseCSV = (csvText) => {
+  const lines = csvText.trim().split('\n');
+  const headers = lines[0].replace(/^\uFEFF/, '').split(',').map(h => h.trim());
+  return lines.slice(1).map(line => {
+    const values = line.split(',').map(v => v.trim());
+    const obj = {};
+    headers.forEach((header, i) => {
+      let value = values[i];
+      if (value === 'True' || value === 'TRUE') value = true;
+      else if (value === 'False' || value === 'FALSE') value = false;
+      else if (value === 'None' || value === '') value = null;
+      else if (!isNaN(value) && value !== '') value = parseFloat(value);
+      obj[header] = value;
+    });
+    return obj;
+  });
+};

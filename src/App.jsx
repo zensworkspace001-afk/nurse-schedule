@@ -30,27 +30,7 @@ const LABOR_LAW_RULES = {
   REQUIRED_REST_DAYS: 4
 };
 
-// ============================================================================
-// 工具函數
-// ============================================================================
 
-const parseCSV = (csvText) => {
-  const lines = csvText.trim().split('\n');
-  const headers = lines[0].replace(/^\uFEFF/, '').split(',').map(h => h.trim());
-  return lines.slice(1).map(line => {
-    const values = line.split(',').map(v => v.trim());
-    const obj = {};
-    headers.forEach((header, i) => {
-      let value = values[i];
-      if (value === 'True' || value === 'TRUE') value = true;
-      else if (value === 'False' || value === 'FALSE') value = false;
-      else if (value === 'None' || value === '') value = null;
-      else if (!isNaN(value) && value !== '') value = parseFloat(value);
-      obj[header] = value;
-    });
-    return obj;
-  });
-};
 
 // ============================================================================
 // 法遵檢查邏輯 (全功能版：含工時、間隔、休假、加班)
@@ -84,7 +64,8 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
 
     // 用來計算每週工時 (以週一為起始)
     let currentWeekHours = 0;
-    
+    let isWeeklyViolationReported = false; // ★ 新增這行
+
     for (let day = 1; day <= daysInMonth; day++) {
       const cell = monthSchedule[day] || 'OFF';
       const shiftType = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
@@ -110,13 +91,13 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
       
       currentWeekHours += dailyHours;
       
-      if (currentWeekHours > 40) {
-          // 為了避免同一週每天都報錯，只在剛超過那天報錯，或者顯示累計
-          // 這裡簡單處理：只要發現累積 > 40 就提示，通常會發生在第 6 個工作天
+// ★ 3. 加上 !isWeeklyViolationReported 條件，並且在報錯後把 flag 設為 true
+      if (currentWeekHours > 40 && !isWeeklyViolationReported) {
           violations.push({
             staffId, staffName: staff?.name, day, type: 'WEEKLY_HOURS',
-            message: `⚠️ 每週工時超標：本週已累計 ${currentWeekHours} 小時 (上限 40)`
+            message: `⚠️ 每週工時超標：本週已於 ${day} 號累計達 ${currentWeekHours} 小時 (上限 40)`
           });
+          isWeeklyViolationReported = true; // ★ 標記本週已經警告過了，這週剩下的日子不要再吵了
       }
 
       // --- C. 統計休假天數 ---
@@ -407,94 +388,12 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
 // 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
 // ============================================================================
 const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], setStaffData, priorityConfig }) => {  
-  // 1. 基本防呆
-  if (!currentUser) return <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>🔄 正在載入使用者資料...</div>;
-
-  // ★★★ 新增：修改密碼狀態管理 ★★★
+  
+  // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
   const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
-
-const handlePasswordSubmit = async (e) => {
-      e.preventDefault();
-      
-      // 1. 基本防呆檢查
-      if (pwdData.new !== pwdData.confirm) {
-          return setPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
-      }
-      // ★ 注意：Firebase 強制規定密碼至少需要 6 碼！
-      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
-     if (!strongPasswordRegex.test(pwdData.new)) {
-          return setPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
-      }
-
-    try {
-          const user = auth.currentUser;
-          
-          if (user) {
-              // ★ 核心修補：先用舊密碼進行重新驗證 (Re-authenticate)
-              const credential = EmailAuthProvider.credential(user.email, pwdData.old);
-              await reauthenticateWithCredential(user, credential);
-              
-              // 驗證通過後，才允許更新密碼
-              await updatePassword(user, pwdData.new);
-              
-              setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
-
-              setTimeout(() => {
-                  setShowPwdModal(false);
-                  setPwdData({ old: '', new: '', confirm: '' });
-                  setPwdMsg({ type: '', text: '' });
-              }, 2000);
-          } else {
-              setPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
-          }
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error("修改密碼失敗:", error);
-          }
-          
-          // ★ 處理常見的驗證錯誤
-          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-              setPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
-          } else if (error.code === 'auth/requires-recent-login') {
-              setPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
-          } else {
-              setPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
-          }
-      }
-     }
-  // 優先選班權限檢查
-  if (priorityConfig && !priorityConfig.isOpenToAll) {
-      const allowedIds = new Set();
-      if (priorityConfig.types.includes('accumulated_ot')) {
-          const sortedOT = [...staffData].map(s => ({id: s.staff_id, val: Number(s.accumulated_ot)||0})).sort((a,b)=>b.val-a.val);
-          sortedOT.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
-      }
-      if (priorityConfig.types.includes('night_shift_balance')) {
-          const sortedNight = [...staffData].map(s => ({id: s.staff_id, val: Number(s.night_shift_balance)||0})).sort((a,b)=>b.val-a.val);
-          sortedNight.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
-      }
-
-      if (!allowedIds.has(currentUser.id)) {
-          return (
-            <div style={{ padding: '2rem', maxWidth: '600px', margin: '4rem auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', textAlign: 'center' }}>
-                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔒</div>
-                <h2 style={{ color: '#2c3e50', fontWeight: 'bold' }}>班表選填暫未開放</h2>
-                <p style={{ color: '#7f8c8d', fontSize: '1.1rem', margin: '1.5rem 0' }}>目前為<strong>「優先選班時段」</strong>，僅開放符合以下條件的前 {priorityConfig.count} 位同仁優先選填：</p>
-                <div style={{textAlign:'left', background:'#f8f9fa', padding:'15px 30px', borderRadius:'10px', display:'inline-block'}}>
-                    {priorityConfig.types.includes('accumulated_ot') && <div style={{color:'#e67e22', fontWeight:'bold'}}>🔥 積借休時數 (OT) 較多者</div>}
-                    {priorityConfig.types.includes('night_shift_balance') && <div style={{color:'#8e44ad', fontWeight:'bold', marginTop:'5px'}}>🌙 夜班結餘較多者</div>}
-                </div>
-                <div style={{ marginTop:'20px', fontSize:'0.9rem', color:'#666' }}>
-                    您的數據：OT: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.accumulated_ot || 0}</strong> / Night: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.night_shift_balance || 0}</strong><br/>(未達優先門檻)
-                </div>
-                <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 30px', background: '#667eea', color: 'white', border: 'none', borderRadius: '50px', cursor: 'pointer' }}>重新整理</button>
-            </div>
-          );
-      }
-  }
-
+  
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedShiftType, setSelectedShiftType] = useState('ALL'); 
   const [selectedOption, setSelectedOption] = useState(null);      
@@ -502,19 +401,7 @@ const handlePasswordSubmit = async (e) => {
   const [previewSchedule, setPreviewSchedule] = useState({});      
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const getPrevMonthStreak = () => {
-    if (!currentUser || !currentUser.id) return 0;
-    if (!staffData || staffData.length === 0) return 0;
-    const staff = staffData.find(s => s.staff_id === currentUser.id);
-    if (!staff || !staff.prevMonthLeave) return 0;
-    const leaves = staff.prevMonthLeave; 
-    let streak = 0;
-    for (let i = 6; i >= 0; i--) { if (leaves[i] === true) break; streak++; }
-    return streak;
-  };
-
-  const prevStreak = getPrevMonthStreak();
-
+  // ★★★ 修正 2：useEffect 也必須置頂 ★★★
   useEffect(() => {
     if (!currentSchedule || Object.keys(currentSchedule).length === 0) { setAiSlots([]); return; }
     const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
@@ -553,6 +440,103 @@ const handlePasswordSubmit = async (e) => {
     });
     setAiSlots(formattedSlots);
   }, [currentSchedule, targetYear, targetMonth, staffData]);
+
+// 計算上個月底的「連續上班天數」，用來銜接本月 1 號的七休一防呆
+  const getPrevMonthStreak = () => {
+    if (!currentUser || !currentUser.id) return 0;
+    if (!staffData || staffData.length === 0) return 0;
+    
+    const staff = staffData.find(s => s.staff_id === currentUser.id);
+    if (!staff || !staff.prevMonthLeave) return 0;
+    
+    // prevMonthLeave 陣列紀錄上個月最後 7 天的「休假狀態」
+    // 💡 狀態對應：true = 有休假 (UI打勾)，false = 有上班 (UI未打勾)
+    const leaves = staff.prevMonthLeave; 
+    let streak = 0;
+    
+    // 從陣列尾端 (i=6，代表上個月最後一天) 往前倒推檢查
+    for (let i = 6; i >= 0; i--) { 
+      if (leaves[i] === true) {
+          break; // 遇到休假，代表連續上班的狀態被切斷了，停止計算
+      }
+      streak++;  // 遇到 false (代表那天有上班)，連續上班天數 +1
+    }
+    
+    return streak;
+  };
+  const prevStreak = getPrevMonthStreak();
+
+  const handlePasswordSubmit = async (e) => {
+      e.preventDefault();
+      if (pwdData.new !== pwdData.confirm) return setPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
+      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
+      if (!strongPasswordRegex.test(pwdData.new)) return setPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
+
+      try {
+          const auth = getAuth();
+          const user = auth.currentUser;
+          if (user) {
+              const credential = EmailAuthProvider.credential(user.email, pwdData.old);
+              await reauthenticateWithCredential(user, credential);
+              await updatePassword(user, pwdData.new);
+              setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
+              setTimeout(() => {
+                  setShowPwdModal(false);
+                  setPwdData({ old: '', new: '', confirm: '' });
+                  setPwdMsg({ type: '', text: '' });
+              }, 2000);
+          } else {
+              setPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
+          }
+      } catch (error) {
+          if (import.meta.env.DEV) console.error("修改密碼失敗:", error);
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+              setPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
+          } else if (error.code === 'auth/requires-recent-login') {
+              setPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
+          } else {
+              setPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
+          }
+      }
+  };
+
+  // ============================================================================
+  // ★★★ 修正 3：現在才開始放「條件 Return (防呆)」 ★★★
+  // ============================================================================
+
+  // 防呆 1: 基本未載入檢查
+  if (!currentUser) return <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>🔄 正在載入使用者資料...</div>;
+
+  // 防呆 2: 優先選班權限檢查
+  if (priorityConfig && !priorityConfig.isOpenToAll) {
+      const allowedIds = new Set();
+      if (priorityConfig.types.includes('accumulated_ot')) {
+          const sortedOT = [...staffData].map(s => ({id: s.staff_id, val: Number(s.accumulated_ot)||0})).sort((a,b)=>b.val-a.val);
+          sortedOT.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
+      }
+      if (priorityConfig.types.includes('night_shift_balance')) {
+          const sortedNight = [...staffData].map(s => ({id: s.staff_id, val: Number(s.night_shift_balance)||0})).sort((a,b)=>b.val-a.val);
+          sortedNight.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
+      }
+
+      if (!allowedIds.has(currentUser.id)) {
+          return (
+            <div style={{ padding: '2rem', maxWidth: '600px', margin: '4rem auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', textAlign: 'center' }}>
+                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔒</div>
+                <h2 style={{ color: '#2c3e50', fontWeight: 'bold' }}>班表選填暫未開放</h2>
+                <p style={{ color: '#7f8c8d', fontSize: '1.1rem', margin: '1.5rem 0' }}>目前為<strong>「優先選班時段」</strong>，僅開放符合以下條件的前 {priorityConfig.count} 位同仁優先選填：</p>
+                <div style={{textAlign:'left', background:'#f8f9fa', padding:'15px 30px', borderRadius:'10px', display:'inline-block'}}>
+                    {priorityConfig.types.includes('accumulated_ot') && <div style={{color:'#e67e22', fontWeight:'bold'}}>🔥 積借休時數 (OT) 較多者</div>}
+                    {priorityConfig.types.includes('night_shift_balance') && <div style={{color:'#8e44ad', fontWeight:'bold', marginTop:'5px'}}>🌙 夜班結餘較多者</div>}
+                </div>
+                <div style={{ marginTop:'20px', fontSize:'0.9rem', color:'#666' }}>
+                    您的數據：OT: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.accumulated_ot || 0}</strong> / Night: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.night_shift_balance || 0}</strong><br/>(未達優先門檻)
+                </div>
+                <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 30px', background: '#667eea', color: 'white', border: 'none', borderRadius: '50px', cursor: 'pointer' }}>重新整理</button>
+            </div>
+          );
+      }
+  }
 
   const checkCompliance = (pattern) => {
       let currentStreak = prevStreak;
@@ -882,25 +866,36 @@ const NurseSchedulingSystem = () => {
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); setIsCloudLoaded(false); };
   }, [selectedYear, selectedMonth, currentUser]);
 
-// ☁️ 雲端引擎 2：自動寫入 (使用抽象化 API)
+// ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制，避免天價帳單)
   useEffect(() => {
+    // 1. 防呆檢查：必須載入完成且是管理員
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
 
-    saveGlobalSettings({
-      shiftOptions: shiftOptions || [],
-      priorityConfig: priorityConfig || {},
-      publishedDate: publishedDate || { year: 2026, month: 2 }
-    });
+    // 2. 設定一個 2000 毫秒 (2秒) 的定時炸彈
+    const timeoutId = setTimeout(() => {
+        saveGlobalSettings({
+          shiftOptions: shiftOptions || [],
+          priorityConfig: priorityConfig || {},
+          publishedDate: publishedDate || { year: 2026, month: 2 }
+        });
 
-    saveGlobalStaff({
-      staffData: staffData || [],
-      healthStats: healthStats || []
-    });
+        saveGlobalStaff({
+          staffData: staffData || [],
+          healthStats: healthStats || []
+        });
 
-    saveMonthlySchedule(selectedYear, selectedMonth, {
-      schedule: schedule || {},
-      finalizedSchedule: finalizedSchedule || null
-    });
+        saveMonthlySchedule(selectedYear, selectedMonth, {
+          schedule: schedule || {},
+          finalizedSchedule: finalizedSchedule || null
+        });
+        
+        if (import.meta.env.DEV) {
+            console.log("💾 [Debounce] 已自動將最新狀態批次寫入 Firebase");
+        }
+    }, 2000); // 👈 靜止 2 秒後才執行寫入
+
+    // 3. 清除函數 (Cleanup)：如果在 2 秒內 state 又改變了，React 會先執行這裡，把舊的炸彈拆除！
+    return () => clearTimeout(timeoutId);
 
   }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
 
@@ -915,7 +910,6 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     }
   };
 
- const handleExportPreferences = () => {};
   const handleLogout = () => setCurrentUser(null);
 
   // ★★★ 核心修復：員工認領班表 (僅更新當月 Schedules) ★★★
@@ -1178,6 +1172,7 @@ const ManagerInterface = ({
           selectedYear={selectedYear} selectedMonth={selectedMonth}
           setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+
         />
       )}
       
@@ -1295,7 +1290,9 @@ const RequirementsPanel = ({
 const SchedulePanel = ({ 
     onSaveSchedule, schedule, setSchedule, staffData, violations, requirements, 
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
-    shiftOptions, setShiftOptions,setFinalizedSchedule // ★ 接收參數
+    shiftOptions, setShiftOptions,setFinalizedSchedule, // ★ 接收參數
+    // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
+    finalizedSchedule, setFinalizedSchedule
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
@@ -1758,14 +1755,24 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
     setIsDirty(true);
   };
 
+// ★★★ 修正 5：修復刪除員工後可能引發的工號衝突 (Auto-Increment Bug) ★★★
   const handleAddStaff = () => {
-    const newId = `N${String(localStaff.length + 1).padStart(3, '0')}`;
+    // 找出目前最大工號數字再 +1
+    const maxNum = localStaff.reduce((max, s) => {
+        const num = parseInt(s.staff_id.replace(/\D/g, '')) || 0;
+        return Math.max(max, num);
+    }, 0);
+    
+    // 生成新的不重複工號
+    const newId = `N${String(maxNum + 1).padStart(3, '0')}`;
+    
     const newStaff = {
       staff_id: newId, name: '新員工', level: 'N0', tenure_years: 0, is_leader: false,
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
-      prevMonthLeave: [false, false, false, false, false, false, false,]
+      prevMonthLeave: [false, false, false, false, false, false, false]
     };
+    
     setLocalStaff([...localStaff, newStaff]);
     setIsDirty(true);
   };
@@ -1785,7 +1792,6 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
 
       try {
           // 1. 取得管理員自己的 Token
-          const { getAuth } = await import('firebase/auth');
           const token = await auth.currentUser.getIdToken();
 
           // 2. 呼叫我們自己寫的 Vercel 後端 API
