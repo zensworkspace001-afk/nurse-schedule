@@ -1154,7 +1154,7 @@ const ManagerInterface = ({
       {activeTab === 'requirements' && (
         <RequirementsPanel
           requirements={requirements} setRequirements={setRequirements}
-          onGenerateSchedule={onGenerateSchedule} onExportPreferences={onExportPreferences}
+          onGenerateSchedule={onGenerateSchedule} 
           onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
           selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
         />
