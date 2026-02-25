@@ -2374,7 +2374,42 @@ const ScheduleReviewPanel = ({
       setShowSettlement(false);
   };
 
-  const handleExportExcel = () => { /* 保持不變 */ };
+const handleExportExcel = () => {
+    if (!schedule || Object.keys(schedule).length === 0) return alert("無資料可匯出");
+    
+    // 加上 \uFEFF 是為了解決 Excel 打開 CSV 時的中文亂碼問題
+    let csv = "\uFEFF工號,姓名,";
+    for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
+    csv += "健康度評分\n"; // 多加一個健康度欄位讓報表更完整
+
+    Object.keys(schedule).sort((a, b) => {
+        const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
+        if (aIsVirtual && !bIsVirtual) return 1; 
+        if (!aIsVirtual && bIsVirtual) return -1;
+        return a.localeCompare(b);
+    }).forEach(rowId => {
+        const realStaff = staffData.find(s => s.staff_id === rowId);
+        const name = realStaff ? realStaff.name : "待認領";
+        
+        // 計算該名員工的健康度
+        const { score } = calculateHealthScore(schedule[rowId]);
+        
+        let row = `${rowId},${name},`;
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = schedule[rowId]?.[d];
+            const type = (typeof cell === 'object' ? cell.type : cell) || '';
+            row += `${type},`;
+        }
+        row += `${score}`; // 填入健康度
+        csv += row + "\n";
+    });
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `${selectedYear}年${selectedMonth}月_審核發布班表.csv`;
+    link.click();
+  };
   const currentHourlyWage = Math.round((Number(baseSalary) || 0) / 240);
 
   return (
