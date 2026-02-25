@@ -28,3 +28,5 @@ dist/
 .env
 .env.local
 .env.production
+1.py
+backup.js
