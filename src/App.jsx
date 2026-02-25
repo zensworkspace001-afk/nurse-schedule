@@ -1292,7 +1292,7 @@ const SchedulePanel = ({
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions,setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
-    finalizedSchedule, setFinalizedSchedule
+    finalizedSchedule
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
