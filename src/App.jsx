@@ -803,8 +803,15 @@ const NurseSchedulingSystem = () => {
   const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
   const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
 // ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
-  const [historyMonth, setHistoryMonth] = useState(() => selectedMonth === 1 ? 12 : selectedMonth - 1);
-  const [historyYear, setHistoryYear] = useState(() => selectedMonth === 1 ? selectedYear - 1 : selectedYear);
+  const [historyMonth, setHistoryMonth] = useState(() => {
+  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
+  return m === 1 ? 12 : m - 1;
+});
+const [historyYear, setHistoryYear] = useState(() => {
+  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
+  const y = Number(localStorage.getItem('selectedYear'))  || new Date().getFullYear();
+  return m === 1 ? y - 1 : y;
+});
   const [historySchedule, setHistorySchedule] = useState({});
   
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
@@ -2207,6 +2214,8 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
 // ============================================================================
 // ✅ 結算與歷史大帳本面板 (ScheduleReviewPanel)
 // ============================================================================
+const historyYear  = historyYearRaw  || (上個月的年份);
+const historyMonth = historyMonthRaw || (上個月的月份);
 const ScheduleReviewPanel = ({ 
   staffData, setStaffData, 
   shiftOptions, setShiftOptions, 
@@ -2214,9 +2223,12 @@ const ScheduleReviewPanel = ({
   onUpdateHealthStats,
   // ★ 接收專屬的歷史狀態
   historySchedule, setHistorySchedule,
-  historyYear, historyMonth, setHistoryYear, setHistoryMonth
+  historyYear, historyMonth, setHistoryYear, setHistoryMonth,
+    historySchedule = {}, 
 }) => {
-  
+    // ★ 加這兩行防呆，避免 undefined 傳進來導致 NaN crash
+  const safeYear  = historyYear  || new Date().getFullYear();
+  const safeMonth = historyMonth || (new Date().getMonth() === 0 ? 12 : new Date().getMonth());
   const daysInMonth = new Date(historyYear, historyMonth, 0).getDate();
   const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
