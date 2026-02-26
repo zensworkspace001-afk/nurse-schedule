@@ -2214,8 +2214,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
 // ============================================================================
 // ✅ 結算與歷史大帳本面板 (ScheduleReviewPanel)
 // ============================================================================
-const historyYear  = historyYearRaw  || (上個月的年份);
-const historyMonth = historyMonthRaw || (上個月的月份);
 const ScheduleReviewPanel = ({ 
   staffData, setStaffData, 
   shiftOptions, setShiftOptions, 
