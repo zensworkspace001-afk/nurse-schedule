@@ -902,9 +902,9 @@ const [historyYear, setHistoryYear] = useState(() => {
         }
     });
 
-    // ★ 記得在 return 清除時也要把 unsubHistory 加上去
+// ★ 記得在 return 清除時也要把 unsubHistory 加上去
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); setIsCloudLoaded(false); };
-  }, [selectedYear, selectedMonth, currentUser]);
+  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser]); // 👈 補上這兩個
 
 // ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制，避免天價帳單)
   useEffect(() => {
