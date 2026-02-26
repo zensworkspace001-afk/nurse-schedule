@@ -1197,6 +1197,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
             onPushToHistory={handlePushToHistory} // 👈 補上這行
             accumulatedReports={accumulatedReports} // 👈 補上這行
+            setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
           />
         ) : (
           <StaffDashboard
@@ -1227,7 +1228,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory // 👈 補上這行
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports // 👈 補上這兩個變數！ // 👈 補上這行
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
