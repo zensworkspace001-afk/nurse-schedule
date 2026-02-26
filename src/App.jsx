@@ -996,15 +996,33 @@ const handleLogout = async () => {
     }
   }
 
-  const handleSaveAndPublish = () => {
+const handleSaveAndPublish = async () => {
     if (!schedule || Object.keys(schedule).length === 0) {
       alert("❌ 目前沒有班表內容，無法儲存！");
       return;
     }
-    setFinalizedSchedule(JSON.parse(JSON.stringify(schedule)));
+    
+    const newFinalized = JSON.parse(JSON.stringify(schedule));
+    setFinalizedSchedule(newFinalized);
+    
     const newPubDate = { year: selectedYear, month: selectedMonth };
     setPublishedDate(newPubDate);
     localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
+
+    // ★★★ 強制立即存檔到雲端，不等待 2 秒防抖機制 ★★★
+    try {
+        await saveGlobalSettings({
+            shiftOptions: shiftOptions || [],
+            priorityConfig: priorityConfig || {},
+            publishedDate: newPubDate
+        });
+        await saveMonthlySchedule(selectedYear, selectedMonth, {
+            schedule: schedule || {},
+            finalizedSchedule: newFinalized
+        });
+    } catch(e) {
+        console.error("發布至雲端失敗:", e);
+    }
     
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
