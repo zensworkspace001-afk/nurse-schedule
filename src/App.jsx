@@ -539,7 +539,8 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       }
   }
 
-  const checkCompliance = (pattern) => {
+const checkCompliance = (pattern) => {
+      // 1. 檢查七休一
       let currentStreak = prevStreak;
       for (let i = 0; i < pattern.length; i++) {
           const shift = pattern[i];
@@ -547,9 +548,18 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
           else currentStreak = 0;
           if (currentStreak > 6) return { valid: false, reason: `違反七休一 (第${i+1}天連上${currentStreak}天)` };
       }
+
+      // 2. 檢查輪班間隔 (必須包在這個函式裡面！)
+      const isForbiddenSeq = (a, b) => (a==='E'&&b==='D') || (a==='N'&&b==='D') || (a==='N'&&b==='E');
+      for (let i = 0; i < pattern.length - 1; i++) {
+          if (isForbiddenSeq(pattern[i], pattern[i+1])) {
+              return { valid: false, reason: `第${i+1}天 ${pattern[i]} 接 ${pattern[i+1]} 輪班間隔不足` };
+          }
+      }
+
+      // 如果都沒違規，才回傳 true
       return { valid: true };
   };
-
   const isForbiddenSeq = (a, b) => (a==='E'&&b==='D') || (a==='N'&&b==='D') || (a==='N'&&b==='E');
 for (let i = 0; i < pattern.length - 1; i++) {
     if (isForbiddenSeq(pattern[i], pattern[i+1])) {
