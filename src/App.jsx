@@ -1163,7 +1163,7 @@ const ManagerInterface = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
       <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        {['requirements', 'staff', 'schedule', 'review', 'statistics', 'simulation'].map(tab => (
+        {['requirements', 'staff', 'schedule', 'review', 'statistics', 'simulation','publish'].map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)} 
