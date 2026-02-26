@@ -2435,6 +2435,13 @@ const ScheduleReviewPanel = ({
     link.click();
   };
 
+  // ★★★ 新增：針對「歷史紀錄區」專用的法遵與壓力風險計算 ★★★
+  const historyViolations = historySchedule && Object.keys(historySchedule).length > 0 ? 
+      [...checkLaborLawCompliance(historySchedule, staffData, [], historyYear, historyMonth), ...checkSkillMixSafety(historySchedule, staffData, historyYear, historyMonth)] : [];
+      
+  const historyRisks = historySchedule && Object.keys(historySchedule).length > 0 ? 
+      calculateScheduleRisks(historySchedule, staffData, publicHolidays, historyYear, historyMonth) : [];
+
   return (
     <div style={{ display: 'flex', gap: '20px', height: '80vh', flexDirection:'column', position: 'relative' }}>
       
@@ -2538,8 +2545,10 @@ const ScheduleReviewPanel = ({
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
-          <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+   <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
+          
+          {/* 左側：班表主視窗 (改成 flex: 3 以預留空間給右側) */}
+          <div style={{ flex: 3, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
               {historySchedule && Object.keys(historySchedule).length > 0 ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -2598,6 +2607,33 @@ const ScheduleReviewPanel = ({
               ) : <div style={{padding:'40px', textAlign:'center', color:'#888'}}>歷史資料庫尚無該月班表資料</div>}
             </div>
           </div>
+
+          {/* ★★★ 新增右側：法遵與壓力風險監控面板 ★★★ */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
+             <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b' }}>⚖️ 法遵檢查結果</h2>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                   {historyViolations.length === 0 ? <div style={{ color: '#27ae60', textAlign:'center', marginTop:'20px', fontWeight:'bold' }}>✅ 無勞基法違規</div> : historyViolations.map((v, i) => (
+                         <div key={i} style={{ padding: '8px', background: '#fff5f5', marginBottom: '8px', borderRadius: '8px', borderLeft: '3px solid #e74c3c', fontSize: '0.85rem' }}>
+                           <div style={{fontWeight:'bold', color:'#c0392b'}}>{v.staffName}</div>
+                           <div>Day {v.day}: {v.message}</div>
+                         </div>
+                   ))}
+                </div>
+             </div>
+             <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #f39c12', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#d35400' }}>⚠️ 壓力風險監控</h2>
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                   {(!historyRisks || historyRisks.length === 0) ? <div style={{ color: '#f39c12', textAlign:'center', marginTop:'20px', fontWeight:'bold' }}>✨ 團隊負荷平均</div> : historyRisks.map((risk, i) => (
+                         <div key={i} style={{ padding: '8px', background: '#fdf8e3', marginBottom: '8px', borderRadius: '8px', fontSize:'0.85rem' }}>
+                           <div style={{fontWeight:'bold', color:'#8a6d3b'}}>{risk.staffName}</div>
+                           {risk.tags.map((tag, j) => (<div key={j} style={{color:'#666'}}>- {tag.label}</div>))}
+                         </div>
+                   ))}
+                </div>
+             </div>
+          </div>
+
       </div>
     </div>
   );
