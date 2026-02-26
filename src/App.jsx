@@ -792,7 +792,11 @@ const NurseSchedulingSystem = () => {
   const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
   const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
   const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
-
+// ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
+  const [historyMonth, setHistoryMonth] = useState(() => selectedMonth === 1 ? 12 : selectedMonth - 1);
+  const [historyYear, setHistoryYear] = useState(() => selectedMonth === 1 ? selectedYear - 1 : selectedYear);
+  const [historySchedule, setHistorySchedule] = useState({});
+  
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
 
@@ -877,7 +881,17 @@ const NurseSchedulingSystem = () => {
       isScheduleLoaded = true; checkAllLoaded();
     });
 
-    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); setIsCloudLoaded(false); };
+    // ★★★ 新增：獨立訂閱歷史結算區的月份 ★★★
+    const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
+        if (data && data.finalizedSchedule) {
+            setHistorySchedule(data.finalizedSchedule);
+        } else {
+            setHistorySchedule({});
+        }
+    });
+
+    // ★ 記得在 return 清除時也要把 unsubHistory 加上去
+    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); setIsCloudLoaded(false); };
   }, [selectedYear, selectedMonth, currentUser]);
 
 // ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制，避免天價帳單)
@@ -1108,6 +1122,9 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             setFinalizedSchedule={setFinalizedSchedule} // <--- ★ 補上這行
             healthStats={healthStats}                     // ★★★ 補上這行
             onUpdateHealthStats={handleUpdateHealthStats} // ★★★ 補上這行
+            historyYear={historyYear} historyMonth={historyMonth}
+            setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
+            historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
           />
         ) : (
           <StaffDashboard
@@ -1138,7 +1155,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule,healthStats, onUpdateHealthStats
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
@@ -1161,7 +1178,8 @@ const ManagerInterface = ({
             {tab === 'requirements' && '⚙️ 人力需求'}
             {tab === 'staff' && '👥 員工管理'}
             {tab === 'schedule' && '🛠️ 排班工作桌'} 
-            {tab === 'review' && '✅ 審核與發布'}
+            {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
+            {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
             {tab === 'statistics' && '📊 統計報表'}
             {tab === 'simulation' && '🔮 制度模擬'}
           </button>
@@ -1194,19 +1212,31 @@ const ManagerInterface = ({
         />
       )}
       
-      {activeTab === 'review' && (
-        <ScheduleReviewPanel 
+{/* ★ 新增：階段二 (發布與認領區) */}
+      {activeTab === 'publish' && (
+        <PublishPanel 
            staffData={staffData}
            violations={violations} scheduleRisks={scheduleRisks} 
            selectedYear={selectedYear} selectedMonth={selectedMonth}
-           onSaveSchedule={onSaveSchedule} shiftOptions={shiftOptions} 
-           setShiftOptions={setShiftOptions} publicHolidays={publicHolidays}
-           schedule={finalizedSchedule || schedule} 
-           setSchedule={setFinalizedSchedule}
-           setDraftSchedule={setSchedule}              // ★ 傳遞草稿區修改權限給審核頁
-           setFinalizedSchedule={setFinalizedSchedule} // ★ 傳遞發布區修改權限給審核頁
-           onUpdateHealthStats={onUpdateHealthStats} // ★ 傳遞觸發器
-           setStaffData={setStaffData} // ★★★ 核心新增：把員工資料的寫入權限傳給它
+           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+           publicHolidays={publicHolidays}
+           finalizedSchedule={finalizedSchedule} 
+           setFinalizedSchedule={setFinalizedSchedule}
+        />
+      )}
+
+      {/* ★ 修改：階段三 (結算與歷史區)，改吃 history 狀態 */}
+      {activeTab === 'review' && (
+        <ScheduleReviewPanel 
+           staffData={staffData} setStaffData={setStaffData}
+           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+           publicHolidays={publicHolidays}
+           onUpdateHealthStats={onUpdateHealthStats}
+           
+           // 改吃專屬的歷史狀態
+           historyYear={historyYear} historyMonth={historyMonth}
+           setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
+           historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
         />
       )}
       
@@ -2165,20 +2195,19 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   );
 };
 // ============================================================================
-// 班表審核與發布面板 - 已加入「科學化班表健康度評分」與「差額帳本結算引擎」
+// ✅ 結算與歷史大帳本面板 (ScheduleReviewPanel)
 // ============================================================================
 const ScheduleReviewPanel = ({ 
-  schedule, setSchedule, 
-  staffData, setStaffData, // ★ 接收寫入權限
-  violations, 
-  selectedYear, selectedMonth, onSaveSchedule,
-  shiftOptions, setShiftOptions, scheduleRisks,
+  staffData, setStaffData, 
+  shiftOptions, setShiftOptions, 
   publicHolidays = [],
-  setDraftSchedule, setFinalizedSchedule,
-  onUpdateHealthStats 
+  onUpdateHealthStats,
+  // ★ 接收專屬的歷史狀態
+  historySchedule, setHistorySchedule,
+  historyYear, historyMonth, setHistoryYear, setHistoryMonth
 }) => {
   
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+  const daysInMonth = new Date(historyYear, historyMonth, 0).getDate();
   const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
   const [showAddOption, setShowAddOption] = useState(false);
@@ -2192,7 +2221,7 @@ const ScheduleReviewPanel = ({
 
   useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
 
-  // -- 健康度評分引擎 (保持不變) --
+  // -- 健康度評分引擎 --
   const calculateHealthScore = (staffSchedule) => {
       let score = 100;
       const deductions = [];
@@ -2234,7 +2263,7 @@ const ScheduleReviewPanel = ({
       }
       let hasFullWeekendOff = false;
       for (let d = 1; d <= daysInMonth - 1; d++) {
-          const date = new Date(selectedYear, selectedMonth - 1, d);
+          const date = new Date(historyYear, historyMonth - 1, d);
           if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } }
       }
       if (!hasFullWeekendOff) { score -= 5; deductions.push(`[-5] 週末零休假`); }
@@ -2244,9 +2273,9 @@ const ScheduleReviewPanel = ({
 
   const handleOpenSettlement = () => {
       const scores = [];
-      Object.keys(schedule).forEach(rowId => {
+      Object.keys(historySchedule).forEach(rowId => {
           if (!rowId.startsWith('D')) {
-             const { score } = calculateHealthScore(schedule[rowId]);
+             const { score } = calculateHealthScore(historySchedule[rowId]);
              scores.push(score);
           }
       });
@@ -2257,23 +2286,8 @@ const ScheduleReviewPanel = ({
           const mid = Math.floor(scores.length / 2);
           median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
       }
-      if (onUpdateHealthStats) onUpdateHealthStats(selectedYear, selectedMonth, avg, median);
+      if (onUpdateHealthStats) onUpdateHealthStats(historyYear, historyMonth, avg, median);
       setShowSettlement(true);
-  };
-
-  const handleReset = () => {
-    if (!schedule || Object.keys(schedule).length === 0) return alert("目前沒有班表可重置。");
-    if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？")) {
-      const newSchedule = {}; let index = 1;
-      Object.keys(schedule).sort((a, b) => {
-          const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
-          if (aIsVirtual && !bIsVirtual) return 1; if (!aIsVirtual && bIsVirtual) return -1;
-          return a.localeCompare(b);
-      }).forEach(key => { newSchedule[`D${String(index).padStart(3, '0')}`] = schedule[key]; index++; });
-      if (setDraftSchedule) setDraftSchedule(newSchedule);
-      if (setFinalizedSchedule) setFinalizedSchedule(null); 
-      alert("✅ 系統已重置！");
-    }
   };
 
   const handleAddOption = () => {
@@ -2282,53 +2296,44 @@ const ScheduleReviewPanel = ({
     setShiftOptions([...shiftOptions, { ...newOption, time: '' }]);
     setNewOption({ code: '', name: '', color: '#cccccc' });
   };
-  const handleDeleteOption = (code) => { if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code)); };
+  
+  const handleDeleteOption = (code) => { 
+      if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code)); 
+  };
+  
   const handleCellChange = (staffId, day, newValue) => {
-    const newSchedule = JSON.parse(JSON.stringify(schedule));
+    const newSchedule = JSON.parse(JSON.stringify(historySchedule));
     if (!newSchedule[staffId]) newSchedule[staffId] = {};
     newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
-    setSchedule(newSchedule);
-  };
-  const handleStaffChange = (oldRowId, newStaffId) => {
-      if (oldRowId === newStaffId) return; 
-      const newSchedule = JSON.parse(JSON.stringify(schedule));
-      if (newStaffId === 'UNASSIGN') {
-          let vIndex = 1, newVirtualId = '';
-          while(true) { newVirtualId = `D${String(vIndex).padStart(3, '0')}`; if (!newSchedule[newVirtualId]) break; vIndex++; }
-          newSchedule[newVirtualId] = newSchedule[oldRowId]; delete newSchedule[oldRowId];
-          setSchedule(newSchedule); return;
-      }
-      if (newSchedule[newStaffId]) return alert(`⚠️ 此員工已經在班表中！`);
-      newSchedule[newStaffId] = newSchedule[oldRowId]; delete newSchedule[oldRowId];
-      setSchedule(newSchedule);
+    setHistorySchedule(newSchedule);
   };
 
-  // --- 抓取結算數據 (加入夜班次數) ---
+  // --- 抓取結算數據 ---
   const getSettlementData = () => {
       const data = [];
       const currentBaseSalary = Number(baseSalary) || 0; 
       const dailyWage = Math.round(currentBaseSalary / 30);
       const hourlyWage = Math.round(dailyWage / 8); 
 
-      Object.keys(schedule).forEach(rowId => {
+      Object.keys(historySchedule || {}).forEach(rowId => {
           if (rowId.startsWith('D')) return; 
           const staff = staffData.find(s => s.staff_id === rowId);
           const name = (staff && staff.name && staff.name.trim() !== '') ? staff.name : '未知姓名'; 
           
           let workDays = 0, nationalHolidayWorkDays = 0, explicitOtDays = 0; 
           let personalLeaveDays = 0, sickLeaveDays = 0;     
-          let nightShiftsCount = 0; // ★ 新增：計算夜班
+          let nightShiftsCount = 0; 
 
           for (let d = 1; d <= daysInMonth; d++) {
-              const cell = schedule[rowId]?.[d];
+              const cell = historySchedule[rowId]?.[d];
               const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
-              const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+              const dateStr = `${historyYear}${String(historyMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
               const isNationalHoliday = publicHolidays.includes(dateStr);
 
               if (['D', 'E', 'N', '支援'].includes(type)) {
                   workDays++;
                   if (isNationalHoliday) nationalHolidayWorkDays++;
-                  if (type === 'N') nightShiftsCount++; // ★ 累加夜班
+                  if (type === 'N') nightShiftsCount++;
               }
               else if (type.includes('(OT)')) explicitOtDays++;
               else if (type === '事假') personalLeaveDays++;
@@ -2349,7 +2354,7 @@ const ScheduleReviewPanel = ({
           data.push({
               staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
               workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
-              nightShiftsCount, // ★ 回傳夜班數
+              nightShiftsCount, 
               restDayOtPay, nationalHolidayWorkDays, nationalHolidayPay, totalOtPay, 
               personalLeaveDays, sickLeaveDays, deduction, totalSalary: finalSalary
           });
@@ -2357,34 +2362,30 @@ const ScheduleReviewPanel = ({
       return data;
   };
 
-  // ★★★ 核心新增：差額帳本寫入引擎 (Delta Update Ledger) ★★★
+  // ★★★ 核心新增：差額帳本寫入引擎 ★★★
   const handleConfirmSettlement = () => {
-      if (!window.confirm(`⚠️ 確定要將 ${selectedYear}年${selectedMonth}月 的數據正式寫入員工帳戶嗎？\n\n系統將自動派發「積假 (OT)」與「夜班結餘」，\n並具備防呆機制，若本月重複結算不會導致無限累加，也不會覆蓋您在員工頁面手動微調的基準值。`)) return;
+      if (!window.confirm(`⚠️ 確定要將 ${historyYear}年${historyMonth}月 的數據正式寫入員工帳戶嗎？\n\n系統將自動派發「積假 (OT)」與「夜班結餘」，\n並具備防呆機制，若本月重複結算不會導致無限累加，也不會覆蓋您在員工頁面手動微調的基準值。`)) return;
 
       const currentSettlement = getSettlementData();
-      const monthKey = `${selectedYear}-${String(selectedMonth).padStart(2, '0')}`; // 例如: "2026-02"
+      const monthKey = `${historyYear}-${String(historyMonth).padStart(2, '0')}`; 
 
       if (setStaffData) {
           setStaffData(prevData => {
               return prevData.map(staff => {
                   const sData = currentSettlement.find(s => s.staff_id === staff.staff_id);
-                  if (!sData) return staff; // 這個月沒上班的人就跳過
+                  if (!sData) return staff; 
 
-                  // 1. 讀取該員工的歷史帳本
                   const newHistory = { ...(staff.settlement_history || {}) };
                   const oldRecord = newHistory[monthKey] || { ot: 0, night: 0 };
 
-                  // 2. 計算本次結算與「上次結算」的差額 (Delta)
                   const otDiff = sData.otDays - oldRecord.ot;
                   const nightDiff = sData.nightShiftsCount - oldRecord.night;
 
-                  // 3. 將最新的本月數據寫入帳本
                   newHistory[monthKey] = {
                       ot: sData.otDays,
                       night: sData.nightShiftsCount
                   };
 
-                  // 4. 疊加差額到總餘額
                   return {
                       ...staff,
                       settlement_history: newHistory,
@@ -2395,19 +2396,18 @@ const ScheduleReviewPanel = ({
           });
       }
 
-      alert(`✅ ${selectedYear}年${selectedMonth}月 結算完成！\n已成功將 ${currentSettlement.length} 位員工的 OT 與夜班數派發至帳戶餘額。`);
+      alert(`✅ ${historyYear}年${historyMonth}月 結算完成！\n已成功將 ${currentSettlement.length} 位員工的 OT 與夜班數派發至帳戶餘額。`);
       setShowSettlement(false);
   };
 
-const handleExportExcel = () => {
-    if (!schedule || Object.keys(schedule).length === 0) return alert("無資料可匯出");
+  const handleExportExcel = () => {
+    if (!historySchedule || Object.keys(historySchedule).length === 0) return alert("無資料可匯出");
     
-    // 加上 \uFEFF 是為了解決 Excel 打開 CSV 時的中文亂碼問題
     let csv = "\uFEFF工號,姓名,";
     for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
-    csv += "健康度評分\n"; // 多加一個健康度欄位讓報表更完整
+    csv += "健康度評分\n"; 
 
-    Object.keys(schedule).sort((a, b) => {
+    Object.keys(historySchedule).sort((a, b) => {
         const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
         if (aIsVirtual && !bIsVirtual) return 1; 
         if (!aIsVirtual && bIsVirtual) return -1;
@@ -2416,38 +2416,45 @@ const handleExportExcel = () => {
         const realStaff = staffData.find(s => s.staff_id === rowId);
         const name = realStaff ? realStaff.name : "待認領";
         
-        // 計算該名員工的健康度
-        const { score } = calculateHealthScore(schedule[rowId]);
+        const { score } = calculateHealthScore(historySchedule[rowId]);
         
         let row = `${rowId},${name},`;
         for (let d = 1; d <= daysInMonth; d++) {
-            const cell = schedule[rowId]?.[d];
+            const cell = historySchedule[rowId]?.[d];
             const type = (typeof cell === 'object' ? cell.type : cell) || '';
             row += `${type},`;
         }
-        row += `${score}`; // 填入健康度
+        row += `${score}`; 
         csv += row + "\n";
     });
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${selectedYear}年${selectedMonth}月_審核發布班表.csv`;
+    link.download = `${historyYear}年${historyMonth}月_結算歷史班表.csv`;
     link.click();
   };
-  const currentHourlyWage = Math.round((Number(baseSalary) || 0) / 240);
 
   return (
     <div style={{ display: 'flex', gap: '20px', height: '80vh', flexDirection:'column', position: 'relative' }}>
       
       <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
-               <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#2c3e50' }}>📋 班表審核與微調</h2>
-               <span style={{background:'#e3f2fd', padding:'5px 10px', borderRadius:'8px', color:'#1565c0', fontWeight:'bold'}}>{selectedYear}年 {selectedMonth}月</span>
+               <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#2c3e50' }}>✅ 結算與歷史大帳本</h2>
+               
+               {/* ★ 獨立的歷史月份選擇器 */}
+               <div style={{ display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '5px 10px', borderRadius: '8px', border:'1px solid #ddd' }}>
+                   <span style={{marginRight:'5px', color:'#555', fontSize:'0.9rem'}}>檢視歷史:</span>
+                   <input type="number" value={historyYear} onChange={(e) => setHistoryYear(Number(e.target.value))} style={{ width: '60px', padding: '5px', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center' }} />
+                   <span style={{margin:'0 5px'}}>年</span>
+                   <select value={historyMonth} onChange={(e) => setHistoryMonth(Number(e.target.value))} style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}>
+                      {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}</option>)}
+                   </select>
+                   <span style={{marginLeft:'5px'}}>月</span>
+               </div>
            </div>
            <div style={{ display:'flex', gap:'10px' }}>
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
-              <button onClick={handleReset} style={{ padding: '0.5rem 1rem', background: '#f39c12', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🔄 拔除名字</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
            </div>
@@ -2457,14 +2464,14 @@ const handleExportExcel = () => {
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
               <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '95%', maxWidth: '1100px', maxHeight: '85vh', overflowY: 'auto', position: 'relative' }}>
                   <button onClick={() => setShowSettlement(false)} style={{ position: 'absolute', top: '15px', right: '20px', background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'black' }}>✖</button>
-                  <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>💰 薪資與加班費結算預覽 ({selectedYear}年{selectedMonth}月)</h2>
+                  <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50', borderBottom: '2px solid #eee', paddingBottom: '10px' }}>💰 薪資與加班費結算預覽 ({historyYear}年{historyMonth}月)</h2>
                   
                   <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', fontSize: '0.9rem', marginTop: '15px' }}>
                       <thead style={{ background: '#34495e', color: 'white' }}>
                           <tr>
                               <th style={{ padding: '10px' }}>員工姓名</th>
                               <th style={{ padding: '10px' }}>上班/國定</th>
-                              <th style={{ padding: '10px', background: '#8e44ad' }}>夜班總數</th> {/* ★ 新增欄位 */}
+                              <th style={{ padding: '10px', background: '#8e44ad' }}>夜班總數</th> 
                               <th style={{ padding: '10px', background: '#e74c3c' }}>加班費 (積假)</th>
                               <th style={{ padding: '10px', background: '#95a5a6' }}>請假 (事/病)</th>
                               <th style={{ padding: '10px', background: '#7f8c8d' }}>扣薪</th>
@@ -2479,7 +2486,6 @@ const handleExportExcel = () => {
                                       <div>總工時: {row.workDays} 天</div>
                                       {row.nationalHolidayWorkDays > 0 && <div style={{fontSize:'0.8rem', color:'#e67e22'}}>含國定: {row.nationalHolidayWorkDays}天</div>}
                                   </td>
-                                  {/* ★ 顯示夜班數 */}
                                   <td style={{ padding: '10px', fontWeight: 'bold', color: '#8e44ad', fontSize: '1.2rem' }}>
                                       {row.nightShiftsCount}
                                   </td>
@@ -2500,7 +2506,6 @@ const handleExportExcel = () => {
                       </tbody>
                   </table>
 
-                  {/* ★★★ 寫入帳本的控制區 ★★★ */}
                   <div style={{ marginTop: '20px', textAlign: 'center', background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px dashed #ccc' }}>
                       <div style={{ marginBottom: '10px', fontSize: '0.9rem', color: '#555' }}>確認預覽無誤後，可點擊下方按鈕將數據派發至每位員工的「積假與夜班餘額」中。</div>
                       <button onClick={handleConfirmSettlement} style={{ padding: '12px 30px', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '1.1rem', fontWeight: 'bold', boxShadow: '0 4px 6px rgba(39, 174, 96, 0.3)' }}>
@@ -2513,7 +2518,6 @@ const handleExportExcel = () => {
           </div>
       )}
 
-      {/* 以下原有的 AddOption 與 Table 保持不變... */}
       {showAddOption && (
         <div style={{ padding: '1rem', background: 'white', borderRadius: '16px', border:'1px solid #ddd' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
@@ -2535,19 +2539,19 @@ const handleExportExcel = () => {
       )}
 
       <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
-          <div style={{ flex: 3, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+          <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
             <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
-              {schedule ? (
+              {historySchedule && Object.keys(historySchedule).length > 0 ? (
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
                         <tr style={{ background: '#34495e', color: 'white' }}>
                             <th style={{ padding: '8px', minWidth: '130px', position: 'sticky', left: 0, background: '#34495e', zIndex: 11 }}>員工指派</th>
                             <th style={{ padding: '8px', minWidth: '50px', background: '#2c3e50', zIndex: 10, borderRight: '2px solid #555' }}>健康度</th>
                             {daysArray.map(d => {
-                                const dayOfWeek = new Date(selectedYear, selectedMonth - 1, d).getDay();
+                                const dayOfWeek = new Date(historyYear, historyMonth - 1, d).getDay();
                                 const dayStrs = ['日', '一', '二', '三', '四', '五', '六'];
                                 const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-                                const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+                                const dateStr = `${historyYear}${String(historyMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
                                 const isNationalHoliday = publicHolidays.includes(dateStr);
                                 return (
                                     <th key={d} style={{ padding:'4px', minWidth:'35px', color: isNationalHoliday ? '#ff7675' : (isWeekend ? '#ffcccc' : 'white'), textAlign: 'center' }}>
@@ -2559,31 +2563,23 @@ const handleExportExcel = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        {Object.keys(schedule).sort((a, b) => {
+                        {Object.keys(historySchedule).sort((a, b) => {
                             const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
                             if (aIsVirtual && !bIsVirtual) return 1; if (!aIsVirtual && bIsVirtual) return -1;
                             return a.localeCompare(b);
                         }).map(rowId => {
                             const isVirtual = rowId.startsWith('D');
-                            const { score, deductions } = calculateHealthScore(schedule[rowId]);
+                            const { score, deductions } = calculateHealthScore(historySchedule[rowId]);
                             const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
 
                             return (
                                 <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
                                     <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: isVirtual ? '#f9f9f9' : 'white', zIndex: 5 }}>
-                                        <select value={rowId} onChange={(e) => handleStaffChange(rowId, e.target.value)} style={{ width: '100%', padding: '6px 4px', borderRadius: '6px', border: '1px solid #ccc', background: isVirtual ? '#f8f9fa' : '#e3f2fd', color: isVirtual ? '#888' : '#1565c0', fontWeight: 'bold', cursor: 'pointer', outline: 'none' }}>
-                                            {isVirtual && <option value={rowId}>🎲 待認領 ({rowId})</option>}
-                                            {!isVirtual && <option value="UNASSIGN">🔄 退回待認領...</option>}
-                                            <optgroup label="護理人員名單">
-                                                {staffData.filter(s => s.staff_id === rowId || !schedule[s.staff_id]).map(s => (
-                                                    <option key={s.staff_id} value={s.staff_id} style={{ background: 'white', color: 'black' }}>{s.name} ({s.staff_id})</option>
-                                                ))}
-                                            </optgroup>
-                                        </select>
+                                       <div style={{fontWeight:'bold', color: isVirtual ? '#888' : '#2c3e50'}}>{isVirtual ? '🎲 待認領' : (staffData.find(s=>s.staff_id===rowId)?.name || rowId)}</div>
                                     </td>
                                     <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold', color: scoreColor, borderRight: '2px solid #ddd', cursor: 'help', background: isVirtual ? '#fafafa' : 'white', fontSize: '1.1rem' }} title={deductions.length > 0 ? `扣分明細：\n${deductions.join('\n')}` : '✨ 完美班表！無身心損耗'}>{score}</td>
                                     {daysArray.map(d => {
-                                        const cellData = schedule[rowId]?.[d];
+                                        const cellData = historySchedule[rowId]?.[d];
                                         const type = (typeof cellData === 'object') ? cellData.type : (cellData || '');
                                         const optionInfo = shiftOptions.find(o => o.code === type) || { color: '#fff' };
                                         return (
@@ -2599,36 +2595,8 @@ const handleExportExcel = () => {
                         })}
                     </tbody>
                 </table>
-              ) : <div style={{padding:'20px', textAlign:'center', color:'#888'}}>尚無班表資料</div>}
+              ) : <div style={{padding:'40px', textAlign:'center', color:'#888'}}>歷史資料庫尚無該月班表資料</div>}
             </div>
-          </div>
-
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
-             <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b', display:'flex', alignItems:'center', gap:'10px' }}>⚖️ 法遵檢查結果<span style={{ fontSize:'0.9rem', background:'#e74c3c', color:'white', padding:'2px 8px', borderRadius:'12px' }}>{violations.length}</span></h2>
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
-                   {violations.length === 0 ? <div style={{ color: '#27ae60', textAlign:'center', marginTop:'20px', fontSize:'1rem', fontWeight:'bold' }}>✅ 完美！無勞基法違規</div> : violations.map((v, i) => (
-                         <div key={i} style={{ padding: '10px', background: '#fff5f5', marginBottom: '8px', borderRadius: '8px', borderLeft: '3px solid #e74c3c', fontSize: '0.9rem' }}>
-                           <div style={{fontWeight:'bold', color:'#c0392b', marginBottom:'4px'}}>{v.staffName || `待認領(${v.staffId})`} <span style={{color:'#666', fontSize:'0.8rem'}}>({v.staffId})</span></div>
-                           <div style={{color:'#333'}}>Day {v.day}: {v.message}</div>
-                         </div>
-                   ))}
-                </div>
-             </div>
-
-             <div style={{ flex: 1.2, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #f39c12', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                <div style={{ marginBottom: '1rem' }}><h2 style={{ margin: 0, fontSize: '1.1rem', color: '#d35400', display:'flex', alignItems:'center', gap:'10px' }}>⚠️ 排班壓力與公平風險<span style={{ fontSize:'0.9rem', background:'#f39c12', color:'white', padding:'2px 8px', borderRadius:'12px' }}>{scheduleRisks?.length || 0}</span></h2></div>
-                <div style={{ flex: 1, overflowY: 'auto', paddingRight:'5px' }}>
-                   {(!scheduleRisks || scheduleRisks.length === 0) ? <div style={{ color: '#f39c12', textAlign:'center', marginTop:'20px', fontSize:'1rem', fontWeight:'bold' }}>✨ 團隊班表負荷平均</div> : scheduleRisks.map((risk, i) => (
-                         <div key={i} style={{ padding: '12px', background: '#fdf8e3', marginBottom: '10px', borderRadius: '8px', border: '1px solid #faebcc' }}>
-                           <div style={{fontWeight:'bold', color:'#8a6d3b', marginBottom:'8px', fontSize:'0.95rem'}}>{risk.staffName} <span style={{color:'#999', fontSize:'0.8rem'}}>({risk.staffId})</span></div>
-                           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', flexDirection: 'column' }}>
-                               {risk.tags.map((tag, j) => (<div key={j}><span style={{ display: 'inline-block', background: '#f39c12', color: 'white', fontSize: '0.75rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', marginBottom: '4px' }}>{tag.label}</span><div style={{ fontSize: '0.85rem', color: '#666', marginLeft: '2px' }}>{tag.desc}</div></div>))}
-                           </div>
-                         </div>
-                   ))}
-                </div>
-             </div>
           </div>
       </div>
     </div>
@@ -2832,6 +2800,156 @@ const SimulationPanel = ({
                 </div>
             </div>
         </div>
+    );
+};
+
+// ============================================================================
+// 📢 發布與認領面板 (PublishPanel) - 專供監控本月員工認領進度與單點拔除
+// ============================================================================
+const PublishPanel = ({ 
+    staffData, violations, scheduleRisks, 
+    selectedYear, selectedMonth, shiftOptions, setShiftOptions,
+    publicHolidays, finalizedSchedule, setFinalizedSchedule
+}) => {
+    const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+    const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
+
+    // -- 沿用健康度評分引擎 --
+    const calculateHealthScore = (staffSchedule) => {
+        let score = 100; const deductions = []; const shifts = []; 
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cell = staffSchedule[d];
+            shifts.push((typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF'));
+        }
+        const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
+        const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
+
+        for (let i = 0; i < shifts.length - 1; i++) {
+            if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) { score -= 20; deductions.push(`[-20] 短間隔`); }
+        }
+        let consecutiveN = 0, consecutiveWork = 0;
+        for (let i = 0; i <= shifts.length; i++) {
+            const s = shifts[i];
+            if (s === 'N') consecutiveN++; else { if (consecutiveN >= 4) { score -= 5; deductions.push(`[-5] 連續大夜`); } consecutiveN = 0; }
+            if (s && isWork(s)) consecutiveWork++; else { if (consecutiveWork >= 6) { score -= 5; deductions.push(`[-5] 連六疲勞`); } consecutiveWork = 0; }
+        }
+        return { score, deductions };
+    };
+
+    // ★★★ 核心邏輯：單點拔除名字，轉回待認領 ★★★
+    const handleUnassignSingleStaff = (staffId) => {
+        const staffName = staffData.find(s => s.staff_id === staffId)?.name || staffId;
+        if (!window.confirm(`⚠️ 確定要拔除「${staffName}」的班表嗎？\n\n這將把此排班轉為「待認領 (Dxxx)」空缺，\n員工介面會立刻同步釋出，供其他人重新選擇。`)) return;
+
+        const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
+        
+        // 尋找下一個可用的虛擬代號
+        let vIndex = 1; let newVirtualId = '';
+        while (true) {
+            newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
+            if (!newSchedule[newVirtualId]) break;
+            vIndex++;
+        }
+
+        // 轉移資料並刪除原員工
+        newSchedule[newVirtualId] = newSchedule[staffId];
+        delete newSchedule[staffId];
+
+        setFinalizedSchedule(newSchedule);
+        // (註：App.jsx 的 debounce 機制會自動把這個變更寫入 Firebase，所以不用手動 call API)
+    };
+
+    return (
+      <div style={{ display: 'flex', gap: '20px', height: '80vh', flexDirection:'column' }}>
+        <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '5px solid #27ae60' }}>
+             <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
+                 <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#27ae60' }}>📢 當前發布與認領動態</h2>
+                 <span style={{background:'#e8f8f5', padding:'5px 10px', borderRadius:'8px', color:'#27ae60', fontWeight:'bold'}}>{selectedYear}年 {selectedMonth}月</span>
+             </div>
+             <div style={{color:'#666', fontSize:'0.9rem'}}>此區塊與員工手機端即時連動。如需微調，可直接拔除名字釋出空缺。</div>
+        </div>
+
+        <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
+            {/* 左側：班表主視窗 */}
+            <div style={{ flex: 3, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+              <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
+                {!finalizedSchedule || Object.keys(finalizedSchedule).length === 0 ? (
+                  <div style={{padding:'40px', textAlign:'center', color:'#888'}}>尚無發布的班表，請先在「排班工作桌」儲存並發布。</div>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+                      <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                          <tr style={{ background: '#27ae60', color: 'white' }}>
+                              <th style={{ padding: '8px', minWidth: '150px', position: 'sticky', left: 0, background: '#27ae60', zIndex: 11 }}>員工指派 / 操作</th>
+                              <th style={{ padding: '8px', minWidth: '50px', background: '#2ecc71', zIndex: 10, borderRight: '2px solid #fff' }}>健康度</th>
+                              {daysArray.map(d => (
+                                  <th key={d} style={{ padding:'4px', minWidth:'35px', textAlign: 'center' }}>
+                                      <div style={{ fontSize: '0.9rem' }}>{d}</div>
+                                  </th>
+                              ))}
+                          </tr>
+                      </thead>
+                      <tbody>
+                          {Object.keys(finalizedSchedule).sort((a,b)=>a.startsWith('D')?1:-1).map(rowId => {
+                              const isVirtual = rowId.startsWith('D');
+                              const { score, deductions } = calculateHealthScore(finalizedSchedule[rowId]);
+                              const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
+
+                              return (
+                                  <tr key={rowId} style={{ borderBottom: '1px solid #eee', background: isVirtual ? '#fafafa' : 'white' }}>
+                                      <td style={{ padding: '8px', borderRight: '1px solid #eee', position: 'sticky', left: 0, background: isVirtual ? '#f9f9f9' : 'white', zIndex: 5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                          <div>
+                                              <div style={{fontWeight:'bold', color: isVirtual ? '#888' : '#2c3e50'}}>{isVirtual ? '🎲 待認領' : (staffData.find(s=>s.staff_id===rowId)?.name || rowId)}</div>
+                                              <div style={{fontSize:'0.75rem', color:'#999'}}>{rowId}</div>
+                                          </div>
+                                          {/* ★ 拔除名字按鈕 */}
+                                          {!isVirtual && (
+                                              <button onClick={() => handleUnassignSingleStaff(rowId)} style={{ padding: '4px 8px', background: '#ffebee', color: '#c62828', border: '1px solid #ffcdd2', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                                  拔除釋出
+                                              </button>
+                                          )}
+                                      </td>
+                                      <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold', color: scoreColor, borderRight: '2px solid #ddd', cursor: 'help' }} title={deductions.join('\n')}>{score}</td>
+                                      {daysArray.map(d => {
+                                          const type = (typeof finalizedSchedule[rowId][d] === 'object') ? finalizedSchedule[rowId][d].type : finalizedSchedule[rowId][d];
+                                          const optColor = shiftOptions.find(o=>o.code===type)?.color || '#fff';
+                                          return <td key={d} style={{ textAlign:'center', background: optColor, borderRight:'1px solid #eee', fontWeight:'bold' }}>{type}</td>
+                                      })}
+                                  </tr>
+                              );
+                          })}
+                      </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+
+            {/* 右側：風險與法遵監控 (原封不動從舊版搬過來) */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
+               <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                  <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b' }}>⚖️ 法遵檢查結果</h2>
+                  <div style={{ flex: 1, overflowY: 'auto' }}>
+                     {violations.length === 0 ? <div style={{ color: '#27ae60', textAlign:'center', marginTop:'20px', fontWeight:'bold' }}>✅ 無勞基法違規</div> : violations.map((v, i) => (
+                           <div key={i} style={{ padding: '8px', background: '#fff5f5', marginBottom: '8px', borderRadius: '8px', borderLeft: '3px solid #e74c3c', fontSize: '0.85rem' }}>
+                             <div style={{fontWeight:'bold', color:'#c0392b'}}>{v.staffName}</div>
+                             <div>Day {v.day}: {v.message}</div>
+                           </div>
+                     ))}
+                  </div>
+               </div>
+               <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #f39c12', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
+                  <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#d35400' }}>⚠️ 壓力風險監控</h2>
+                  <div style={{ flex: 1, overflowY: 'auto' }}>
+                     {(!scheduleRisks || scheduleRisks.length === 0) ? <div style={{ color: '#f39c12', textAlign:'center', marginTop:'20px', fontWeight:'bold' }}>✨ 團隊負荷平均</div> : scheduleRisks.map((risk, i) => (
+                           <div key={i} style={{ padding: '8px', background: '#fdf8e3', marginBottom: '8px', borderRadius: '8px', fontSize:'0.85rem' }}>
+                             <div style={{fontWeight:'bold', color:'#8a6d3b'}}>{risk.staffName}</div>
+                             {risk.tags.map((tag, j) => (<div key={j} style={{color:'#666'}}>- {tag.label}</div>))}
+                           </div>
+                     ))}
+                  </div>
+               </div>
+            </div>
+        </div>
+      </div>
     );
 };
 
