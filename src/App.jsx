@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule } from './api/database';
+import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports } from './api/database';
 import { signOut } from "firebase/auth"; // 加到 import
 
 // ============================================================================
@@ -808,6 +808,7 @@ const [historyYear, setHistoryYear] = useState(() => {
   return m === 1 ? y - 1 : y;
 });
   const [historySchedule, setHistorySchedule] = useState({});
+  const [accumulatedReports, setAccumulatedReports] = useState({});
   
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
@@ -901,10 +902,13 @@ const [historyYear, setHistoryYear] = useState(() => {
             setHistorySchedule({});
         }
     });
+    const unsubReports = subscribeToArchiveReports((data) => {
+        setAccumulatedReports(data);
+    });
 
-// ★ 記得在 return 清除時也要把 unsubHistory 加上去
-    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); setIsCloudLoaded(false); };
-  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser]); // 👈 補上這兩個
+// ★ 記得在 return 清除時也要把 unsubReports 加上去
+    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
+  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser]);
 
 // ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制，避免天價帳單)
   useEffect(() => {
@@ -1192,6 +1196,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
             historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
             onPushToHistory={handlePushToHistory} // 👈 補上這行
+            accumulatedReports={accumulatedReports} // 👈 補上這行
           />
         ) : (
           <StaffDashboard
@@ -1461,26 +1466,64 @@ const handleReset = () => {
     }
   };
 
-  const handleExportExcel = () => {
-    if (!schedule) return alert("無資料可匯出");
+const handleExportExcel = async () => {
+    if (!historySchedule || Object.keys(historySchedule).length === 0) return alert("無資料可匯出");
+    
+    // ★ 1. 先取得當月所有的薪資結算數據
+    const settlementData = getSettlementData();
+    
+    // ★ 2. 新增 Excel 表頭欄位
     let csv = "\uFEFF工號,姓名,";
     for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
-    csv += "\n";
-    Object.keys(schedule).sort().forEach(rowId => {
+    csv += "健康度評分,總工時(天),國定假日出勤(天),夜班總數,總加班費(元),積假派發(天),事假(天),病假(天),扣薪(元),預估總薪資(元)\n"; 
+
+    Object.keys(historySchedule).sort((a, b) => {
+        const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
+        if (aIsVirtual && !bIsVirtual) return 1; 
+        if (!aIsVirtual && bIsVirtual) return -1;
+        return a.localeCompare(b);
+    }).forEach(rowId => {
         const realStaff = staffData.find(s => s.staff_id === rowId);
         const name = realStaff ? realStaff.name : "待認領";
+        
+        const { score } = calculateHealthScore(historySchedule[rowId]);
+        
         let row = `${rowId},${name},`;
         for (let d = 1; d <= daysInMonth; d++) {
-            const cell = schedule[rowId]?.[d];
-            row += `${(typeof cell === 'object' ? cell.type : cell) || ''},`;
+            const cell = historySchedule[rowId]?.[d];
+            const type = (typeof cell === 'object' ? cell.type : cell) || '';
+            row += `${type},`;
         }
+        
+        // ★ 3. 抓取該員工的對應薪水數據 (如果是 Dxxx 待認領的虛擬空缺，則全部留空)
+        let extraCols = ",,,,,,,,,"; 
+        if (!rowId.startsWith('D')) {
+            const sData = settlementData.find(s => s.staff_id === rowId);
+            if (sData) {
+                extraCols = `,${sData.workDays},${sData.nationalHolidayWorkDays},${sData.nightShiftsCount},${sData.totalOtPay},${sData.otDays},${sData.personalLeaveDays},${sData.sickLeaveDays},${sData.deduction},${sData.totalSalary}`;
+            }
+        }
+
+ // 把結算資料接在最後面
+        row += `${score}${extraCols}`; 
         csv += row + "\n";
     });
+
+    // ★★★ 核心升級：將 CSV 正式上傳至 Firebase 雲端伺服器 ★★★
+    try {
+        await saveArchiveReport(historyYear, historyMonth, csv);
+    } catch (e) {
+        console.error("上傳報表至伺服器失敗:", e);
+    }
+
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${selectedYear}_${selectedMonth}_班表_工作桌.csv`;
+    link.download = `${historyYear}年${historyMonth}月_結算歷史班表與薪資.csv`;
     link.click();
+    
+    // ★ 提示文字更新
+    alert(`✅ Excel 已下載！\n\n系統已在背景將 ${historyYear}年${historyMonth}月 的數據【永久備份至雲端】。\n即使關閉網頁，AI 日後依然能讀取此月份進行跨月分析！`);
   };
 
   const handleGeminiSolve = async () => {
@@ -2092,6 +2135,16 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       ))}
     </div>
   );
+  const handleClearMemory = async () => {
+      if(window.confirm("⚠️ 確定要清空伺服器中的「所有」跨月報表嗎？\n\n這將刪除雲端上收集到的所有月份數據，AI 將會失去過去的記憶。")) {
+          try {
+              await clearArchiveReports(); // 呼叫 Firebase 刪除 API
+              setAiMessages([{ role: 'assistant', content: '🧹 雲端資料庫已清空！請至歷史面板重新匯出您想分析的月份。' }]);
+          } catch (e) {
+              alert("刪除失敗：" + e.message);
+          }
+      }
+  };
 
   // -- (2) 繪製健康度折線圖 --
   const renderLineChart = () => {
@@ -2471,7 +2524,7 @@ const ScheduleReviewPanel = ({
       setShowSettlement(false);
   };
 
-  const handleExportExcel = () => {
+ const handleExportExcel = async () => {
     if (!historySchedule || Object.keys(historySchedule).length === 0) return alert("無資料可匯出");
     
     let csv = "\uFEFF工號,姓名,";
@@ -2495,17 +2548,27 @@ const ScheduleReviewPanel = ({
             const type = (typeof cell === 'object' ? cell.type : cell) || '';
             row += `${type},`;
         }
-        row += `${score}`; 
+   // 把結算資料接在最後面
+        row += `${score}${extraCols}`; 
         csv += row + "\n";
     });
+
+    // ★★★ 核心升級：將 CSV 正式上傳至 Firebase 雲端伺服器 ★★★
+    try {
+        await saveArchiveReport(historyYear, historyMonth, csv);
+    } catch (e) {
+        console.error("上傳報表至伺服器失敗:", e);
+    }
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${historyYear}年${historyMonth}月_結算歷史班表.csv`;
+    link.download = `${historyYear}年${historyMonth}月_結算歷史班表與薪資.csv`;
     link.click();
+    
+    // ★ 提示文字更新
+    alert(`✅ Excel 已下載！\n\n系統已在背景將 ${historyYear}年${historyMonth}月 的數據【永久備份至雲端】。\n即使關閉網頁，AI 日後依然能讀取此月份進行跨月分析！`);
   };
-
   // ★★★ 新增：針對「歷史紀錄區」專用的法遵與壓力風險計算 ★★★
   const historyViolations = historySchedule && Object.keys(historySchedule).length > 0 ? 
       [...checkLaborLawCompliance(historySchedule, staffData, [], historyYear, historyMonth), ...checkSkillMixSafety(historySchedule, staffData, historyYear, historyMonth)] : [];
@@ -2684,7 +2747,7 @@ return (
                    {historyViolations.length === 0 ? <div style={{ color: '#27ae60', textAlign:'center', marginTop:'20px', fontWeight:'bold' }}>✅ 無勞基法違規</div> : historyViolations.map((v, i) => (
                          <div key={i} style={{ padding: '8px', background: '#fff5f5', marginBottom: '8px', borderRadius: '8px', borderLeft: '3px solid #e74c3c', fontSize: '0.85rem' }}>
                            <div style={{fontWeight:'bold', color:'#c0392b'}}>{v.staffName}</div>
-                           <div>Day {v.day}: {v.message}</div>
+                           <div style={{ color: '#444', marginTop: '4px', lineHeight: '1.4' }}>Day {v.day}: {v.message}</div>
                          </div>
                    ))}
                 </div>
@@ -3050,7 +3113,7 @@ const PublishPanel = ({
                      {violations.length === 0 ? <div style={{ color: '#27ae60', textAlign:'center', marginTop:'20px', fontWeight:'bold' }}>✅ 無勞基法違規</div> : violations.map((v, i) => (
                            <div key={i} style={{ padding: '8px', background: '#fff5f5', marginBottom: '8px', borderRadius: '8px', borderLeft: '3px solid #e74c3c', fontSize: '0.85rem' }}>
                              <div style={{fontWeight:'bold', color:'#c0392b'}}>{v.staffName}</div>
-                             <div>Day {v.day}: {v.message}</div>
+                             <div style={{ color: '#444', marginTop: '4px', lineHeight: '1.4' }}>Day {v.day}: {v.message}</div>
                            </div>
                      ))}
                   </div>
