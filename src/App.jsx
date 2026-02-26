@@ -1316,6 +1316,8 @@ const ManagerInterface = ({
       {activeTab === 'statistics' && (
         <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
         healthStats={healthStats} // ★ 傳遞歷年數據給報表畫圖
+        accumulatedReports={accumulatedReports}       // 👈 補上：把雲端抓下來的報表傳進去
+            setAccumulatedReports={setAccumulatedReports} // 👈 補上：讓面板可以清空記憶
         />
       )}
 
@@ -2055,11 +2057,22 @@ alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。`);
   );
 };
 // ============================================================================
-// 統計報表面板 (包含優先選班與 SVG 班表健康度折線圖)
+// 統計報表面板 (包含優先選班、健康度折線圖，與全新 AI 跨月報表分析)
 // ============================================================================
-const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [] }) => {
+const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports }) => {
   
-  // -- (1) 計算統計數據 (保持原樣) --
+  // -- ★ AI 分析專用狀態 --
+  const loadedMonths = Object.keys(accumulatedReports || {});
+  const hasData = loadedMonths.length > 0;
+
+  const [aiMessages, setAiMessages] = useState([{ role: 'assistant', content: '📊 【跨月大數據分析精靈】已就緒！\n只要您曾在「✅ 結算與歷史」面板匯出過 Excel，雲端就會自動記憶。\n您可以直接問我：「比較 2 月和 3 月的加班費差異」或「找出這幾個月請假最多的人」。' }]);
+  const [aiInput, setAiInput] = useState('');
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const chatEndRef = useRef(null);
+
+  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [aiMessages, isAnalyzing]);
+
+  // -- (1) 計算統計數據 (優先選班用) --
   const calculateStats = (data, key) => {
     const validData = data.map(s => ({ ...s, value: Number(s[key]) || 0 })).sort((a, b) => b.value - a.value);
     const values = validData.map(d => d.value);
@@ -2077,7 +2090,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   const otStats = calculateStats(staffData, 'accumulated_ot');
   const nightStats = calculateStats(staffData, 'night_shift_balance');
 
-  // 計算優先名單
   const allowedStaffMap = new Map();
   if (priorityConfig.types.includes('accumulated_ot')) {
       otStats.allRank.slice(0, priorityConfig.count).forEach(s => allowedStaffMap.set(s.staff_id, { ...s, reason: 'OT' }));
@@ -2085,8 +2097,7 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   if (priorityConfig.types.includes('night_shift_balance')) {
       nightStats.allRank.slice(0, priorityConfig.count).forEach(s => {
           if(allowedStaffMap.has(s.staff_id)) {
-              const existing = allowedStaffMap.get(s.staff_id);
-              allowedStaffMap.set(s.staff_id, { ...existing, reason: 'OT & Night' });
+              allowedStaffMap.set(s.staff_id, { ...allowedStaffMap.get(s.staff_id), reason: 'OT & Night' });
           } else {
               allowedStaffMap.set(s.staff_id, { ...s, reason: 'Night' });
           }
@@ -2105,9 +2116,12 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       ))}
     </div>
   );
+
+  // -- ★ 清空雲端記憶 --
   const handleClearMemory = async () => {
       if(window.confirm("⚠️ 確定要清空伺服器中的「所有」跨月報表嗎？\n\n這將刪除雲端上收集到的所有月份數據，AI 將會失去過去的記憶。")) {
           try {
+              if (setAccumulatedReports) setAccumulatedReports({}); // 優先清空前端畫面
               await clearArchiveReports(); // 呼叫 Firebase 刪除 API
               setAiMessages([{ role: 'assistant', content: '🧹 雲端資料庫已清空！請至歷史面板重新匯出您想分析的月份。' }]);
           } catch (e) {
@@ -2116,22 +2130,70 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       }
   };
 
+  // -- ★ 呼叫 AI 進行跨月分析 --
+  const handleAskAI = async () => {
+      if (!aiInput.trim()) return;
+      if (!hasData) return alert("⚠️ 雲端尚無任何報表資料！\n請先到「✅ 結算與歷史」匯出至少一個月的 Excel。");
+
+      const userMsg = aiInput;
+      setAiInput('');
+      setIsAnalyzing(true);
+      setAiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+
+      try {
+          const token = await auth.currentUser?.getIdToken();
+          const formData = new FormData();
+          
+          // 將所有收集到的月份 CSV 串接成一份超級報表
+          let combinedData = "";
+          loadedMonths.forEach(month => {
+              combinedData += `\n\n========== 【${month} 結算報表】 ==========\n`;
+              combinedData += accumulatedReports[month];
+          });
+
+          // 偷塞底層跨月歷史總結給 AI
+          const crossMonthContext = {
+              staffAccumulatedHistory: staffData.map(s => ({ 
+                  name: s.name, 
+                  total_OT_Balance: s.accumulated_ot, 
+                  total_Night_Balance: s.night_shift_balance
+              })),
+              healthTrends: healthStats
+          };
+          combinedData += `\n\n========== 【系統底層跨月歷史總結庫】 ==========\n${JSON.stringify(crossMonthContext)}`;
+
+          // 偽裝成檔案送給後端
+          const fileBlob = new Blob([combinedData], { type: 'text/plain' });
+          formData.append('file', fileBlob, 'cross_month_big_data.txt');
+          formData.append('prompt', userMsg);
+
+          const response = await fetch('/api/analyze-excel', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${token}` },
+              body: formData
+          });
+
+          if (!response.ok) throw new Error("伺服器分析失敗");
+          const data = await response.json();
+          setAiMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
+
+      } catch (error) {
+          setAiMessages(prev => [...prev, { role: 'assistant', content: "❌ 錯誤：" + error.message }]);
+      } finally {
+          setIsAnalyzing(false);
+      }
+  };
+
   // -- (2) 繪製健康度折線圖 --
   const renderLineChart = () => {
       if (!healthStats || healthStats.length === 0) {
-          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無健康度結算紀錄。<br/>請先至「✅ 審核與發布」按下「💰 薪資與加班費結算」按鈕以產生數據。</div>;
+          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無健康度結算紀錄。<br/>請先至「✅ 結算與歷史」按下「💰 薪資與加班費結算」以產生數據。</div>;
       }
-
-      const svgWidth = 800;
-      const svgHeight = 350;
-      const padding = 50;
-      const chartWidth = svgWidth - padding * 2;
-      const chartHeight = svgHeight - padding * 2;
-
+      const svgWidth = 800; const svgHeight = 350; const padding = 50;
+      const chartWidth = svgWidth - padding * 2; const chartHeight = svgHeight - padding * 2;
       const allScores = healthStats.flatMap(d => [d.avg, d.median]);
       const minScore = Math.max(0, Math.floor(Math.min(...allScores) / 5) * 5 - 5); 
       const maxScore = 100;
-
       const getX = (index) => padding + (index * (chartWidth / Math.max(1, healthStats.length - 1)));
       const getY = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
 
@@ -2140,7 +2202,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
 
       return (
           <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', background: 'white', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-              {/* Y軸背景格線 */}
               {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
                   const y = padding + chartHeight - (chartHeight * ratio);
                   const val = Math.round(minScore + (maxScore - minScore) * ratio);
@@ -2151,37 +2212,21 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
                       </g>
                   );
               })}
-              
-              {/* 繪製折線 */}
               <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
               <polyline points={medianPoints} fill="none" stroke="#e74c3c" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-
-              {/* 資料點與標籤 */}
               {healthStats.map((d, i) => {
-                  const x = getX(i);
-                  const yAvg = getY(d.avg);
-                  const yMed = getY(d.median);
+                  const x = getX(i); const yAvg = getY(d.avg); const yMed = getY(d.median);
                   const isAvgHigher = d.avg >= d.median;
-
                   return (
                       <g key={i}>
                           <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
                           <circle cx={x} cy={yMed} r="5" fill="#e74c3c" stroke="white" strokeWidth="2" />
-                          
                           <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
                           <text x={x} y={isAvgHigher ? yAvg - 12 : yAvg + 20} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
                           <text x={x} y={isAvgHigher ? yMed + 20 : yMed - 12} fontSize="12" fill="#c0392b" textAnchor="middle" fontWeight="bold">{d.median}</text>
                       </g>
                   );
               })}
-
-              {/* 圖例 */}
-              <g transform={`translate(${svgWidth / 2 - 120}, ${padding - 20})`}>
-                  <line x1="0" y1="0" x2="30" y2="0" stroke="#3498db" strokeWidth="4" strokeLinecap="round" />
-                  <text x="40" y="4" fontSize="14" fill="#2c3e50" fontWeight="bold">平均健康度</text>
-                  <line x1="150" y1="0" x2="180" y2="0" stroke="#e74c3c" strokeWidth="4" strokeLinecap="round" />
-                  <text x="190" y="4" fontSize="14" fill="#2c3e50" fontWeight="bold">中位數</text>
-              </g>
           </svg>
       );
   };
@@ -2189,14 +2234,13 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       
-      {/* 優先選班控制台 (保持原樣) */}
+      {/* 1. 優先選班控制台 */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #667eea', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'20px'}}>
              <div>
                  <h2 style={{ margin: '0 0 5px 0', color: '#2c3e50', fontSize:'1.4rem' }}>🏆 優先選班控制台</h2>
                  <p style={{ margin: 0, color: '#7f8c8d', fontSize:'0.9rem' }}>設定誰可以優先進場認領班表 (滿足任一條件即可)</p>
              </div>
-             
              <div style={{ display:'flex', alignItems:'center', gap:'15px', background:'#f8f9fa', padding:'10px 20px', borderRadius:'50px' }}>
                  <span style={{fontWeight:'bold', color:'#333'}}>目前狀態:</span>
                  {priorityConfig.isOpenToAll ? (
@@ -2209,7 +2253,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
                  </button>
              </div>
           </div>
-
           <div style={{ marginTop:'20px', display:'flex', gap:'30px', flexWrap:'wrap' }}>
               <div style={{ flex:1, minWidth:'250px' }}>
                   <label style={{display:'block', fontWeight:'bold', marginBottom:'10px', color: 'black'}}>優先依據指標 (可多選):</label>
@@ -2239,49 +2282,87 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
           </div>
       </div>
 
-      {/* ★★★ 新增：健康度歷史趨勢圖 ★★★ */}
+      {/* 2. 健康度趨勢圖 */}
       <div style={{ background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e0e0e0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-          <h3 style={{ marginTop: 0, color: '#34495e', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📈 過去 12 個月班表健康度趨勢
-          </h3>
+          <h3 style={{ marginTop: 0, color: '#34495e', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📈 過去 12 個月班表健康度趨勢</h3>
           {renderLineChart()}
       </div>
 
-      {/* 統計圖表區塊 */}
-      <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
-        <h2 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '10px', color: 'black' }}>
-          <TrendingUp color="#667eea" /> 團隊人力統計報表
+      {/* 3. ★★★ 全新 AI 跨月報表分析區塊 ★★★ */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', borderTop: '6px solid #8e44ad', boxShadow: '0 10px 20px rgba(142,68,173,0.1)' }}>
+        <h2 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#8e44ad', marginTop: 0, marginBottom: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🤖 AI 跨月數據分析精靈</div>
+          {hasData && (
+              <button onClick={handleClearMemory} style={{ fontSize:'0.85rem', padding: '6px 15px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold' }}>
+                  🧹 清空雲端記憶體
+              </button>
+          )}
         </h2>
-        
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '1.5rem' }}>
-          {/* 總人數 */}
-          <div style={{ padding: '1.5rem', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', borderRadius: '16px', color: 'white', boxShadow: '0 10px 20px rgba(102, 126, 234, 0.2)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}><h3 style={{ margin: 0, opacity: 0.9 }}>總員工數</h3><Users size={24} style={{ opacity: 0.8 }} /></div>
-            <div style={{ fontSize: '3.5rem', fontWeight: 'bold', lineHeight: 1 }}>{staffData.length} <span style={{ fontSize: '1rem', fontWeight: 'normal', opacity: 0.8 }}>人</span></div>
-            <div style={{ marginTop: '1rem', fontSize: '0.9rem', opacity: 0.8 }}>目前在職率: {Math.round((staffData.filter(s=>s.is_active).length / staffData.length || 1) * 100)}%</div>
-          </div>
 
-          {/* OT */}
-          <div style={{ padding: '1.5rem', background: 'white', borderRadius: '16px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}><div style={{ padding: '8px', background: '#e3f2fd', borderRadius: '8px', color: '#1976d2' }}><Clock size={20}/></div><h3 style={{ margin: 0, color: '#444' }}>積借休時數 (OT)</h3></div>
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>平均</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#333' }}>{otStats.avg}</div></div>
-               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>中位數</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#1976d2' }}>{otStats.median}</div></div>
-            </div>
-            <div style={{ display: 'flex', gap: '1.5rem' }}><RankingList title="🔥 最高 Top 5" data={otStats.top5} color="#e67e22" /><RankingList title="❄️ 最低 Top 5" data={otStats.bottom5} color="#3498db" /></div>
-          </div>
+        {/* 多月連線狀態燈號 */}
+        <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '12px', border: '2px dashed #dcdde1', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+            {hasData ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%' }}>
+                    <span style={{ fontSize: '2rem', animation: 'pulse 2s infinite' }}>🟢</span>
+                    <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', color: '#27ae60', fontSize: '1.1rem', marginBottom: '5px' }}>雲端已載入 {loadedMonths.length} 個月份的大數據</div>
+                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                            {loadedMonths.map(m => <span key={m} style={{ background: '#e8f8f5', color: '#16a085', padding: '4px 12px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', border: '1px solid #1abc9c' }}>{m}</span>)}
+                        </div>
+                    </div>
+                </div>
+            ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ fontSize: '1.8rem' }}>🔴</span>
+                    <div>
+                        <div style={{ fontWeight: 'bold', color: '#e74c3c', fontSize: '1.1rem' }}>雲端尚未取得任何報表</div>
+                        <div style={{ fontSize: '0.85rem', color: '#666' }}>請先至「✅ 結算與歷史」面板，切換您要的月份並點擊【📥 匯出 Excel】上傳至雲端。</div>
+                    </div>
+                </div>
+            )}
+        </div>
 
-          {/* Night */}
-          <div style={{ padding: '1.5rem', background: 'white', borderRadius: '16px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1rem' }}><div style={{ padding: '8px', background: '#f3e5f5', borderRadius: '8px', color: '#8e44ad' }}><Moon size={20}/></div><h3 style={{ margin: 0, color: '#444' }}>夜班結餘 (Night)</h3></div>
-            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem' }}>
-               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>平均</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#333' }}>{nightStats.avg}</div></div>
-               <div style={{ flex:1, textAlign: 'center', padding: '8px', background: '#f8f9fa', borderRadius: '8px' }}><div style={{ fontSize: '0.75rem', color: '#666' }}>中位數</div><div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: '#8e44ad' }}>{nightStats.median}</div></div>
+        {/* 對話區 */}
+        <div style={{ background: '#f1f2f6', borderRadius: '12px', padding: '15px', border: '1px solid #e1e2e6' }}>
+            <div style={{ height: '300px', overflowY: 'auto', marginBottom: '15px', paddingRight: '10px' }}>
+                {aiMessages.map((m, i) => (
+                    <div key={i} style={{ marginBottom: '1rem', textAlign: m.role === 'user' ? 'right' : 'left' }}>
+                        <div style={{ display: 'inline-block', padding: '12px 18px', borderRadius: '12px', background: m.role === 'user' ? '#8e44ad' : 'white', color: m.role === 'user' ? 'white' : '#2c3e50', border: m.role === 'assistant' ? '1px solid #dcdde1' : 'none', maxWidth: '85%', whiteSpace: 'pre-wrap', textAlign: 'left', fontSize: '0.95rem', lineHeight: '1.5', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
+                            {m.content}
+                        </div>
+                    </div>
+                ))}
+                {isAnalyzing && (
+                    <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
+                        <div style={{ display: 'inline-block', padding: '12px 18px', borderRadius: '12px', background: 'white', border: '1px solid #dcdde1', color: '#888', fontStyle: 'italic' }}>
+                            ⏳ AI 正在雲端交叉比對這 {loadedMonths.length} 個月的數據...
+                        </div>
+                    </div>
+                )}
+                <div ref={chatEndRef} />
             </div>
-            <div style={{ display: 'flex', gap: '1.5rem' }}><RankingList title="🌙 最高 Top 5" data={nightStats.top5} color="#8e44ad" /><RankingList title="☀️ 最低 Top 5" data={nightStats.bottom5} color="#95a5a6" /></div>
-          </div>
+
+            {/* 輸入區 */}
+            <div style={{ display: 'flex', gap: '10px' }}>
+                <input 
+                    value={aiInput} 
+                    onChange={(e) => setAiInput(e.target.value)} 
+                    onKeyPress={(e) => e.key === 'Enter' && handleAskAI()} 
+                    placeholder={hasData ? `可以問：「比較 ${loadedMonths[0]} 和另外幾個月的請假狀況」...` : "等待雲端載入資料..."} 
+                    disabled={!hasData || isAnalyzing}
+                    style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #dcdde1', color: 'black', fontSize: '1rem', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }} 
+                />
+                <button 
+                    onClick={handleAskAI} 
+                    disabled={!hasData || isAnalyzing} 
+                    style={{ padding: '0 30px', background: (!hasData || isAnalyzing) ? '#bdc3c7' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: (!hasData || isAnalyzing) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.05rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
+                >
+                    送出分析
+                </button>
+            </div>
         </div>
       </div>
+      
     </div>
   );
 };
