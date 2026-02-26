@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 
     // ★ 修正模型名稱：新版 SDK 統一用 gemini-1.5-flash（舊名已棄用）
     //    若仍然失敗可改為 'gemini-pro'
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
     const finalPrompt = `
 你是一個護理排班分析專家。以下是護理排班結算報表資料：
