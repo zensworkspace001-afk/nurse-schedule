@@ -2940,8 +2940,13 @@ const PublishPanel = ({
                               ))}
                           </tr>
                       </thead>
-                      <tbody>
-                          {Object.keys(finalizedSchedule).sort((a,b)=>a.startsWith('D')?1:-1).map(rowId => {
+                     <tbody>
+    {Object.keys(finalizedSchedule).sort((a, b) => {
+        const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
+        if (aIsVirtual && !bIsVirtual) return 1; 
+        if (!aIsVirtual && bIsVirtual) return -1;
+        return a.localeCompare(b); // 讓 D017, D018, D019 乖乖照數字排好
+    }).map(rowId => {
                               const isVirtual = rowId.startsWith('D');
                               const { score, deductions } = calculateHealthScore(finalizedSchedule[rowId]);
                               const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
