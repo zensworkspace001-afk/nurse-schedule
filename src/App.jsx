@@ -1491,7 +1491,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 headers: { 'Content-Type': 'application/json',
                            'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
                 },
-                body: JSON.stringify({ prompt: prompt })
+                body: JSON.stringify({ prompt: currentPrompt })
             });
 
             if (!response.ok) {
@@ -2602,6 +2602,7 @@ const ScheduleReviewPanel = ({
     </div>
   );
 };
+
 // ============================================================================
 // 制度模擬工作桌 (What-if Simulation Sandbox)
 // ============================================================================
