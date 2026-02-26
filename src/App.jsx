@@ -950,6 +950,42 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     }
   };
 
+// ★★★ 新增：手動將本月班表封存至歷史區，並推進下個月 ★★★
+  const handlePushToHistory = () => {
+    if (!finalizedSchedule || Object.keys(finalizedSchedule).length === 0) {
+        alert("目前沒有發布的班表可供封存！");
+        return;
+    }
+    if (window.confirm(`確定要將 ${selectedYear}年${selectedMonth}月 的班表結算並封存嗎？\n\n⚠️ 執行後：\n1. 此班表將移至「✅ 3. 結算與歷史」\n2. 發布區將被清空\n3. 系統將自動切換至下一個月，準備新的排班`)) {
+        
+        // 1. 把目前的年月指派給歷史大帳本
+        setHistoryYear(selectedYear);
+        setHistoryMonth(selectedMonth);
+        setHistorySchedule(finalizedSchedule); // 畫面無縫切換
+
+        // 2. 計算下個月
+        let nextMonth = selectedMonth + 1;
+        let nextYear = selectedYear;
+        if (nextMonth > 12) {
+            nextMonth = 1;
+            nextYear++;
+        }
+
+        // 3. 更新全域的目前年月
+        setSelectedYear(nextYear);
+        setSelectedMonth(nextMonth);
+        const newPubDate = { year: nextYear, month: nextMonth };
+        setPublishedDate(newPubDate);
+        localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
+
+        // 4. 清空草稿工作桌與發布區
+        setSchedule({});
+        setFinalizedSchedule(null);
+
+        alert(`✅ 封存成功！\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
+    }
+  };
+
 const handleLogout = async () => {
     await signOut(auth);
     setCurrentUser(null);
@@ -1155,6 +1191,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             historyYear={historyYear} historyMonth={historyMonth}
             setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
             historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
+            onPushToHistory={handlePushToHistory} // 👈 補上這行
           />
         ) : (
           <StaffDashboard
@@ -1185,7 +1222,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory // 👈 補上這行
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
@@ -1252,6 +1289,7 @@ const ManagerInterface = ({
            publicHolidays={publicHolidays}
            finalizedSchedule={finalizedSchedule} 
            setFinalizedSchedule={setFinalizedSchedule}
+           onPushToHistory={onPushToHistory} // 👈 補上這行
         />
       )}
 
@@ -2475,30 +2513,27 @@ const ScheduleReviewPanel = ({
   const historyRisks = historySchedule && Object.keys(historySchedule).length > 0 ? 
       calculateScheduleRisks(historySchedule, staffData, publicHolidays, historyYear, historyMonth) : [];
 
-  return (
+return (
     <div style={{ display: 'flex', gap: '20px', height: '80vh', flexDirection:'column', position: 'relative' }}>
       
+      {/* ▼▼▼ 這是全新替換的頂部區塊 (已拔除下拉選單，改為純文字標籤) ▼▼▼ */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#2c3e50' }}>✅ 結算與歷史大帳本</h2>
                
-               {/* ★ 獨立的歷史月份選擇器 */}
-               <div style={{ display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '5px 10px', borderRadius: '8px', border:'1px solid #ddd' }}>
-                   <span style={{marginRight:'5px', color:'#555', fontSize:'0.9rem'}}>檢視歷史:</span>
-                   <input type="number" value={historyYear} onChange={(e) => setHistoryYear(Number(e.target.value))} style={{ width: '60px', padding: '5px', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center' }} />
-                   <span style={{margin:'0 5px'}}>年</span>
-                   <select value={historyMonth} onChange={(e) => setHistoryMonth(Number(e.target.value))} style={{ padding: '5px', borderRadius: '4px', border: '1px solid #ccc' }}>
-                      {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={m}>{m}</option>)}
-                   </select>
-                   <span style={{marginLeft:'5px'}}>月</span>
+               <div style={{ background: '#f8f9fa', padding: '6px 15px', borderRadius: '8px', border:'1px solid #ddd', color: '#34495e', fontWeight: 'bold', fontSize: '1.1rem' }}>
+                   📂 封存檔案：{historyYear} 年 {historyMonth} 月
                </div>
            </div>
+           
            <div style={{ display:'flex', gap:'10px' }}>
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
            </div>
       </div>
+      {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
+
 
       {showSettlement && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -2879,7 +2914,7 @@ const SimulationPanel = ({
 const PublishPanel = ({ 
     staffData, violations, scheduleRisks, 
     selectedYear, selectedMonth, shiftOptions, setShiftOptions,
-    publicHolidays, finalizedSchedule, setFinalizedSchedule
+    publicHolidays, finalizedSchedule, setFinalizedSchedule,onPushToHistory // 👈 補上這行
 }) => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
@@ -2929,18 +2964,27 @@ const PublishPanel = ({
         // (註：App.jsx 的 debounce 機制會自動把這個變更寫入 Firebase，所以不用手動 call API)
     };
 
-    return (
+ return (
       <div style={{ display: 'flex', gap: '20px', height: '80vh', flexDirection:'column' }}>
+        
+        {/* ▼▼▼ 這是全新替換的頂部區塊 (包含 Push 封存按鈕) ▼▼▼ */}
         <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: '5px solid #27ae60' }}>
              <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                  <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#27ae60' }}>📢 當前發布與認領動態</h2>
                  <span style={{background:'#e8f8f5', padding:'5px 10px', borderRadius:'8px', color:'#27ae60', fontWeight:'bold'}}>{selectedYear}年 {selectedMonth}月</span>
              </div>
-             <div style={{color:'#666', fontSize:'0.9rem'}}>此區塊與員工手機端即時連動。如需微調，可直接拔除名字釋出空缺。</div>
+             
+             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                 <div style={{color:'#666', fontSize:'0.9rem', textAlign: 'right'}}>此區塊與員工手機端即時連動。<br/>如需微調，可直接拔除名字釋出空缺。</div>
+                 <button onClick={onPushToHistory} style={{ padding: '10px 20px', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
+                     ➡️ 結算並封存至歷史區
+                 </button>
+             </div>
         </div>
+        {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
 
         <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
-            {/* 左側：班表主視窗 */}
+            {/* ... 下面的左側班表與右側監控，請保持原本的樣子不要動它 ... */}            {/* 左側：班表主視窗 */}
             <div style={{ flex: 3, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', overflow:'hidden' }}>
               <div style={{ flex: 1, overflow: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
                 {!finalizedSchedule || Object.keys(finalizedSchedule).length === 0 ? (
