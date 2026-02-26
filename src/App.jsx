@@ -2222,7 +2222,7 @@ const ScheduleReviewPanel = ({
   publicHolidays = [],
   onUpdateHealthStats,
   // ★ 接收專屬的歷史狀態
-  historySchedule, setHistorySchedule,
+  setHistorySchedule,
   historyYear, historyMonth, setHistoryYear, setHistoryMonth,
     historySchedule = {}, 
 }) => {
