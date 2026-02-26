@@ -560,12 +560,7 @@ const checkCompliance = (pattern) => {
       // 如果都沒違規，才回傳 true
       return { valid: true };
   };
-  const isForbiddenSeq = (a, b) => (a==='E'&&b==='D') || (a==='N'&&b==='D') || (a==='N'&&b==='E');
-for (let i = 0; i < pattern.length - 1; i++) {
-    if (isForbiddenSeq(pattern[i], pattern[i+1])) {
-        return { valid: false, reason: `第${i+1}天 ${pattern[i]} 接 ${pattern[i+2]} 輪班間隔不足` };
-    }
-}
+
   
   const filteredOptions = selectedShiftType === 'ALL' ? aiSlots : aiSlots.filter(opt => opt.shift === selectedShiftType);
 
