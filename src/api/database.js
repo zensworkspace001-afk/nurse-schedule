@@ -1,6 +1,5 @@
-// src/api/database.js
 import { initializeApp } from "firebase/app";
-import { doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "firebase/firestore";
+import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "firebase/firestore";
 import { getAuth } from "firebase/auth";
 
 // 1. Firebase 初始化設定 (集中管理)

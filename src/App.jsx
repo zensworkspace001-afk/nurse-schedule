@@ -1466,66 +1466,36 @@ const handleReset = () => {
     }
   };
 
-const handleExportExcel = async () => {
-    if (!historySchedule || Object.keys(historySchedule).length === 0) return alert("無資料可匯出");
+// ★ 這是專屬於 SchedulePanel (排班工作桌) 的簡易版匯出功能
+  const handleExportExcel = () => {
+    // 抓取草稿或已發布的班表
+    const targetSchedule = finalizedSchedule || schedule;
+    if (!targetSchedule || Object.keys(targetSchedule).length === 0) return alert("無資料可匯出");
     
-    // ★ 1. 先取得當月所有的薪資結算數據
-    const settlementData = getSettlementData();
-    
-    // ★ 2. 新增 Excel 表頭欄位
     let csv = "\uFEFF工號,姓名,";
     for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
-    csv += "健康度評分,總工時(天),國定假日出勤(天),夜班總數,總加班費(元),積假派發(天),事假(天),病假(天),扣薪(元),預估總薪資(元)\n"; 
+    csv += "\n";
 
-    Object.keys(historySchedule).sort((a, b) => {
-        const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
-        if (aIsVirtual && !bIsVirtual) return 1; 
-        if (!aIsVirtual && bIsVirtual) return -1;
-        return a.localeCompare(b);
-    }).forEach(rowId => {
-        const realStaff = staffData.find(s => s.staff_id === rowId);
-        const name = realStaff ? realStaff.name : "待認領";
-        
-        const { score } = calculateHealthScore(historySchedule[rowId]);
-        
+    Object.keys(targetSchedule).sort().forEach(rowId => {
+        // 找出員工姓名
+        const name = staffData.find(s => s.staff_id === rowId)?.name || "待認領";
         let row = `${rowId},${name},`;
+        
+        // 填入每日班別
         for (let d = 1; d <= daysInMonth; d++) {
-            const cell = historySchedule[rowId]?.[d];
-            const type = (typeof cell === 'object' ? cell.type : cell) || '';
+            const cell = targetSchedule[rowId]?.[d];
+            const type = (typeof cell === 'object') ? cell.type : (cell || '');
             row += `${type},`;
         }
-        
-        // ★ 3. 抓取該員工的對應薪水數據 (如果是 Dxxx 待認領的虛擬空缺，則全部留空)
-        let extraCols = ",,,,,,,,,"; 
-        if (!rowId.startsWith('D')) {
-            const sData = settlementData.find(s => s.staff_id === rowId);
-            if (sData) {
-                extraCols = `,${sData.workDays},${sData.nationalHolidayWorkDays},${sData.nightShiftsCount},${sData.totalOtPay},${sData.otDays},${sData.personalLeaveDays},${sData.sickLeaveDays},${sData.deduction},${sData.totalSalary}`;
-            }
-        }
-
- // 把結算資料接在最後面
-        row += `${score}${extraCols}`; 
         csv += row + "\n";
     });
-
-    // ★★★ 核心升級：將 CSV 正式上傳至 Firebase 雲端伺服器 ★★★
-    try {
-        await saveArchiveReport(historyYear, historyMonth, csv);
-    } catch (e) {
-        console.error("上傳報表至伺服器失敗:", e);
-    }
 
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(blob);
-    link.download = `${historyYear}年${historyMonth}月_結算歷史班表與薪資.csv`;
+    link.download = `${selectedYear}年${selectedMonth}月_排班表草稿.csv`;
     link.click();
-    
-    // ★ 提示文字更新
-    alert(`✅ Excel 已下載！\n\n系統已在背景將 ${historyYear}年${historyMonth}月 的數據【永久備份至雲端】。\n即使關閉網頁，AI 日後依然能讀取此月份進行跨月分析！`);
   };
-
   const handleGeminiSolve = async () => {
     // ★★★ 核心修復：阻斷舊歷史資料的疊加 ★★★
     if (schedule && Object.keys(schedule).length > 0) {
@@ -2524,12 +2494,16 @@ const ScheduleReviewPanel = ({
       setShowSettlement(false);
   };
 
- const handleExportExcel = async () => {
+const handleExportExcel = async () => {
     if (!historySchedule || Object.keys(historySchedule).length === 0) return alert("無資料可匯出");
     
+    // 1. 先取得當月所有的薪資結算數據
+    const settlementData = getSettlementData();
+    
+    // 2. 新增 Excel 表頭欄位
     let csv = "\uFEFF工號,姓名,";
     for (let d = 1; d <= daysInMonth; d++) csv += `${d}號,`;
-    csv += "健康度評分\n"; 
+    csv += "健康度評分,總工時(天),國定假日出勤(天),夜班總數,總加班費(元),積假派發(天),事假(天),病假(天),扣薪(元),預估總薪資(元)\n"; 
 
     Object.keys(historySchedule).sort((a, b) => {
         const aIsVirtual = a.startsWith('D'), bIsVirtual = b.startsWith('D');
@@ -2539,7 +2513,6 @@ const ScheduleReviewPanel = ({
     }).forEach(rowId => {
         const realStaff = staffData.find(s => s.staff_id === rowId);
         const name = realStaff ? realStaff.name : "待認領";
-        
         const { score } = calculateHealthScore(historySchedule[rowId]);
         
         let row = `${rowId},${name},`;
@@ -2548,12 +2521,22 @@ const ScheduleReviewPanel = ({
             const type = (typeof cell === 'object' ? cell.type : cell) || '';
             row += `${type},`;
         }
-   // 把結算資料接在最後面
+        
+        // 3. 抓取該員工的對應薪水數據
+        let extraCols = ",,,,,,,,,"; 
+        if (!rowId.startsWith('D')) {
+            const sData = settlementData.find(s => s.staff_id === rowId);
+            if (sData) {
+                extraCols = `,${sData.workDays},${sData.nationalHolidayWorkDays},${sData.nightShiftsCount},${sData.totalOtPay},${sData.otDays},${sData.personalLeaveDays},${sData.sickLeaveDays},${sData.deduction},${sData.totalSalary}`;
+            }
+        }
+
+        // 把結算資料接在最後面
         row += `${score}${extraCols}`; 
         csv += row + "\n";
     });
 
-    // ★★★ 核心升級：將 CSV 正式上傳至 Firebase 雲端伺服器 ★★★
+    // 4. 將 CSV 正式上傳至 Firebase 雲端伺服器
     try {
         await saveArchiveReport(historyYear, historyMonth, csv);
     } catch (e) {
@@ -2566,7 +2549,6 @@ const ScheduleReviewPanel = ({
     link.download = `${historyYear}年${historyMonth}月_結算歷史班表與薪資.csv`;
     link.click();
     
-    // ★ 提示文字更新
     alert(`✅ Excel 已下載！\n\n系統已在背景將 ${historyYear}年${historyMonth}月 的數據【永久備份至雲端】。\n即使關閉網頁，AI 日後依然能讀取此月份進行跨月分析！`);
   };
   // ★★★ 新增：針對「歷史紀錄區」專用的法遵與壓力風險計算 ★★★
