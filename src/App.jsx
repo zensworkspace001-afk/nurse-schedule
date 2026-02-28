@@ -3109,8 +3109,26 @@ return (
            <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
                <h2 style={{ margin: 0, fontSize: '1.5rem', color:'#2c3e50' }}>✅ 結算與歷史大帳本</h2>
                
-               <div style={{ background: '#f8f9fa', padding: '6px 15px', borderRadius: '8px', border:'1px solid #ddd', color: '#34495e', fontWeight: 'bold', fontSize: '1.1rem' }}>
-                   📂 封存檔案：{historyYear} 年 {historyMonth} 月
+{/* ★★★ 修改為：可切換年月選項的控制器 ★★★ */}
+               <div style={{ display: 'flex', alignItems: 'center', background: '#f8f9fa', padding: '5px 15px', borderRadius: '8px', border:'1px solid #ddd', color: '#34495e', fontWeight: 'bold', fontSize: '1rem' }}>
+                   <span style={{ marginRight: '8px' }}>📂 封存檔案：</span>
+                   <input 
+                       type="number" 
+                       value={historyYear} 
+                       onChange={(e) => setHistoryYear(Number(e.target.value))}
+                       style={{ width: '65px', padding: '4px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', textAlign: 'center', color: '#2c3e50' }}
+                   />
+                   <span style={{ margin: '0 5px' }}>年</span>
+                   <select 
+                       value={historyMonth} 
+                       onChange={(e) => setHistoryMonth(Number(e.target.value))}
+                       style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', cursor: 'pointer', color: '#2c3e50' }}
+                   >
+                       {Array.from({length: 12}, (_, i) => i + 1).map(m => (
+                           <option key={m} value={m}>{m}</option>
+                       ))}
+                   </select>
+                   <span style={{ margin: '0 0 0 5px' }}>月</span>
                </div>
            </div>
            
