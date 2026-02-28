@@ -1718,9 +1718,10 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
   };
   const dailyStats = calculateDailyStats();
 
-  return (
+ return (
     <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', position: 'relative' }}>
       
+      {/* 1. 載入中畫面 */}
       {processing && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.95)', zIndex: 100, borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
           <div className="win7-loader" style={{ border: '5px solid #f3f3f3', borderTop: '5px solid #3498db', borderRadius: '50%', width: '50px', height: '50px', animation: 'spin 1s linear infinite' }}></div>
@@ -1730,7 +1731,39 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         </div>
       )}
 
-      {/* 頂部工具列 */}
+      {/* ★★★ 2. 全新加入的：客製化覆蓋警告視窗 (Modal) ★★★ */}
+      {showOverwriteModal && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, borderRadius: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '500px', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+                <h3 style={{ marginTop: 0, color: '#e74c3c', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.3rem' }}>
+                    ⚠️ 畫面上已經有班表資料！
+                </h3>
+                <p style={{ color: '#555', lineHeight: '1.6', marginBottom: '20px' }}>
+                    為避免「新舊班表疊加」導致人數暴增（產生多餘的幽靈空缺），系統必須清除目前的畫面。<br/><br/>
+                    請問您希望如何處理目前的舊班表？
+                </p>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <button onClick={handleArchiveThenGenerate} style={{ padding: '12px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>📂 儲存至「結算與歷史」後重新生成</span>
+                        <span>→</span>
+                    </button>
+                    
+                    <button onClick={handleDirectOverwrite} style={{ padding: '12px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <span>🗑️ 直接清除畫面並覆蓋</span>
+                        <span>→</span>
+                    </button>
+
+                    <button onClick={() => setShowOverwriteModal(false)} style={{ padding: '12px', background: '#f1f2f6', color: '#555', border: '1px solid #ddd', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>
+                        取消，保留目前畫面
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+      {/* ★★★ Modal 結束 ★★★ */}
+
+      {/* 3. 頂部工具列 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem', alignItems: 'center', flexWrap:'wrap', gap:'10px' }}>
         <div style={{display:'flex', alignItems:'center', gap:'15px'}}>
             <h2 style={{ color: 'black', fontWeight: 'bold', margin: 0 }}>總班表 (排班工作桌)</h2>
@@ -1756,6 +1789,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
            
            <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 選項</button>
            
+           {/* ★ 確保這裡綁定的是 handleGeminiSolveClick */}
            <button id="gemini-trigger-btn" onClick={handleGeminiSolveClick} disabled={processing} style={{ padding: '0.5rem 1rem', background: processing ? '#ccc' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: processing ? 'not-allowed' : 'pointer', fontWeight: 'bold', boxShadow: '0 2px 4px rgba(142,68,173,0.3)' }}>{processing ? '⏳' : '✨ 生成 AI 班表'}</button>
           
            <button onClick={handleClearAll} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>🗑️ 清空舊班表</button>
@@ -1765,6 +1799,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         </div>
       </div>
 
+      {/* 4. 新增選項面板 */}
       {showAddOption && (
         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f1f3f5', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', flexWrap:'wrap' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
@@ -1785,6 +1820,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         </div>
       )}
 
+      {/* 5. AI 對話框 */}
       {showGemini && (
         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f8f9fa', borderRadius: '12px', border: '1px solid #eee' }}>
             <div style={{ maxHeight: '200px', overflowY: 'auto', marginBottom: '10px' }}>
@@ -1802,6 +1838,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
         </div>
       )}
 
+      {/* 6. 班表主體 */}
       {schedule && Object.keys(schedule).length > 0 ? (
         <div style={{ overflowX: 'auto', border: '1px solid #eee', borderRadius: '8px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
@@ -1874,7 +1911,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                                   <span style={{ fontSize: '0.8rem', color: '#666' }}>(需{req})</span>
                               </td>
                               {daysArray.map(d => {
-                                  const count = dailyStats[d][type];
+                                  const count = dailyStats[d]?.[type] || 0;
                                   const isOk = count >= req;
                                   return (
                                       <td key={d} style={{ textAlign: 'center', fontWeight: 'bold', color: isOk ? '#27ae60' : '#e74c3c', background: isOk ? '#d4edda' : '#f8d7da', fontSize: '0.9rem', borderRight: '1px solid white' }}>
@@ -1893,8 +1930,8 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
           <p>請點擊上方的「✨ 生成 AI 班表」開始排班，或是切換其他月份。</p>
       </div>}
     </div>
-  );
-};
+ );
+  }
 // ============================================================================
 // 員工管理面板 (更新：加入「重置密碼」功能)
 // ============================================================================
