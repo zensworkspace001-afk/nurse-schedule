@@ -1308,7 +1308,10 @@ const ManagerInterface = ({
           setHistoryYear={setHistoryYear} 
           setHistoryMonth={setHistoryMonth} 
           setHistorySchedule={setHistorySchedule}
-
+// 👇 請在這裡補上下面這三行 👇
+          historyYear={historyYear}
+          historyMonth={historyMonth}
+          historySchedule={historySchedule}
         />
       )}
       
@@ -1444,7 +1447,7 @@ const SchedulePanel = ({
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions,setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
-    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule
+    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule,historyYear, historyMonth, historySchedule
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
