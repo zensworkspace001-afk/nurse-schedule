@@ -1569,6 +1569,12 @@ const handleReset = () => {
       setShowOverwriteModal(false);
       executeGeminiSolve();
   };
+  // 👇 ★★★ 請把這段遺失的「選項 B」補在這裡！ ★★★ 👇
+  const handleDirectOverwrite = () => {
+      setShowOverwriteModal(false); // 關閉彈出視窗
+      executeGeminiSolve();         // 直接呼叫 AI 重新生成新班表
+  };
+  // 👆 ★★★ 補上這段就修復了！ ★★★ 👆
 
   // 4. 真正的 AI 呼叫核心 (原來的 handleGeminiSolve 邏輯移到這裡)
   const executeGeminiSolve = async () => {
