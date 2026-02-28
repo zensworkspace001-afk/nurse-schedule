@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
+import { doc, getDoc } from 'firebase/firestore';
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive, fetchScheduleBackups } from './api/database';
+import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive, fetchScheduleBackups } from './api/database';
 import { signOut } from "firebase/auth"; // 加到 import
 
 // ============================================================================
@@ -871,8 +872,14 @@ const [historyYear, setHistoryYear] = useState(() => {
       if (data) {
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
-        // ★ 修復：不依賴 localStorage，直接吃雲端的發布月份
-        if (data.publishedDate) setPublishedDate(data.publishedDate); 
+        
+        // ★ 核心修復 1：深度比對！如果月份沒變，就不要更新狀態，打破無窮迴圈！
+        if (data.publishedDate) {
+          setPublishedDate(prev => {
+            if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
+            return data.publishedDate;
+          });
+        }
       }
       isSettingsLoaded = true; checkAllLoaded();
     });
@@ -891,7 +898,6 @@ const [historyYear, setHistoryYear] = useState(() => {
     const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
       if (data) {
         setSchedule(data.schedule || {});
-        // ★ 核心修復 1：如果雲端沒有發布資料，必須強制作為 null，否則會殘留舊畫面
         setFinalizedSchedule(data.finalizedSchedule || null); 
       } else {
         setSchedule({}); setFinalizedSchedule(null);
@@ -907,8 +913,9 @@ const [historyYear, setHistoryYear] = useState(() => {
     });
 
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
-  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate]);
-
+    
+  // ★ 核心修復 2：把 publishedDate 改成 publishedDate.year 與 publishedDate.month
+  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
 
   // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
   useEffect(() => {
@@ -1062,11 +1069,38 @@ const handleLogout = () => {
     }
   }
 
+  // 🔄 手動強制同步最新雲端班表
+  const handleManualRefresh = async () => {
+    try {
+      // 顯示讀取中的提示 (可選，讓使用者知道有在跑)
+      console.log("🔄 正在向雲端請求最新資料...");
+      
+      // 直接向 Firebase 請求目前選擇的「年_月」的真實資料
+      const docRef = doc(db, 'Schedules', `${selectedYear}_${selectedMonth}`);
+      const snap = await getDoc(docRef);
+
+      if (snap.exists()) {
+        const data = snap.data();
+        setSchedule(data.schedule || {});
+        setFinalizedSchedule(data.finalizedSchedule || null);
+        alert(`✅ 已成功從雲端同步 ${selectedYear} 年 ${selectedMonth} 月的最新班表！`);
+      } else {
+        setSchedule({});
+        setFinalizedSchedule(null);
+        alert(`☁️ 雲端目前沒有 ${selectedYear} 年 ${selectedMonth} 月的班表資料。`);
+      }
+    } catch (error) {
+      console.error("手動同步失敗:", error);
+      alert("❌ 同步失敗，請檢查網路連線或權限設定。");
+    }
+  };
+
 const handleSaveAndPublish = async () => {
     if (!schedule || Object.keys(schedule).length === 0) {
       alert("❌ 目前沒有班表內容，無法儲存！");
       return;
     }
+
     
     const newFinalized = JSON.parse(JSON.stringify(schedule));
 
@@ -1852,7 +1886,13 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                <span style={{margin:'0 5px', color:'#1565c0', fontWeight:'bold'}}>月</span>
                <span style={{fontSize:'0.85rem', color:'#555', marginLeft:'5px'}}>({daysInMonth}天)</span>
            </div>
-           
+           {/* ★★★★ 請把這顆「手動同步按鈕」加在這裡！ ★★★★ */}
+           <button 
+             onClick={handleManualRefresh}
+             style={{ padding: '0.5rem 1rem', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px', marginRight: '5px' }}
+           >
+             🔄 手動同步
+           </button>
            <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 選項</button>
            
            {/* ★ 確保這裡綁定的是 handleGeminiSolveClick */}
