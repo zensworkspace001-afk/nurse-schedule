@@ -1,12 +1,16 @@
+// api/auto-settle.js 頂部
 import admin from 'firebase-admin';
 
-// 1. 初始化 Firebase Admin (如果尚未初始化)
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT))
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      // 關鍵：將環境變數中的 \n 轉回真正的換行符號
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
   });
 }
-
 const db = admin.firestore();
 
 export default async function handler(req, res) {
