@@ -3553,6 +3553,23 @@ const PublishPanel = ({
 
     // ★★★ 核心邏輯：單點拔除名字，轉回待認領 ★★★
     const handleUnassignSingleStaff = (staffId) => {
+        // ★★★ 請在這裡貼上新增的一鍵拔除所有人 ★★★
+    const handleUnassignAll = () => {
+        if (!window.confirm(`⚠️ 確定要【拔除所有人】的班表嗎？\n\n這會將目前畫面上所有已認領的班表，全部退回「待認領 (Dxxx)」狀態！\n員工必須重新登入選擇。`)) return;
+
+        const newSchedule = {};
+        let vIndex = 1;
+
+        // 將所有人的資料重新洗牌成 D001, D002...
+        Object.keys(finalizedSchedule).sort().forEach(rowId => {
+            const newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
+            newSchedule[newVirtualId] = finalizedSchedule[rowId];
+            vIndex++;
+        });
+
+        setFinalizedSchedule(newSchedule);
+        // (註：系統會自動透過 debounce 將這個狀態更新到雲端)
+    };
         const staffName = staffData.find(s => s.staff_id === staffId)?.name || staffId;
         if (!window.confirm(`⚠️ 確定要拔除「${staffName}」的班表嗎？\n\n這將把此排班轉為「待認領 (Dxxx)」空缺，\n員工介面會立刻同步釋出，供其他人重新選擇。`)) return;
 
@@ -3587,7 +3604,7 @@ const PublishPanel = ({
            <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                  {/* ★ 新增下拉選單按鈕 */}
                  <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
-                 
+                 <button onClick={handleUnassignAll} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>⚠️ 全部拔除釋出</button>
                  <div style={{color:'#666', fontSize:'0.9rem', textAlign: 'right'}}>此區塊與員工手機端即時連動。<br/>如需微調，可直接拔除名字釋出空缺。</div>
                  <button onClick={onPushToHistory} style={{ padding: '10px 20px', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
                      ➡️ 結算並封存至歷史區
