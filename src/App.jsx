@@ -1919,6 +1919,58 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
     }
   };
 
+  // ★★★ 新增：批次匯入 CSV 員工資料 ★★★
+  const fileInputRef = useRef(null); // 需要在元件頂部 import { useRef } from 'react'，若已引入則直接加這行
+
+  const handleImportCSV = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const csv = event.target.result;
+      const lines = csv.split(/\r\n|\n/); // 支援 Windows/Mac 換行
+      const newStaffList = [...localStaff]; // 保留原本已有的員工，把新的加進去
+      let importedCount = 0;
+
+      // 從第二行開始讀取 (跳過標題列)
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+        
+        const cols = line.split(',');
+        if (cols.length >= 2 && cols[0]) {
+           // 檢查是否已有相同工號，避免重複
+           if (newStaffList.some(s => s.staff_id === cols[0])) continue;
+
+           newStaffList.push({
+              staff_id: cols[0],
+              name: cols[1],
+              level: cols[2] || 'N0',
+              tenure_years: Number(cols[3]) || 0,
+              is_leader: cols[4] === '是' || cols[4] === 'true',
+              leave_status: cols[5] === '' ? 'None' : cols[5],
+              is_active: true,
+              special_status: cols[6] === 'BiWeekly' ? 'BiWeekly' : 'Standard',
+              can_night_shift: cols[7] !== '否' && cols[7] !== 'false',
+              accumulated_ot: Number(cols[8]) || 0,
+              night_shift_balance: Number(cols[9]) || 0,
+              prevMonthLeave: [false, false, false, false, false, false, false]
+           });
+           importedCount++;
+        }
+      }
+
+      setLocalStaff(newStaffList);
+      setIsDirty(true);
+      alert(`✅ 成功匯入 ${importedCount} 筆員工資料！\n請記得點擊「💾 儲存變更」以上傳至雲端。`);
+      
+      // 清空 input 讓下次選同一個檔案也能觸發
+      if (fileInputRef.current) fileInputRef.current.value = ''; 
+    };
+    reader.readAsText(file);
+  };
+
   // ★★★ 修改：呼叫後端 API 進行真實密碼重置 ★★★
   const handleResetPassword = async (id, name) => {
       if (!window.confirm(`確定要將員工「${name} (${id})」的登入密碼強制重置為 123456 嗎？\n\n注意：這將直接修改系統通行驗證碼。`)) {
@@ -1955,10 +2007,30 @@ alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。`);
       }
   };
 
-  const handleSave = () => {
+const handleSave = async () => {
+    // 1. 更新前端畫面與觸發 Firestore 存檔 (靠 App.jsx 原本的 debounce 寫入)
     setStaffData(localStaff);
     setIsDirty(false);
-    alert('✅ 員工資料已儲存！');
+    
+    // 2. 偷偷在背景呼叫 Vercel API，幫大家建帳號！
+    try {
+        const response = await fetch('/api/sync-accounts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ staffList: localStaff })
+        });
+        
+        const data = await response.json();
+        
+        if(response.ok) {
+            alert(`✅ 員工資料已成功儲存！\n\n🔑 【系統後台報告】\n- 自動開通新帳號：${data.result.successCount} 人\n- 既有帳號已略過：${data.result.existedCount} 人\n- 發生錯誤：${data.result.errorCount} 人`);
+        } else {
+            alert(`⚠️ 資料已儲存，但建立登入帳號時發生錯誤：${data.error}`);
+        }
+    } catch (error) {
+        console.error("同步帳號失敗", error);
+        alert('✅ 員工資料已儲存！\n(但目前無法連線至自動建帳號系統)');
+    }
   };
 
   const columns = [
@@ -1980,8 +2052,20 @@ alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。`);
     <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', height: '80vh', display: 'flex', flexDirection: 'column' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
         <h2 style={{ margin: 0 }}>員工資料管理 ({localStaff.length}人)</h2>
-        <div style={{ display: 'flex', gap: '1rem' }}>
-          <button onClick={handleAddStaff} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>+ 新增員工</button>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {/* ★ 新增：隱藏的檔案選擇器與匯入按鈕 */}
+          <input 
+            type="file" 
+            accept=".csv" 
+            ref={fileInputRef} 
+            style={{ display: 'none' }} 
+            onChange={handleImportCSV} 
+          />
+          <button onClick={() => fileInputRef.current.click()} style={{ padding: '0.5rem 1rem', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>
+            📥 匯入 CSV
+          </button>
+
+          <button onClick={handleAddStaff} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>+ 單筆新增</button>
           <button onClick={handleSave} disabled={!isDirty} style={{ padding: '0.5rem 2rem', background: isDirty ? '#e67e22' : '#ccc', color: 'white', border: 'none', borderRadius: '8px', cursor: isDirty ? 'pointer' : 'not-allowed', fontWeight: 'bold', boxShadow: isDirty ? '0 4px 10px rgba(230, 126, 34, 0.4)' : 'none' }}>{isDirty ? '💾 儲存變更' : '已同步'}</button>
         </div>
       </div>
