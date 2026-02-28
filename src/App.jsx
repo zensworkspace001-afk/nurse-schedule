@@ -998,28 +998,16 @@ const handlePushToHistory = async () => {
     }
     if (!window.confirm(`確定要將 ${selectedYear}年${selectedMonth}月 的班表結算並封存嗎？\n\n⚠️ 執行後：\n1. 此班表將移至「✅ 3. 結算與歷史」\n2. 若歷史區已有舊班表，舊班表將先備份至雲端封存庫\n3. 發布區將被清空\n4. 系統將自動切換至下一個月，準備新的排班`)) return;
 
-    // ★ 步驟 1：若歷史區已有舊班表，先將它 archive 到 Firebase 再覆蓋
+// ★ 步驟 1：若歷史區已有舊班表，先將它 archive 到 Firebase 再覆蓋
     if (historySchedule && Object.keys(historySchedule).length > 0) {
         try {
-            const daysInOldMonth = new Date(historyYear, historyMonth, 0).getDate();
-            let csv = `\uFEFF被覆蓋封存 - ${historyYear}年${historyMonth}月班表\n`;
-            csv += `封存時間,${new Date().toLocaleString('zh-TW')}\n\n`;
-            csv += '工號,姓名,';
-            for (let d = 1; d <= daysInOldMonth; d++) csv += `${d}號,`;
-            csv += '\n';
-
-            Object.keys(historySchedule).sort().forEach(rowId => {
-                const staff = staffData.find(s => s.staff_id === rowId);
-                const name = staff ? staff.name : '待認領';
-                let row = `${rowId},${name},`;
-                for (let d = 1; d <= daysInOldMonth; d++) {
-                    const cell = historySchedule[rowId]?.[d];
-                    row += `${(typeof cell === 'object' ? cell?.type : cell) || ''},`;
-                }
-                csv += row + '\n';
-            });
-
-            await saveArchiveReport(historyYear, historyMonth, csv);
+            // 🌟 ★★★ 核心修復：改用智能 JSON 備份，不再產生會覆蓋健康度的笨蛋 CSV ★★★ 🌟
+            await backupScheduleToArchive(
+                historyYear, 
+                historyMonth, 
+                historySchedule, 
+                "歷史區舊班表被覆蓋前自動歸檔"
+            );
             console.log(`✅ 舊班表 ${historyYear}年${historyMonth}月 已成功備份至雲端封存庫`);
         } catch (e) {
             console.error("❌ 舊班表備份失敗:", e);
