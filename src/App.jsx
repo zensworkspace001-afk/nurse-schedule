@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports } from './api/database';
+import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToServer } from './api/database';
 import { doc, setDoc } from 'firebase/firestore'; // ★ 新增這行
 import { signOut } from "firebase/auth"; // 加到 import
 
@@ -1552,27 +1552,15 @@ const handleReset = () => {
           setIsBackingUp(true); 
           
           try {
-              // ★ 動作 1：先把原本躺在「歷史區」的班表備份到伺服器 (避免被覆蓋消失)
+              // ★ 動作 1：先把原本躺在「歷史區」的班表備份到伺服器 (呼叫乾淨的 API)
               if (historySchedule && Object.keys(historySchedule).length > 0) {
                   const historyBackupId = `History_${historyYear}_${historyMonth}_${Date.now()}`;
-                  await setDoc(doc(db, 'ScheduleBackups', historyBackupId), {
-                      year: historyYear,
-                      month: historyMonth,
-                      schedule: historySchedule,
-                      backedUpAt: new Date().toISOString(),
-                      note: "歷史區舊班表被覆蓋前自動歸檔"
-                  });
+                  await backupScheduleToServer(historyBackupId, historyYear, historyMonth, historySchedule, "歷史區舊班表被覆蓋前自動歸檔");
               }
 
               // ★ 動作 2：把目前工作桌上的班表也備份一次，以防萬一
               const deskBackupId = `Desk_${selectedYear}_${selectedMonth}_${Date.now()}`;
-              await setDoc(doc(db, 'ScheduleBackups', deskBackupId), {
-                  year: selectedYear,
-                  month: selectedMonth,
-                  schedule: targetSchedule,
-                  backedUpAt: new Date().toISOString(),
-                  note: "重新生成 AI 班表前自動備份"
-              });
+              await backupScheduleToServer(deskBackupId, selectedYear, selectedMonth, targetSchedule, "重新生成 AI 班表前自動備份");
 
               // ★ 動作 3：將目前工作桌的班表，移動並「覆蓋」掉歷史區原本躺著的班表
               if (setHistoryYear) setHistoryYear(selectedYear);

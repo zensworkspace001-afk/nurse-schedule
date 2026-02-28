@@ -138,3 +138,16 @@ export const clearArchiveReports = async () => {
   
   await Promise.all(deletePromises);
 };
+// ============================================================================
+// 5. 班表安全備份 (Schedule Backups)
+// ============================================================================
+export const backupScheduleToServer = async (backupId, year, month, schedule, note) => {
+  const docRef = doc(db, 'ScheduleBackups', backupId);
+  await setDoc(docRef, {
+    year,
+    month,
+    schedule,
+    backedUpAt: new Date().toISOString(),
+    note
+  }, { merge: true });
+};
