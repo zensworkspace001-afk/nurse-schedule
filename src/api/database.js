@@ -25,39 +25,39 @@ export const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ============================================================
-// Settings（班別選項、優先設定、發布日期）
+// Settings — 路徑對應規則: NurseApp/Settings
 // ============================================================
 export const subscribeToSettings = (callback) => {
-  const ref = doc(db, 'global', 'settings');
+  const ref = doc(db, 'NurseApp', 'Settings');
   return onSnapshot(ref, (snap) => {
     callback(snap.exists() ? snap.data() : null);
   });
 };
 
 export const saveGlobalSettings = async (data) => {
-  await setDoc(doc(db, 'global', 'settings'), data, { merge: true });
+  await setDoc(doc(db, 'NurseApp', 'Settings'), data, { merge: true });
 };
 
 // ============================================================
-// Staff（員工資料、健康度歷史）
+// Staff — 路徑對應規則: NurseApp/Staff
 // ============================================================
 export const subscribeToStaff = (callback) => {
-  const ref = doc(db, 'global', 'staff');
+  const ref = doc(db, 'NurseApp', 'Staff');
   return onSnapshot(ref, (snap) => {
     callback(snap.exists() ? snap.data() : null);
   });
 };
 
 export const saveGlobalStaff = async (data) => {
-  await setDoc(doc(db, 'global', 'staff'), data, { merge: true });
+  await setDoc(doc(db, 'NurseApp', 'Staff'), data, { merge: true });
 };
 
 // ============================================================
-// Monthly Schedule（每月草稿 + 發布班表）
+// Monthly Schedule — 路徑對應規則: Schedules/{id}
 // ============================================================
 export const subscribeToSchedule = (year, month, callback) => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
-  const ref = doc(db, 'schedules', docId);
+  const ref = doc(db, 'Schedules', docId);
   return onSnapshot(ref, (snap) => {
     callback(snap.exists() ? snap.data() : null);
   });
@@ -65,50 +65,33 @@ export const subscribeToSchedule = (year, month, callback) => {
 
 export const saveMonthlySchedule = async (year, month, data) => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
-  await setDoc(doc(db, 'schedules', docId), data, { merge: true });
+  await setDoc(doc(db, 'Schedules', docId), data, { merge: true });
 };
 
 // ★ 員工認領班表（即時寫入 finalizedSchedule）
 export const updateStaffSchedule = async (year, month, newFinalizedSchedule) => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
   await setDoc(
-    doc(db, 'schedules', docId),
+    doc(db, 'Schedules', docId),
     { finalizedSchedule: newFinalizedSchedule },
     { merge: true }
   );
 };
 
 // ============================================================
-// Archive Reports（封存歷史班表 CSV）
-// ★ 核心修復：原本 db 未定義，現在統一從上面取得
+// Archive Reports — 路徑對應規則: archive_reports/{id}
 // ============================================================
-
-/**
- * 儲存封存報表到 Firebase
- * @param {number} year
- * @param {number} month
- * @param {string} csvContent - CSV 字串內容
- */
 export const saveArchiveReport = async (year, month, csvContent) => {
   const docId = `${year}-${String(month).padStart(2, '0')}`;
   await setDoc(
-    doc(db, 'archiveReports', docId),
-    {
-      year,
-      month,
-      csvContent,
-      savedAt: new Date().toISOString(),
-    },
+    doc(db, 'archive_reports', docId),
+    { year, month, csvContent, savedAt: new Date().toISOString() },
     { merge: true }
   );
 };
 
-/**
- * 即時監聽所有封存報表
- * @param {function} callback - 回傳 { [monthKey]: csvContent } 格式
- */
 export const subscribeToArchiveReports = (callback) => {
-  const ref = collection(db, 'archiveReports');
+  const ref = collection(db, 'archive_reports');
   return onSnapshot(ref, (snapshot) => {
     const reports = {};
     snapshot.forEach((docSnap) => {
@@ -120,12 +103,8 @@ export const subscribeToArchiveReports = (callback) => {
   });
 };
 
-/**
- * 清除所有封存報表
- */
 export const clearArchiveReports = async () => {
-  const ref = collection(db, 'archiveReports');
+  const ref = collection(db, 'archive_reports');
   const snapshot = await getDocs(ref);
-  const deletes = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
-  await Promise.all(deletes);
+  await Promise.all(snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref)));
 };
