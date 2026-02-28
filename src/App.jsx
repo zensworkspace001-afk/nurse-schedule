@@ -1563,13 +1563,7 @@ const handleReset = () => {
               */
               
               // 寫法 B (如果您是使用 compat 舊版語法，或上方沒有 import setDoc):
-              await db.collection('ScheduleBackups').doc(backupId).set({
-                  year: selectedYear,
-                  month: selectedMonth,
-                  schedule: targetSchedule,
-                  backedUpAt: new Date().toISOString(),
-                  note: "重新生成 AI 班表前自動備份"
-              });
+            await saveArchiveReport(selectedYear, selectedMonth, csv);
 
               // ★ 同步更新前端畫面歷史區的狀態
               setHistoryYear(selectedYear);
