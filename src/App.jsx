@@ -1281,6 +1281,9 @@ const ManagerInterface = ({
           setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
           finalizedSchedule={finalizedSchedule}
+          setHistoryYear={setHistoryYear} 
+          setHistoryMonth={setHistoryMonth} 
+          setHistorySchedule={setHistorySchedule}
 
         />
       )}
@@ -1417,14 +1420,15 @@ const SchedulePanel = ({
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions,setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
-    finalizedSchedule
+    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
   const [showGemini, setShowGemini] = useState(false);      
   const [processing, setProcessing] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState(''); 
-  
+  // ★ 新增一個控制客製化視窗的狀態
+  const [showOverwriteModal, setShowOverwriteModal] = useState(false);
   const [customAiInstruction, setCustomAiInstruction] = useState('');
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
@@ -1501,13 +1505,37 @@ const handleReset = () => {
   };
 
 
-  const handleGeminiSolve = async () => {
-    // ★★★ 核心修復：阻斷舊歷史資料的疊加 ★★★
-    if (schedule && Object.keys(schedule).length > 0) {
-        const confirmOverwrite = window.confirm("⚠️ 畫面上已經有班表資料！\n\n為避免「新舊班表疊加」導致人數暴增（產生多餘的幽靈空缺），系統將會【完全清除】目前的舊資料，再為您產生一份乾淨的 AI 班表。\n\n確定要覆蓋並繼續嗎？");
-        if (!confirmOverwrite) return;
-    }
+// --- ★ 升級版的 AI 生成邏輯 ---
 
+  // 1. 點擊「生成 AI 班表」時的檢查點
+  const handleGeminiSolveClick = () => {
+    if (schedule && Object.keys(schedule).length > 0) {
+        setShowOverwriteModal(true); // 如果有資料，跳出我們自己做的漂亮視窗
+    } else {
+        executeGeminiSolve(); // 如果是空的，直接執行生成
+    }
+  };
+
+  // 2. 選項 A：先封存至歷史，再重新生成
+  const handleArchiveThenGenerate = () => {
+      const targetSchedule = finalizedSchedule || schedule;
+      if (targetSchedule && Object.keys(targetSchedule).length > 0) {
+          setHistoryYear(selectedYear);
+          setHistoryMonth(selectedMonth);
+          setHistorySchedule(targetSchedule);
+      }
+      setShowOverwriteModal(false);
+      executeGeminiSolve();
+  };
+
+  // 3. 選項 B：直接清除並覆蓋
+  const handleDirectOverwrite = () => {
+      setShowOverwriteModal(false);
+      executeGeminiSolve();
+  };
+
+  // 4. 真正的 AI 呼叫核心 (原來的 handleGeminiSolve 邏輯移到這裡)
+  const executeGeminiSolve = async () => {
     setShowGemini(true);
     setProcessing(true);
     const dailyNeeded = (requirements.D || 0) + (requirements.E || 0) + (requirements.N || 0);
@@ -1517,7 +1545,7 @@ const handleReset = () => {
 
     setGeminiMessages([{ role: 'assistant', content: `🤖 根據人力需求 (${dailyNeeded}人/日)，正在為 ${selectedMonth}月 生成 ${estimatedCount} 份匿名班表...` }]);
 
- let currentPrompt = `
+    let currentPrompt = `
 [角色定義]
 你是一個高階排班演算法引擎，採用「目標規劃法 (Goal Programming)」邏輯。你精通台灣勞動基準法 (Taiwan Labor Standards Act) 與護理人員排班規則。
 
@@ -1575,7 +1603,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
             const response = await fetch('/api/gemini', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json',
-                           'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
+                           'Authorization': `Bearer ${token}`
                 },
                 body: JSON.stringify({ prompt: currentPrompt })
             });
@@ -1611,7 +1639,6 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (全新產生)**\n\n已為您配置 ${Object.keys(virtualSchedule).length} 位人力！` }]);
                 isSuccess = true;
                 
-                // ★★★ 核心修復：直接將最終班表設為 virtualSchedule，不再合併舊有的 currentRealStaffSchedule ★★★
                 onGenerateSchedule(virtualSchedule);
             } else {
                 throw new Error("AI 未回傳正確的 patterns 陣列");
