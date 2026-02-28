@@ -2773,7 +2773,7 @@ let combinedData = "";
                     onKeyPress={(e) => e.key === 'Enter' && handleAskAI()} 
                     placeholder={hasData ? `可以問：「比較 ${loadedMonths[0]} 和另外幾個月的請假狀況」...` : "等待雲端載入資料..."} 
                     disabled={!hasData || isAnalyzing}
-                    style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #dcdde1', color: 'black', fontSize: '1rem', boxShadow: 'inset 0 1px 3px rgba(253, 247, 247, 0.05)' }} 
+                    style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #dcdde1', color: 'white', fontSize: '1rem', boxShadow: 'inset 0 1px 3px rgba(253, 247, 247, 0.05)' }} 
                 />
                 <button 
                     onClick={handleAskAI} 
