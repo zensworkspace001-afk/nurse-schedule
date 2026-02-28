@@ -2009,10 +2009,15 @@ const StaffManagementPanel = ({ staffData, setStaffData }) => {
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
 
-  useEffect(() => {
-    setLocalStaff(staffData);
-    setIsDirty(false);
-  }, [staffData]);
+useEffect(() => {
+  // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
+  setIsDirty(prev => {
+    if (!prev) {
+      setLocalStaff(staffData); // 沒在編輯中才更新
+    }
+    return prev; // isDirty 狀態保持不變
+  });
+}, [staffData]);
 
   const handleChange = (id, field, value) => {
     setLocalStaff(prev => prev.map(staff => {

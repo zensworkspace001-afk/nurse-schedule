@@ -66,7 +66,7 @@ export const saveGlobalStaff = async (data) => {
 // ============================================================================
 export const subscribeToSchedule = (year, month, callback) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'Schedules', docId);
+const docRef = doc(db, 'NurseApp', 'Schedules', docId);
   return onSnapshot(docRef, (docSnap) => {
     if (docSnap.exists()) callback(docSnap.data());
     else callback(null);
