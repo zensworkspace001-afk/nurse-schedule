@@ -787,8 +787,13 @@ const NurseSchedulingSystem = () => {
   const [staffData, setStaffData] = useState([]);
   const [schedule, setSchedule] = useState(null);
   const [finalizedSchedule, setFinalizedSchedule] = useState(null);
-  const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
-
+  // 修改後（從 localStorage 讀正確的發布月份）
+const [publishedDate, setPublishedDate] = useState(() => {
+  try {
+    const saved = localStorage.getItem('publishedDate');
+    return saved ? JSON.parse(saved) : { year: 2026, month: 2 };
+  } catch { return { year: 2026, month: 2 }; }
+});
   // --- 2. 本機暫存狀態 (不需上雲端) ---
   const [historyData, setHistoryData] = useState([]);
   const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
