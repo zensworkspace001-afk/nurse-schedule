@@ -2,13 +2,15 @@
 import admin from 'firebase-admin';
 
 if (!admin.apps.length) {
+  // 1. 先把字串解析成 JSON 物件
+  const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  
+  // 2. ★★★ 終極修復：強制把失效的 \n 轉回真正的換行符號 ★★★
+  serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
+  // 3. 再餵給 Firebase
   admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      // 關鍵：將環境變數中的 \n 轉回真正的換行符號
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
+    credential: admin.credential.cert(serviceAccount)
   });
 }
 const db = admin.firestore();
