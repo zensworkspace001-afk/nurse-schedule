@@ -139,14 +139,19 @@ export const clearArchiveReports = async () => {
   await Promise.all(deletePromises);
 };
 // ============================================================================
-// 5. 班表安全備份 (Schedule Backups)
+// 5. 班表安全備份 (統一歸檔至 archive_reports/YYYY_M)
 // ============================================================================
-export const backupScheduleToServer = async (backupId, year, month, schedule, note) => {
-  const docRef = doc(db, 'ScheduleBackups', backupId);
+export const backupScheduleToArchive = async (year, month, schedule, note) => {
+  // 讓檔名強制變成 "2026_1", "2026_2" 這種格式
+  const docId = `${year}_${month}`; 
+  const docRef = doc(db, 'archive_reports', docId);
+  
+  // 使用 merge: true 確保它只會新增 schedule_backup 欄位，
+  // 不會洗掉你在結算面板匯出的 csv 報表資料！
   await setDoc(docRef, {
     year,
     month,
-    schedule,
+    schedule_backup: schedule,
     backedUpAt: new Date().toISOString(),
     note
   }, { merge: true });

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToServer } from './api/database';
+import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive} from './api/database';
 import { doc, setDoc } from 'firebase/firestore'; // ★ 新增這行
 import { signOut } from "firebase/auth"; // 加到 import
 
@@ -1552,22 +1552,30 @@ const handleReset = () => {
           setIsBackingUp(true); 
           
           try {
-              // ★ 動作 1：先把原本躺在「歷史區」的班表備份到伺服器 (呼叫乾淨的 API)
+              // ★ 動作 1：將原本躺在「歷史區」的班表，精準備份到 archive_reports/YYYY_M
               if (historySchedule && Object.keys(historySchedule).length > 0) {
-                  const historyBackupId = `History_${historyYear}_${historyMonth}_${Date.now()}`;
-                  await backupScheduleToServer(historyBackupId, historyYear, historyMonth, historySchedule, "歷史區舊班表被覆蓋前自動歸檔");
+                  await backupScheduleToArchive(
+                      historyYear, 
+                      historyMonth, 
+                      historySchedule, 
+                      "歷史區舊班表被覆蓋前自動歸檔"
+                  );
               }
 
-              // ★ 動作 2：把目前工作桌上的班表也備份一次，以防萬一
-              const deskBackupId = `Desk_${selectedYear}_${selectedMonth}_${Date.now()}`;
-              await backupScheduleToServer(deskBackupId, selectedYear, selectedMonth, targetSchedule, "重新生成 AI 班表前自動備份");
+              // ★ 動作 2：將「目前工作桌」的班表也備份一份到對應的月份
+              await backupScheduleToArchive(
+                  selectedYear, 
+                  selectedMonth, 
+                  targetSchedule, 
+                  "重新生成 AI 班表前自動備份"
+              );
 
               // ★ 動作 3：將目前工作桌的班表，移動並「覆蓋」掉歷史區原本躺著的班表
               if (setHistoryYear) setHistoryYear(selectedYear);
               if (setHistoryMonth) setHistoryMonth(selectedMonth);
               if (setHistorySchedule) setHistorySchedule(targetSchedule);
               
-              console.log("✅ 舊班表已成功歸檔至伺服器，並完成歷史區替換！");
+              console.log("✅ 舊班表已成功歸檔至 archive_reports，並完成歷史區替換！");
 
           } catch (error) {
               console.error("伺服器備份失敗:", error);
