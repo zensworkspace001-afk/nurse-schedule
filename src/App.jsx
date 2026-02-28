@@ -1429,6 +1429,7 @@ const SchedulePanel = ({
   const [loadingStatus, setLoadingStatus] = useState(''); 
   // ★ 新增一個控制客製化視窗的狀態
   const [showOverwriteModal, setShowOverwriteModal] = useState(false);
+  const [isBackingUp, setIsBackingUp] = useState(false);
   const [customAiInstruction, setCustomAiInstruction] = useState('');
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
@@ -1516,20 +1517,55 @@ const handleReset = () => {
     }
   };
 
-  // 2. 選項 A：先封存至歷史，再重新生成
-  const handleArchiveThenGenerate = () => {
+ // 2. 選項 A：先封存至伺服器歷史區，再重新生成
+  const handleArchiveThenGenerate = async () => {
       const targetSchedule = finalizedSchedule || schedule;
+      
       if (targetSchedule && Object.keys(targetSchedule).length > 0) {
-          setHistoryYear(selectedYear);
-          setHistoryMonth(selectedMonth);
-          setHistorySchedule(targetSchedule);
-      }
-      setShowOverwriteModal(false);
-      executeGeminiSolve();
-  };
+          setIsBackingUp(true); // 讓按鈕顯示 Loading
+          
+          try {
+              const backupId = `${selectedYear}_${selectedMonth}_${Date.now()}`; // 加上時間戳記避免檔名重複
+              
+              // ★ 將舊班表上傳至 Firebase 伺服器 (建立一個名為 ScheduleBackups 的備份庫)
+              // 寫法 A (Firebase v9 最新版寫法，若頂部有 import { doc, setDoc } from 'firebase/firestore'):
+              /*
+              await setDoc(doc(db, 'ScheduleBackups', backupId), {
+                  year: selectedYear,
+                  month: selectedMonth,
+                  schedule: targetSchedule,
+                  backedUpAt: new Date().toISOString(),
+                  note: "重新生成 AI 班表前自動備份"
+              });
+              */
+              
+              // 寫法 B (如果您是使用 compat 舊版語法，或上方沒有 import setDoc):
+              await db.collection('ScheduleBackups').doc(backupId).set({
+                  year: selectedYear,
+                  month: selectedMonth,
+                  schedule: targetSchedule,
+                  backedUpAt: new Date().toISOString(),
+                  note: "重新生成 AI 班表前自動備份"
+              });
 
-  // 3. 選項 B：直接清除並覆蓋
-  const handleDirectOverwrite = () => {
+              // ★ 同步更新前端畫面歷史區的狀態
+              setHistoryYear(selectedYear);
+              setHistoryMonth(selectedMonth);
+              setHistorySchedule(targetSchedule);
+              
+              console.log("✅ 舊班表已成功備份至伺服器資料庫！");
+
+          } catch (error) {
+              console.error("伺服器備份失敗:", error);
+              alert("❌ 備份至伺服器失敗，請確認網路連線！\n(為保護資料，已停止重新生成)");
+              setIsBackingUp(false);
+              return; // 如果備份失敗，就強制中斷，保護舊資料不被洗掉
+          }
+          
+          setIsBackingUp(false);
+      }
+      
+      // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表
       setShowOverwriteModal(false);
       executeGeminiSolve();
   };
@@ -1744,10 +1780,10 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 </p>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <button onClick={handleArchiveThenGenerate} style={{ padding: '12px', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <span>📂 儲存至「結算與歷史」後重新生成</span>
-                        <span>→</span>
-                    </button>
+                <button onClick={handleArchiveThenGenerate} disabled={isBackingUp} style={{ padding: '12px', background: isBackingUp ? '#95a5a6' : '#3498db', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: isBackingUp ? 'not-allowed' : 'pointer', fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{isBackingUp ? '⏳ 正在備份至伺服器...' : '📂 儲存至伺服器備份後重新生成'}</span>
+                <span>→</span>
+                </button>
                     
                     <button onClick={handleDirectOverwrite} style={{ padding: '12px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <span>🗑️ 直接清除畫面並覆蓋</span>
