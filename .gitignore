@@ -31,3 +31,4 @@ dist/
 1.py
 backup.js
 gooo.py
+.env.*.local
