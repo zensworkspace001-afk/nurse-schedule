@@ -403,6 +403,8 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const [aiSlots, setAiSlots] = useState([]);                      
   const [previewSchedule, setPreviewSchedule] = useState({});      
   const [isProcessing, setIsProcessing] = useState(false);
+  // ★ 新增：嚴格判定該名員工是否已經存在於本月班表中
+  const hasClaimed = currentSchedule && Object.keys(currentSchedule).includes(currentUser.id);
 
   // ★★★ 修正 2：useEffect 也必須置頂 ★★★
   useEffect(() => {
@@ -567,16 +569,23 @@ const checkCompliance = (pattern) => {
 
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
   const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = s); setPreviewSchedule(map); setCurrentStep(3); };
-  const handleFinalSubmit = () => {
+const handleFinalSubmit = () => {
+    // ★ 防護 1：防止同一個人重複認領吃掉空缺
+    if (hasClaimed) {
+        alert("⚠️ 您已經認領過班表，無法重複認領！\n如需修改請聯繫護理長為您釋出空缺。");
+        return;
+    }
+
     const choice = aiSlots.find(opt => opt.id === selectedOption);
-    if (!choice) {
-        alert("⚠️ 此班表已被他人認領，請返回重新選擇！");
+    // ★ 防護 2：防止同時點擊，搶到別人剛選走的班表
+    if (!choice || choice.isClaimed) {
+        alert("⚠️ 此班表已被他人搶先選擇並鎖住！\n請返回重新選擇其他班表。");
         setCurrentStep(2);
         return;
     }
 
-      onConfirmSchedule({ staffId: currentUser.id, staffName: currentUser.name, shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType, chosenSchedule: { id: choice.id, title: choice.title }, fullMonthData: previewSchedule });
-      setCurrentStep(4);
+    onConfirmSchedule({ staffId: currentUser.id, staffName: currentUser.name, shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType, chosenSchedule: { id: choice.id, title: choice.title }, fullMonthData: previewSchedule });
+    setCurrentStep(4);
   };
 
   const getShiftColor = (shift) => { if (shift === 'D') return '#FFD93D'; if (shift === 'E') return '#FF6B9D'; if (shift === 'N') return '#4D96FF'; return '#f0f0f0'; };
@@ -638,23 +647,46 @@ const checkCompliance = (pattern) => {
               {prevStreak >= 6 && <div style={{color:'red', fontWeight:'bold'}}>⚠️ 警告：您已達連六上限，本月 1 號必須排休！</div>}
           </div>
 
-          <p style={{ marginBottom: '1rem', color: '#666' }}>請選擇您下個月希望認領的班別類型：</p>
-          
+{/* ★ 加入閃爍動畫的 CSS */}
+          <style>{`
+            @keyframes pulseAlert {
+              0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+              70% { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+              100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+            }
+          `}</style>
+
           {!currentSchedule || Object.keys(currentSchedule).length === 0 ? (
               <div style={{padding:'20px', background:'#fff3cd', color:'#856404', borderRadius:'8px'}}>⚠️ 管理員尚未發布此月份 ({targetMonth}月) 的班表，請稍後再來。</div>
-          ) : (
-              <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap:'wrap' }}>
-                <button onClick={() => handleSelectType('ALL')} disabled={isProcessing} 
-                    style={{ width: '120px', height: '120px', border: 'none', borderRadius: '15px', background: '#95a5a6', color: 'white', fontSize: '1.2rem', cursor: 'pointer', opacity: isProcessing?0.7:1 }}>
-                    全部顯示
-                </button>
-                {[{t:'D',l:'白班'}, {t:'E',l:'小夜'}, {t:'N',l:'大夜'}].map(i => (
-                    <button key={i.t} onClick={() => handleSelectType(i.t)} disabled={isProcessing} 
-                        style={{ width: '120px', height: '120px', border: 'none', borderRadius: '15px', background: getShiftColor(i.t), color: 'white', fontSize: '1.2rem', cursor: 'pointer', opacity: isProcessing?0.7:1 }}>
-                        {i.l}
-                    </button>
-                ))}
+          ) : hasClaimed ? (
+              // ★ 已經認領過的畫面：隱藏選擇按鈕，顯示完成狀態
+              <div style={{ padding: '25px', background: '#d4edda', color: '#155724', borderRadius: '12px', marginTop: '20px', border: '2px solid #c3e6cb' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.4rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>✅ 您已完成 {targetMonth} 月的認領！</h3>
+                  <p style={{ marginTop: '10px', color: '#155724', fontWeight: 'bold' }}>您的排班已成功鎖定。選好的班表不能再被選一次。</p>
+                  <p style={{ fontSize: '0.9rem', marginTop: '5px' }}>如需修改，請聯繫護理長在後台將您「拔除釋出」，您才能重新選擇。</p>
+                  <button onClick={() => setCurrentStep(2)} style={{ marginTop: '15px', padding: '10px 25px', background: '#28a745', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight:'bold' }}>👀 進入查看所有人認領狀況</button>
               </div>
+          ) : (
+              // ★ 尚未認領的畫面：顯示閃爍提醒與選擇按鈕
+              <>
+                <div style={{ background: '#ffebee', color: '#c62828', padding: '15px', borderRadius: '8px', marginBottom: '25px', fontWeight: 'bold', border: '2px solid #ffcdd2', animation: 'pulseAlert 2s infinite', fontSize: '1.1rem' }}>
+                    🔔 提醒：您尚未認領 {targetMonth} 月的班表，請盡速於下方選擇！
+                </div>
+                <p style={{ marginBottom: '1rem', color: '#666', fontWeight: 'bold' }}>請選擇您下個月希望認領的班別類型：</p>
+                
+                <div style={{ display: 'flex', gap: '20px', justifyContent: 'center', flexWrap:'wrap' }}>
+                  <button onClick={() => handleSelectType('ALL')} disabled={isProcessing} 
+                      style={{ width: '120px', height: '120px', border: 'none', borderRadius: '15px', background: '#95a5a6', color: 'white', fontSize: '1.2rem', cursor: 'pointer', opacity: isProcessing?0.7:1 }}>
+                      全部顯示
+                  </button>
+                  {[{t:'D',l:'白班'}, {t:'E',l:'小夜'}, {t:'N',l:'大夜'}].map(i => (
+                      <button key={i.t} onClick={() => handleSelectType(i.t)} disabled={isProcessing} 
+                          style={{ width: '120px', height: '120px', border: 'none', borderRadius: '15px', background: getShiftColor(i.t), color: 'white', fontSize: '1.2rem', cursor: 'pointer', opacity: isProcessing?0.7:1 }}>
+                          {i.l}
+                      </button>
+                  ))}
+                </div>
+              </>
           )}
         </div>
       )}
@@ -664,14 +696,14 @@ const checkCompliance = (pattern) => {
           <button onClick={() => setCurrentStep(1)} style={{ border: 'none', background: '#4a5568', color: 'white', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', marginBottom: '15px', fontWeight: 'bold', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '5px' }}>← 返回</button>
           <h2 style={{ color: 'black', fontWeight: 'bold' }}>📋 選擇整月方案 ({targetYear}年{targetMonth}月)</h2>
           <div style={{color:'#666', fontSize:'0.9rem', marginBottom:'15px'}}>💡 提示：灰底並標示「鎖頭」的班表代表已被其他人選走。若您極需該班表，請私下與該同仁協調。</div>
-
+          {hasClaimed && <div style={{padding:'10px', background:'#d4edda', color:'#155724', borderRadius:'8px', marginBottom:'15px', fontWeight:'bold', textAlign:'center', border:'1px solid #c3e6cb'}}>🔒 您已完成認領，目前僅供檢視狀態，無法再選擇其他班表。</div>}
           <div style={{ display: 'grid', gap: '20px', maxHeight:'600px', overflowY:'auto', paddingRight:'10px' }}>
             {filteredOptions.length === 0 ? (
               <div style={{padding:'40px', textAlign:'center', color: '#666', background:'#f9f9f9', borderRadius:'12px'}}><h3>無符合條件的推薦方案 😕</h3></div>
             ) : (
               filteredOptions.map(opt => {
                 const check = checkCompliance(opt.pattern);
-                const isSelectable = !opt.isClaimed && check.valid;
+                const isSelectable = !opt.isClaimed && check.valid && !hasClaimed; // ★ 加上 && !hasClaimed 徹底鎖死點擊;
                 const shiftColors = { 'D': '#FFD93D', 'E': '#FF6B9D', 'N': '#4D96FF', 'RG': '#2ecc71', 'RC': '#d5f5e3', 'OFF': '#d5f5e3', '空班': '#d5f5e3' };
 
                 return (
@@ -3456,6 +3488,27 @@ const PublishPanel = ({
 }) => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
+    // ★ 新增：選項管理與儲存邏輯
+    const [showAddOption, setShowAddOption] = useState(false);
+    const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
+
+    const handleAddOption = () => {
+        if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
+        if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
+        setShiftOptions([...shiftOptions, { ...newOption, time: '' }]);
+        setNewOption({ code: '', name: '', color: '#cccccc' });
+    };
+
+    const handleDeleteOption = (code) => {
+        if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code));
+    };
+
+    const handleCellChange = (staffId, day, newValue) => {
+        const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
+        if (!newSchedule[staffId]) newSchedule[staffId] = {};
+        newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+        setFinalizedSchedule(newSchedule);
+    };
 
     // -- 沿用健康度評分引擎 --
     const calculateHealthScore = (staffSchedule) => {
@@ -3512,7 +3565,10 @@ const PublishPanel = ({
                  <span style={{background:'#e8f8f5', padding:'5px 10px', borderRadius:'8px', color:'#27ae60', fontWeight:'bold'}}>{selectedYear}年 {selectedMonth}月</span>
              </div>
              
-             <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
+                 {/* ★ 新增下拉選單按鈕 */}
+                 <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
+                 
                  <div style={{color:'#666', fontSize:'0.9rem', textAlign: 'right'}}>此區塊與員工手機端即時連動。<br/>如需微調，可直接拔除名字釋出空缺。</div>
                  <button onClick={onPushToHistory} style={{ padding: '10px 20px', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
                      ➡️ 結算並封存至歷史區
@@ -3520,6 +3576,27 @@ const PublishPanel = ({
              </div>
         </div>
         {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
+
+        {/* ★ 新增：選項管理面板介面 */}
+        {showAddOption && (
+          <div style={{ padding: '1rem', background: 'white', borderRadius: '16px', border:'1px solid #ddd', marginBottom: '15px' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom:'10px' }}>
+              <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} style={{padding:'5px', width:'80px', color: 'black'}} />
+              <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} style={{padding:'5px', width:'120px', color: 'black'}} />
+              <input type="color" value={newOption.color} onChange={e=>setNewOption({...newOption, color: e.target.value})} style={{border:'none', width:'40px', height:'30px', cursor:'pointer'}} />
+              <button onClick={handleAddOption} style={{padding:'5px 15px', background:'#28a745', color:'white', border:'none', borderRadius:'4px', cursor:'pointer'}}>確認新增</button>
+            </div>
+            <div style={{ display:'flex', flexWrap:'wrap', gap:'10px', paddingTop:'10px', borderTop:'1px solid #eee' }}>
+                {shiftOptions.map(opt => (
+                    <div key={opt.code} style={{ background:'#f8f9fa', padding:'4px 8px', borderRadius:'4px', border:'1px solid #ddd', display:'flex', alignItems:'center', gap:'5px', fontSize:'0.85rem' }}>
+                        <span style={{width:'12px', height:'12px', background:opt.color, display:'inline-block', borderRadius:'50%'}}></span>
+                        <b style={{ color: '#000000' }}>{opt.code}</b>
+                        <button onClick={() => handleDeleteOption(opt.code)} style={{border:'none', background:'transparent', color:'red', cursor:'pointer', fontWeight:'bold', padding:'0 2px'}}>×</button>
+                    </div>
+                ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '20px', flex: 1, overflow: 'hidden' }}>
             {/* ... 下面的左側班表與右側監控，請保持原本的樣子不要動它 ... */}            {/* 左側：班表主視窗 */}
@@ -3566,10 +3643,17 @@ const PublishPanel = ({
                                           )}
                                       </td>
                                       <td style={{ padding: '4px', textAlign: 'center', fontWeight: 'bold', color: scoreColor, borderRight: '2px solid #ddd', cursor: 'help' }} title={deductions.join('\n')}>{score}</td>
-                                      {daysArray.map(d => {
-                                          const type = (typeof finalizedSchedule[rowId][d] === 'object') ? finalizedSchedule[rowId][d].type : finalizedSchedule[rowId][d];
-                                          const optColor = shiftOptions.find(o=>o.code===type)?.color || '#fff';
-                                          return <td key={d} style={{ textAlign:'center', background: optColor, borderRight:'1px solid #eee', fontWeight:'bold' }}>{type}</td>
+                                     {daysArray.map(d => {
+                                          const cellData = finalizedSchedule[rowId]?.[d];
+                                          const type = (typeof cellData === 'object') ? cellData.type : (cellData || '');
+                                          const optionInfo = shiftOptions.find(o => o.code === type) || { color: '#fff' };
+                                          return (
+                                              <td key={d} style={{ padding: 0, borderRight: '1px solid #f0f0f0', height: '40px' }}>
+                                                  <select value={type} onChange={(e) => handleCellChange(rowId, d, e.target.value)} style={{ width: '100%', height: '100%', padding: 0, border: 'none', background: optionInfo.color, color: 'black', fontWeight: 'bold', textAlignLast: 'center', cursor: 'pointer', appearance: 'none', borderRadius: 0 }}>
+                                                      {shiftOptions.map(opt => <option key={opt.code} value={opt.code} style={{background:'white', color:'black'}}>{opt.code}</option>)}
+                                                  </select>
+                                              </td>
+                                          )
                                       })}
                                   </tr>
                               );
