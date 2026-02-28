@@ -1087,7 +1087,7 @@ const handleSaveAndPublish = async () => {
     }
     
     const newFinalized = JSON.parse(JSON.stringify(schedule));
-    setFinalizedSchedule(newFinalized);
+
     
     const newPubDate = { year: selectedYear, month: selectedMonth };
     setPublishedDate(newPubDate);
