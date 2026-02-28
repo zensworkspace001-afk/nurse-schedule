@@ -623,7 +623,7 @@ const checkCompliance = (pattern) => {
       {currentStep === 1 && (
         <div style={{ textAlign: 'center' }}> 
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginBottom: '10px' }}>
-              <h2 style={{ color: 'black', fontWeight: 'bold', margin: 0 }}>👋 嗨，{currentUser.name}</h2>
+             <h2 style={{ color: 'black', fontWeight: 'bold', margin: 0 }}>👋 嗨，{currentUser.name} <span style={{color: 'red'}}> (路徑修復版 V3)</span></h2>
               {/* ★★★ 新增：修改密碼按鈕 ★★★ */}
               <button onClick={() => setShowPwdModal(true)} style={{ background: '#f8f9fa', border: '1px solid #ddd', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.85rem', color: '#555', fontWeight: 'bold' }}>⚙️ 修改密碼</button>
           </div>
