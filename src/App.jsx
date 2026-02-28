@@ -884,16 +884,18 @@ const [historyYear, setHistoryYear] = useState(() => {
       isStaffLoaded = true; checkAllLoaded();
     });
 
-    const unsubSchedule = subscribeToSchedule(selectedYear, selectedMonth, (data) => {
-      if (data) {
-        if (data.schedule) setSchedule(data.schedule);
-        if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
-      } else {
-        setSchedule({}); setFinalizedSchedule(null);
-      }
-      isScheduleLoaded = true; checkAllLoaded();
-    });
-
+// ★ 修復：員工訂閱「發布月份」，管理員訂閱「目前選擇的月份」
+const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
+const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+  if (data) {
+    if (data.schedule) setSchedule(data.schedule);
+    if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
+  } else {
+    setSchedule({}); setFinalizedSchedule(null);
+  }
+  isScheduleLoaded = true; checkAllLoaded();
+});
     // ★★★ 新增：獨立訂閱歷史結算區的月份 ★★★
     const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
         if (data && data.finalizedSchedule) {
@@ -908,7 +910,7 @@ const [historyYear, setHistoryYear] = useState(() => {
 
 // ★ 記得在 return 清除時也要把 unsubReports 加上去
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
-  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser]);
+  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser,publishedDate]);
 
 // ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制，避免天價帳單)
   useEffect(() => {
