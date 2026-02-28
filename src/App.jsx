@@ -873,7 +873,7 @@ const [historyYear, setHistoryYear] = useState(() => {
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         if (data.publishedDate) {
           setPublishedDate(data.publishedDate);
-          localStorage.setItem('publishedDate', JSON.stringify(data.publishedDate));
+         
         }
       }
       isSettingsLoaded = true; checkAllLoaded();
@@ -1029,9 +1029,14 @@ const handlePushToHistory = async () => {
     alert(`✅ 封存成功！\n${selectedYear}年${selectedMonth}月 班表已移至「結算與歷史」。\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
   };
 
-const handleLogout = async () => {
-    await signOut(auth);
-    setCurrentUser(null);
+const handleLogout = () => {
+  signOut(auth).then(() => {
+    // ★ 核心修復：登出時，把瀏覽器裡面所有記住的髒東西全部炸掉！
+    localStorage.clear(); 
+    window.location.reload(); // 強制重整網頁，回到最乾淨的狀態
+  }).catch((error) => {
+    console.error("登出失敗:", error);
+  });
 };
 
   // ★★★ 核心修復：員工認領班表 (僅更新當月 Schedules) ★★★
