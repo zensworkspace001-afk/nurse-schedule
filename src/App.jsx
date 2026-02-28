@@ -871,10 +871,8 @@ const [historyYear, setHistoryYear] = useState(() => {
       if (data) {
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
-        if (data.publishedDate) {
-          setPublishedDate(data.publishedDate);
-         
-        }
+        // ★ 修復：不依賴 localStorage，直接吃雲端的發布月份
+        if (data.publishedDate) setPublishedDate(data.publishedDate); 
       }
       isSettingsLoaded = true; checkAllLoaded();
     });
@@ -890,11 +888,11 @@ const [historyYear, setHistoryYear] = useState(() => {
     const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
     const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
 
-    // ★ 修復：移除強硬的 setSchedule({}) 清空指令，直接依賴 Firebase 的資料覆蓋，避免畫面閃爍
     const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
       if (data) {
         setSchedule(data.schedule || {});
-        setFinalizedSchedule(data.finalizedSchedule || null);
+        // ★ 核心修復 1：如果雲端沒有發布資料，必須強制作為 null，否則會殘留舊畫面
+        setFinalizedSchedule(data.finalizedSchedule || null); 
       } else {
         setSchedule({}); setFinalizedSchedule(null);
       }
@@ -902,13 +900,8 @@ const [historyYear, setHistoryYear] = useState(() => {
     });
 
     const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
-        if (data && data.finalizedSchedule) {
-            setHistorySchedule(data.finalizedSchedule);
-        } else {
-            setHistorySchedule({});
-        }
+        setHistorySchedule(data?.finalizedSchedule || {});
     });
-    
     const unsubReports = subscribeToArchiveReports((data) => {
         setAccumulatedReports(data);
     });
@@ -916,46 +909,38 @@ const [historyYear, setHistoryYear] = useState(() => {
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
   }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate]);
 
-// ★ 終極修復：將所有的物件/陣列轉換為字串，打破 React 與 Firebase 之間的「無限迴圈」
-  const scheduleStr = JSON.stringify(schedule);
-  const finalizedStr = JSON.stringify(finalizedSchedule);
-  const staffDataStr = JSON.stringify(staffData);
-  const shiftOptionsStr = JSON.stringify(shiftOptions);
-  const priorityConfigStr = JSON.stringify(priorityConfig);
-  const healthStatsStr = JSON.stringify(healthStats);
-  const publishedDateStr = JSON.stringify(publishedDate);
 
-// ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制)
+  // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
   useEffect(() => {
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
 
     const timeoutId = setTimeout(() => {
-        // ★ 核心修復：把 publishedDate 和 finalizedSchedule 移出自動儲存！
-        // 讓它們只有在按下「發布按鈕」時才會更新，防止 B 電腦把 A 電腦的發布洗掉。
+        
+        // ★ 核心修復 2：絕對禁止把「空畫面」寫入雲端覆蓋掉別人的心血！
+        if (schedule && Object.keys(schedule).length > 0) {
+            saveMonthlySchedule(selectedYear, selectedMonth, {
+              schedule: schedule
+              // ★ 警告：絕對不能在這裡自動寫入 finalizedSchedule，只能由發布按鈕寫入！
+            });
+        }
+
         saveGlobalSettings({
           shiftOptions: shiftOptions || [],
           priorityConfig: priorityConfig || {}
+          // ★ 警告：絕對不能在這裡寫入 publishedDate，只能由發布按鈕寫入！
         });
 
         saveGlobalStaff({
           staffData: staffData || [],
           healthStats: healthStats || []
         });
-
-        saveMonthlySchedule(selectedYear, selectedMonth, {
-          schedule: schedule || {}
-        });
         
-        if (import.meta.env.DEV) {
-            console.log("💾 [Debounce] 已自動儲存草稿與設定");
-        }
     }, 2000); 
 
     return () => clearTimeout(timeoutId);
 
-  // ★ 依賴陣列也必須把 finalizedSchedule 和 publishedDate 刪除
+  // ★ 核心修復 3：移除了 finalizedSchedule 與 publishedDate 的依賴，徹底打破無限覆蓋迴圈
   }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
-
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
     if (!newSchedule) { return; }
