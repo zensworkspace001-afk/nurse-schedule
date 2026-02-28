@@ -1060,41 +1060,60 @@ const handleLogout = () => {
   });
 };
 
-  // ★★★ 核心修復：員工認領班表 (僅更新當月 Schedules) ★★★
+// ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★
   const handleStaffScheduleUpdate = async (result) => { 
-    const updateLogic = (prev) => {
-      const next = { ...(prev || {}) };
-      next[result.staffId] = result.fullMonthData;
-      
-      const targetVirtualId = result.chosenSchedule?.id;
-      if (targetVirtualId && next[targetVirtualId]) {
-          delete next[targetVirtualId]; 
-      } else {
-          const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
-          if (fallbackId) delete next[fallbackId];
-      }
-      return next;
-    };
-
-    const newFinalizedSchedule = updateLogic(finalizedSchedule);
-    setFinalizedSchedule(newFinalizedSchedule); // 更新本地畫面
-
-    // 更新員工資料 (如果該名員工是新來的，加進陣列裡)
-    setStaffData(prevData => {
-      const exists = prevData.find(s => s.staff_id === result.staffId);
-      if (exists) return prevData;
-      return [...prevData, { 
-        staff_id: result.staffId, name: result.staffName, 
-        special_status: result.shiftType === 'D' ? 'Standard' : 'BiWeekly', 
-        is_active: true, accumulated_ot: 0, night_shift_balance: 0,
-        prevMonthLeave: [false,false,false,false,false,false,false]
-      }];
-    });
-
-// 新增：透過 API 手動將更新推送到資料庫
     try {
-        await updateStaffSchedule(publishedDate.year, publishedDate.month, newFinalizedSchedule);
+        // 1. 🛑 寫入前，先向 Firebase 索取「最熱騰騰」的最新班表
+        const docRef = doc(db, 'Schedules', `${publishedDate.year}_${publishedDate.month}`);
+        const snap = await getDoc(docRef);
+
+        if (!snap.exists()) {
+            alert("❌ 找不到該月份的班表資料！");
+            return;
+        }
+
+        const latestData = snap.data();
+        const latestSchedule = latestData.finalizedSchedule || {};
+
+        // 2. 🛑 檢查想要認領的班表，是不是剛剛被別人搶走了？
+        const targetVirtualId = result.chosenSchedule?.id;
+        if (targetVirtualId && !latestSchedule[targetVirtualId]) {
+            alert("⚠️ 慢了一步！這個班表剛剛被別人選走了！\n系統將為您重新整理畫面，請選擇其他班表。");
+            window.location.reload(); 
+            return;
+        }
+
+        // 3. 基於雲端的「最新資料」進行修改：加入新員工
+        const next = { ...latestSchedule };
+        next[result.staffId] = result.fullMonthData; 
+        
+        // 4. ★ 最重要的一步：從物件中徹底刪除舊的空缺班表 (例如 D001)
+        if (targetVirtualId && next[targetVirtualId]) {
+            delete next[targetVirtualId]; 
+        } else {
+            const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
+            if (fallbackId) delete next[fallbackId];
+        }
+
+        // 5. 更新本地畫面
+        setFinalizedSchedule(next); 
+
+        // 更新員工資料 (維持原樣)
+        setStaffData(prevData => {
+          const exists = prevData.find(s => s.staff_id === result.staffId);
+          if (exists) return prevData;
+          return [...prevData, { 
+            staff_id: result.staffId, name: result.staffName, 
+            special_status: result.shiftType === 'D' ? 'Standard' : 'BiWeekly', 
+            is_active: true, accumulated_ot: 0, night_shift_balance: 0,
+            prevMonthLeave: [false,false,false,false,false,false,false]
+          }];
+        });
+
+        // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
+        await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
+        
     } catch (error) {
         console.error("寫入失敗:", error);
         alert("❌ 認領失敗：權限不足或網路異常。");

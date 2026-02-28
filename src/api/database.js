@@ -9,7 +9,8 @@ import {
   getDocs, 
   deleteDoc,
   query,
-  orderBy
+  orderBy,
+  updateDoc
 } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -64,14 +65,34 @@ export const subscribeToSchedule = (year, month, callback) => {
   }, (err) => console.error('subscribeToSchedule 失敗:', err));
 };
 
+// ★ 核心修復 1：改用 updateDoc，真正做到「刪除被拔除的班表」
 export const saveMonthlySchedule = async (year, month, data) => {
   const docId = `${year}_${month}`;
-  await setDoc(doc(db, 'Schedules', docId), data, { merge: true });
+  const docRef = doc(db, 'Schedules', docId);
+  try {
+    await updateDoc(docRef, data); // 強制依照傳入的資料完全覆蓋欄位
+  } catch (error) {
+    if (error.code === 'not-found') {
+      await setDoc(docRef, data); // 若該月班表尚未建立，則初始化
+    } else {
+      throw error;
+    }
+  }
 };
 
+// ★ 核心修復 2：改用 updateDoc，真正做到「員工認領覆蓋空缺，絕不疊加」
 export const updateStaffSchedule = async (year, month, finalizedSchedule) => {
   const docId = `${year}_${month}`;
-  await setDoc(doc(db, 'Schedules', docId), { finalizedSchedule }, { merge: true });
+  const docRef = doc(db, 'Schedules', docId);
+  try {
+    await updateDoc(docRef, { finalizedSchedule }); 
+  } catch (error) {
+    if (error.code === 'not-found') {
+      await setDoc(docRef, { finalizedSchedule });
+    } else {
+      throw error;
+    }
+  }
 };
 
 // ============================================================================
