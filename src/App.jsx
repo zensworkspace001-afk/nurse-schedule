@@ -872,9 +872,9 @@ const [historyYear, setHistoryYear] = useState(() => {
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         if (data.publishedDate) {
-  setPublishedDate(data.publishedDate);
-  localStorage.setItem('publishedDate', JSON.stringify(data.publishedDate));
-}
+          setPublishedDate(data.publishedDate);
+          localStorage.setItem('publishedDate', JSON.stringify(data.publishedDate));
+        }
       }
       isSettingsLoaded = true; checkAllLoaded();
     });

@@ -32,3 +32,4 @@ dist/
 backup.js
 gooo.py
 .env.*.local
+coppy.py
