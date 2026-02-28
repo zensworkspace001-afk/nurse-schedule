@@ -3104,13 +3104,13 @@ return (
                        type="number" 
                        value={historyYear} 
                        onChange={(e) => setHistoryYear(Number(e.target.value))}
-                       style={{ width: '65px', padding: '4px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', textAlign: 'center', color: '#2c3e50' }}
+                       style={{ width: '65px', padding: '4px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', textAlign: 'center', color: '#f1f4f8' }}
                    />
                    <span style={{ margin: '0 5px' }}>年</span>
                    <select 
                        value={historyMonth} 
                        onChange={(e) => setHistoryMonth(Number(e.target.value))}
-                       style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', cursor: 'pointer', color: '#2c3e50' }}
+                       style={{ padding: '4px 8px', borderRadius: '6px', border: '1px solid #ccc', fontWeight: 'bold', cursor: 'pointer', color: '#f7f9fc' }}
                    >
                        {Array.from({length: 12}, (_, i) => i + 1).map(m => (
                            <option key={m} value={m}>{m}</option>
