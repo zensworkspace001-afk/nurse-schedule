@@ -2398,21 +2398,108 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       }
   };
 
-  // -- (2) 繪製健康度折線圖 --
+// -- (2) 從 accumulatedReports (雲端大數據 CSV) 動態解析健康度 --
+  const getDynamicHealthStats = () => {
+      const stats = [];
+      
+      Object.entries(accumulatedReports || {}).forEach(([fileName, csvString]) => {
+          if (!csvString) return;
+
+          // 1. 從檔名萃取年份與月份 (支援 "2026_2" 或是 "2026年2月" 格式)
+          let year, month;
+          const matchCH = fileName.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+          const matchEN = fileName.match(/(\d{4})_(\d{1,2})/);
+          if (matchCH) { year = Number(matchCH[1]); month = Number(matchCH[2]); } 
+          else if (matchEN) { year = Number(matchEN[1]); month = Number(matchEN[2]); } 
+          else return;
+
+          const daysInMonth = new Date(year, month, 0).getDate();
+          const lines = csvString.split(/\r\n|\n/);
+          let headerIdx = -1;
+          let healthColIdx = -1;
+
+          // 2. 尋找 CSV 的表頭
+          for (let i = 0; i < lines.length; i++) {
+              if (lines[i].includes('工號') && lines[i].includes('姓名')) {
+                  headerIdx = i;
+                  const cols = lines[i].split(',');
+                  healthColIdx = cols.findIndex(c => c.includes('健康度評分'));
+                  break;
+              }
+          }
+
+          if (headerIdx !== -1) {
+              const scores = [];
+              for (let i = headerIdx + 1; i < lines.length; i++) {
+                  const cols = lines[i].split(',');
+                  // 過濾掉空行或尚未認領的虛擬代號 (D開頭)
+                  if (cols.length >= daysInMonth + 2 && cols[0] && !cols[0].startsWith('D')) {
+                      
+                      // 狀況 A：如果匯出的 Excel 裡面已經有健康度評分，直接抓！
+                      if (healthColIdx !== -1 && !isNaN(Number(cols[healthColIdx]))) {
+                          scores.push(Number(cols[healthColIdx]));
+                      } 
+                      // 狀況 B：如果是系統「自動備份」的純班表，則啟動 AI 引擎即時重算！
+                      else {
+                          let score = 100;
+                          const shifts = [];
+                          for (let d = 1; d <= daysInMonth; d++) {
+                              shifts.push(cols[d + 1]?.trim() || 'OFF');
+                          }
+                          
+                          // 執行與主系統相同的核心扣分邏輯
+                          for (let j = 0; j < shifts.length - 1; j++) {
+                              if ((shifts[j] === 'E' && shifts[j+1] === 'D') || (shifts[j] === 'N' && (shifts[j+1] === 'D' || shifts[j+1] === 'E'))) score -= 20;
+                          }
+                          let consecutiveN = 0, consecutiveWork = 0;
+                          const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || s.includes('OT');
+                          for (let j = 0; j < shifts.length; j++) {
+                              if (shifts[j] === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; }
+                              if (isWork(shifts[j])) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; }
+                          }
+                          scores.push(score);
+                      }
+                  }
+              }
+
+              // 3. 計算該月的平均與中位數
+              if (scores.length > 0) {
+                  const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+                  scores.sort((a, b) => a - b);
+                  const mid = Math.floor(scores.length / 2);
+                  const median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
+                  stats.push({ year, month, avg, median });
+              }
+          }
+      });
+
+      // 4. 去除同月份重複的備份 (只留最新的一筆)，並按照時間排序
+      const uniqueStatsMap = {};
+      stats.forEach(s => { uniqueStatsMap[`${s.year}-${s.month}`] = s; });
+      const finalStats = Object.values(uniqueStatsMap);
+      finalStats.sort((a, b) => (a.year - b.year) || (a.month - b.month));
+      
+      return finalStats.slice(-12); // 回傳最近 12 個月的數據
+  };
+
+  // -- (3) 繪製健康度折線圖 --
   const renderLineChart = () => {
-      if (!healthStats || healthStats.length === 0) {
-          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無健康度結算紀錄。<br/>請先至「✅ 結算與歷史」按下「💰 薪資與加班費結算」以產生數據。</div>;
+      // ★ 改由呼叫動態解析器獲取資料
+      const dynamicHealthStats = getDynamicHealthStats();
+
+      if (!dynamicHealthStats || dynamicHealthStats.length === 0) {
+          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無健康度結算紀錄。<br/>只要「✅ 結算與歷史」中有封存班表，系統就會自動繪製！</div>;
       }
       const svgWidth = 800; const svgHeight = 350; const padding = 50;
       const chartWidth = svgWidth - padding * 2; const chartHeight = svgHeight - padding * 2;
-      const allScores = healthStats.flatMap(d => [d.avg, d.median]);
+      const allScores = dynamicHealthStats.flatMap(d => [d.avg, d.median]);
       const minScore = Math.max(0, Math.floor(Math.min(...allScores) / 5) * 5 - 5); 
       const maxScore = 100;
-      const getX = (index) => padding + (index * (chartWidth / Math.max(1, healthStats.length - 1)));
+      const getX = (index) => padding + (index * (chartWidth / Math.max(1, dynamicHealthStats.length - 1)));
       const getY = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
 
-      const avgPoints = healthStats.map((d, i) => `${getX(i)},${getY(d.avg)}`).join(' ');
-      const medianPoints = healthStats.map((d, i) => `${getX(i)},${getY(d.median)}`).join(' ');
+      const avgPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getY(d.avg)}`).join(' ');
+      const medianPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getY(d.median)}`).join(' ');
 
       return (
           <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', background: 'white', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
@@ -2428,7 +2515,7 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
               })}
               <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
               <polyline points={medianPoints} fill="none" stroke="#e74c3c" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-              {healthStats.map((d, i) => {
+              {dynamicHealthStats.map((d, i) => {
                   const x = getX(i); const yAvg = getY(d.avg); const yMed = getY(d.median);
                   const isAvgHigher = d.avg >= d.median;
                   return (
