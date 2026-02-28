@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive} from './api/database';
-import { doc, setDoc } from 'firebase/firestore'; // ★ 新增這行
+import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive, fetchScheduleBackups } from './api/database';
 import { signOut } from "firebase/auth"; // 加到 import
 
 // ============================================================================
