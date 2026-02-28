@@ -2358,13 +2358,17 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
           const token = await auth.currentUser?.getIdToken();
           const formData = new FormData();
           
-          // 將所有收集到的月份 CSV 串接成一份超級報表
-          let combinedData = "";
+let combinedData = "";
           loadedMonths.forEach(month => {
               combinedData += `\n\n========== 【${month} 結算報表】 ==========\n`;
-              combinedData += accumulatedReports[month];
+              // ★ 修改這裡，讓 AI 同時支援分析 CSV 與 JSON
+              const fileData = accumulatedReports[month];
+              if (fileData.csv) {
+                  combinedData += fileData.csv;
+              } else if (fileData.schedule_backup) {
+                  combinedData += "本月尚未結算，以下為班表原始紀錄(JSON)：\n" + JSON.stringify(fileData.schedule_backup);
+              }
           });
-
           // 偷塞底層跨月歷史總結給 AI
           const crossMonthContext = {
               staffAccumulatedHistory: staffData.map(s => ({ 
@@ -2398,88 +2402,116 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       }
   };
 
-// -- (2) 從 accumulatedReports (雲端大數據 CSV) 動態解析健康度 --
+// -- (2) 從 accumulatedReports (雲端大數據 CSV/JSON) 動態解析健康度 --
   const getDynamicHealthStats = () => {
       const stats = [];
-      
-      Object.entries(accumulatedReports || {}).forEach(([fileName, csvString]) => {
-          if (!csvString) return;
+      Object.entries(accumulatedReports || {}).forEach(([fileName, fileData]) => {
+          if (!fileData) return;
 
-          // 1. 從檔名萃取年份與月份 (支援 "2026_2" 或是 "2026年2月" 格式)
-          let year, month;
-          const matchCH = fileName.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
-          const matchEN = fileName.match(/(\d{4})_(\d{1,2})/);
-          if (matchCH) { year = Number(matchCH[1]); month = Number(matchCH[2]); } 
-          else if (matchEN) { year = Number(matchEN[1]); month = Number(matchEN[2]); } 
-          else return;
-
-          const daysInMonth = new Date(year, month, 0).getDate();
-          const lines = csvString.split(/\r\n|\n/);
-          let headerIdx = -1;
-          let healthColIdx = -1;
-
-          // 2. 尋找 CSV 的表頭
-          for (let i = 0; i < lines.length; i++) {
-              if (lines[i].includes('工號') && lines[i].includes('姓名')) {
-                  headerIdx = i;
-                  const cols = lines[i].split(',');
-                  healthColIdx = cols.findIndex(c => c.includes('健康度評分'));
-                  break;
-              }
+          // 1. 解析年月 (優先使用資料庫自帶的 year/month 欄位，沒有才解析檔名)
+          let year = fileData.year;
+          let month = fileData.month;
+          if (!year || !month) {
+              const matchCH = fileName.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+              const matchEN = fileName.match(/(\d{4})_(\d{1,2})/);
+              if (matchCH) { year = Number(matchCH[1]); month = Number(matchCH[2]); } 
+              else if (matchEN) { year = Number(matchEN[1]); month = Number(matchEN[2]); } 
+              else return;
           }
 
-          if (headerIdx !== -1) {
-              const scores = [];
-              for (let i = headerIdx + 1; i < lines.length; i++) {
-                  const cols = lines[i].split(',');
-                  // 過濾掉空行或尚未認領的虛擬代號 (D開頭)
-                  if (cols.length >= daysInMonth + 2 && cols[0] && !cols[0].startsWith('D')) {
-                      
-                      // 狀況 A：如果匯出的 Excel 裡面已經有健康度評分，直接抓！
-                      if (healthColIdx !== -1 && !isNaN(Number(cols[healthColIdx]))) {
-                          scores.push(Number(cols[healthColIdx]));
-                      } 
-                      // 狀況 B：如果是系統「自動備份」的純班表，則啟動 AI 引擎即時重算！
-                      else {
-                          let score = 100;
-                          const shifts = [];
-                          for (let d = 1; d <= daysInMonth; d++) {
-                              shifts.push(cols[d + 1]?.trim() || 'OFF');
-                          }
-                          
-                          // 執行與主系統相同的核心扣分邏輯
-                          for (let j = 0; j < shifts.length - 1; j++) {
-                              if ((shifts[j] === 'E' && shifts[j+1] === 'D') || (shifts[j] === 'N' && (shifts[j+1] === 'D' || shifts[j+1] === 'E'))) score -= 20;
-                          }
-                          let consecutiveN = 0, consecutiveWork = 0;
-                          const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || s.includes('OT');
-                          for (let j = 0; j < shifts.length; j++) {
-                              if (shifts[j] === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; }
-                              if (isWork(shifts[j])) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; }
-                          }
-                          scores.push(score);
+          const daysInMonth = new Date(year, month, 0).getDate();
+          const scores = [];
+
+          // 狀況 A：這份檔案有 CSV 報表 (手動結算匯出的)
+          if (fileData.csv && typeof fileData.csv === 'string') {
+              const lines = fileData.csv.split(/\r\n|\n/);
+              let headerIdx = -1, healthColIdx = -1;
+              for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].includes('工號') && lines[i].includes('姓名')) {
+                      headerIdx = i;
+                      healthColIdx = lines[i].split(',').findIndex(c => c.includes('健康度評分'));
+                      break;
+                  }
+              }
+              if (headerIdx !== -1 && healthColIdx !== -1) {
+                  for (let i = headerIdx + 1; i < lines.length; i++) {
+                      const cols = lines[i].split(',');
+                      if (cols.length > healthColIdx && cols[0] && !cols[0].startsWith('D')) {
+                          const score = Number(cols[healthColIdx]);
+                          if (!isNaN(score)) scores.push(score);
                       }
                   }
               }
+          }
 
-              // 3. 計算該月的平均與中位數
-              if (scores.length > 0) {
-                  const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-                  scores.sort((a, b) => a - b);
-                  const mid = Math.floor(scores.length / 2);
-                  const median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
-                  stats.push({ year, month, avg, median });
-              }
+          // 狀況 B：沒有 CSV，但有 schedule_backup (系統自動備份的排班表)
+          if (scores.length === 0 && fileData.schedule_backup) {
+              Object.keys(fileData.schedule_backup).forEach(staffId => {
+                  if (staffId.startsWith('D')) return; // 略過待認領
+                  const staffSchedule = fileData.schedule_backup[staffId];
+                  let score = 100;
+                  const shifts = [];
+                  for (let d = 1; d <= daysInMonth; d++) {
+                      shifts.push((typeof staffSchedule[d] === 'object') ? (staffSchedule[d]?.type || 'OFF') : (staffSchedule[d] || 'OFF'));
+                  }
+
+                  // 執行核心扣分邏輯
+                  const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
+                  const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
+
+                  for (let i = 0; i < shifts.length - 1; i++) {
+                      if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) score -= 20;
+                  }
+                  let lastWork = null;
+                  for (let i = 0; i < shifts.length; i++) {
+                      if (isWork(shifts[i])) {
+                          if (lastWork === 'N' && shifts[i] === 'E') score -= 10;
+                          if (lastWork === 'E' && shifts[i] === 'D') score -= 10;
+                          lastWork = shifts[i];
+                      }
+                  }
+                  for (let i = 0; i <= shifts.length - 7; i++) {
+                      const window = shifts.slice(i, i + 7);
+                      const workTypes = new Set(window.filter(s => ['D', 'E', 'N'].includes(s)));
+                      if (workTypes.size === 3) { score -= 15; i += 6; }
+                  }
+                  let consecutiveN = 0, consecutiveWork = 0;
+                  for (let i = 0; i <= shifts.length; i++) {
+                      const s = shifts[i];
+                      if (s === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; }
+                      if (s && isWork(s)) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; }
+                  }
+                  for (let i = 1; i < shifts.length - 1; i++) {
+                      if (isWork(shifts[i-1]) && isOff(shifts[i]) && isWork(shifts[i+1])) {
+                          score -= 5;
+                          if (shifts[i-1] === 'N') score -= 15;
+                      }
+                  }
+                  let hasFullWeekendOff = false;
+                  for (let d = 1; d <= daysInMonth - 1; d++) {
+                      const date = new Date(year, month - 1, d);
+                      if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } }
+                  }
+                  if (!hasFullWeekendOff) score -= 5;
+
+                  scores.push(score);
+              });
+          }
+
+          if (scores.length > 0) {
+              const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+              scores.sort((a, b) => a - b);
+              const mid = Math.floor(scores.length / 2);
+              const median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
+              stats.push({ year, month, avg, median });
           }
       });
 
-      // 4. 去除同月份重複的備份 (只留最新的一筆)，並按照時間排序
       const uniqueStatsMap = {};
       stats.forEach(s => { uniqueStatsMap[`${s.year}-${s.month}`] = s; });
       const finalStats = Object.values(uniqueStatsMap);
       finalStats.sort((a, b) => (a.year - b.year) || (a.month - b.month));
-      
-      return finalStats.slice(-12); // 回傳最近 12 個月的數據
+      return finalStats.slice(-12);
   };
 
   // -- (3) 繪製健康度折線圖 --
@@ -2523,8 +2555,9 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
                           <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
                           <circle cx={x} cy={yMed} r="5" fill="#e74c3c" stroke="white" strokeWidth="2" />
                           <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
-                          <text x={x} y={isAvgHigher ? yAvg - 12 : yAvg + 20} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
-                          <text x={x} y={isAvgHigher ? yMed + 20 : yMed - 12} fontSize="12" fill="#c0392b" textAnchor="middle" fontWeight="bold">{d.median}</text>
+                          {/* ★ 修正重疊問題：如果平均跟中位數一樣，就把紅藍數字上下錯開 */}
+                          <text x={x} y={d.avg === d.median ? yAvg - 12 : (isAvgHigher ? yAvg - 12 : yAvg + 20)} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
+                          <text x={x} y={d.avg === d.median ? yMed + 16 : (isAvgHigher ? yMed + 20 : yMed - 12)} fontSize="12" fill="#c0392b" textAnchor="middle" fontWeight="bold">{d.median}</text>
                       </g>
                   );
               })}

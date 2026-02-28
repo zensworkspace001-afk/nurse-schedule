@@ -97,12 +97,16 @@ export const saveArchiveReport = async (year, month, csvData) => {
   }, { merge: true });
 };
 
+// ============================================================================
+// 4. 跨月大數據報表封存 (Archive Reports)
+// ============================================================================
 export const subscribeToArchiveReports = (callback) => {
   const colRef = collection(db, 'archive_reports');
   return onSnapshot(colRef, (snapshot) => {
     const reports = {};
     snapshot.forEach(doc => {
-      reports[doc.id] = doc.data().csv; 
+      // ★ 修改這裡：回傳整包物件，不要只回傳 csv，這樣系統才看得到自動備份檔
+      reports[doc.id] = doc.data(); 
     });
     callback(reports);
   });
