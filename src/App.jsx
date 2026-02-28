@@ -1499,6 +1499,34 @@ const handleReset = () => {
     link.download = `${selectedYear}年${selectedMonth}月_排班表草稿.csv`;
     link.click();
   };
+
+  // ★★★ 隱藏版功能：開發者時光機 (手動觸發自動結算 API) ★★★
+  const handleTestAutoSettle = async () => {
+      const testDate = window.prompt(
+          "【開發者時光機測試】\n請輸入您想穿越到的日期 (格式 YYYY-MM-DD)，例如 2026-02-28。\n\n💡 若留空並直接按「確定」，系統將【強制結算】本月班表：", 
+          ""
+      );
+      
+      if (testDate === null) return; // 使用者按了取消
+
+      try {
+          // 判斷要帶入哪種參數
+          const url = testDate.trim() !== '' 
+              ? `/api/auto-settle?targetDate=${testDate}` 
+              : '/api/auto-settle?force=true';
+          
+          const response = await fetch(url);
+          const data = await response.json();
+          
+          if (response.ok) {
+              alert(`✅ API 執行成功！\n\n伺服器回應：${data.message}`);
+          } else {
+              alert(`❌ API 執行失敗！\n\n錯誤：${data.error}\n詳細：${data.details || '無'}`);
+          }
+      } catch (error) {
+          alert(`❌ 網路連線異常：${error.message}`);
+      }
+  };
   const handleGeminiSolve = async () => {
     // ★★★ 核心修復：阻斷舊歷史資料的疊加 ★★★
     if (schedule && Object.keys(schedule).length > 0) {
@@ -2657,6 +2685,7 @@ return (
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
+              <button onClick={handleTestAutoSettle} style={{ padding: '0.5rem 1rem', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px dashed #ccc' }} title="開發者測試專用">⚙️ 測試 API</button>
            </div>
       </div>
       {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
