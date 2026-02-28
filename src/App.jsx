@@ -890,12 +890,19 @@ const [historyYear, setHistoryYear] = useState(() => {
 // ★ 修復：員工訂閱「發布月份」，管理員訂閱「目前選擇的月份」
 const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
 const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+
+// ★ 終極修復 1：在發起新訂閱前，先強制清空本地畫面，徹底消滅 0.001 秒的舊班表殘影
+setSchedule({});
+setFinalizedSchedule(null);
+
 const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
   if (data) {
-    if (data.schedule) setSchedule(data.schedule);
-    if (data.finalizedSchedule) setFinalizedSchedule(data.finalizedSchedule);
+    // ★ 終極修復 2：加上 || null，確保即使雲端是空的，也能正確洗掉舊畫面，不會卡在幽靈狀態
+    setSchedule(data.schedule || {});
+    setFinalizedSchedule(data.finalizedSchedule || null); 
   } else {
-    setSchedule({}); setFinalizedSchedule(null);
+    setSchedule({}); 
+    setFinalizedSchedule(null);
   }
   isScheduleLoaded = true; checkAllLoaded();
 });
