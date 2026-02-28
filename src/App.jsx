@@ -887,26 +887,20 @@ const [historyYear, setHistoryYear] = useState(() => {
       isStaffLoaded = true; checkAllLoaded();
     });
 
-// ★ 修復：員工訂閱「發布月份」，管理員訂閱「目前選擇的月份」
-const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
-const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+    const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
+    const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
 
-// ★ 終極修復 1：在發起新訂閱前，先強制清空本地畫面，徹底消滅 0.001 秒的舊班表殘影
-setSchedule({});
-setFinalizedSchedule(null);
+    // ★ 修復：移除強硬的 setSchedule({}) 清空指令，直接依賴 Firebase 的資料覆蓋，避免畫面閃爍
+    const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+      if (data) {
+        setSchedule(data.schedule || {});
+        setFinalizedSchedule(data.finalizedSchedule || null);
+      } else {
+        setSchedule({}); setFinalizedSchedule(null);
+      }
+      isScheduleLoaded = true; checkAllLoaded();
+    });
 
-const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
-  if (data) {
-    // ★ 終極修復 2：加上 || null，確保即使雲端是空的，也能正確洗掉舊畫面，不會卡在幽靈狀態
-    setSchedule(data.schedule || {});
-    setFinalizedSchedule(data.finalizedSchedule || null); 
-  } else {
-    setSchedule({}); 
-    setFinalizedSchedule(null);
-  }
-  isScheduleLoaded = true; checkAllLoaded();
-});
-    // ★★★ 新增：獨立訂閱歷史結算區的月份 ★★★
     const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
         if (data && data.finalizedSchedule) {
             setHistorySchedule(data.finalizedSchedule);
@@ -914,15 +908,24 @@ const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) =>
             setHistorySchedule({});
         }
     });
+    
     const unsubReports = subscribeToArchiveReports((data) => {
         setAccumulatedReports(data);
     });
 
-// ★ 記得在 return 清除時也要把 unsubReports 加上去
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
-  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser,publishedDate]);
+  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate]);
 
-// ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制，避免天價帳單)
+// ★ 終極修復：將所有的物件/陣列轉換為字串，打破 React 與 Firebase 之間的「無限迴圈」
+  const scheduleStr = JSON.stringify(schedule);
+  const finalizedStr = JSON.stringify(finalizedSchedule);
+  const staffDataStr = JSON.stringify(staffData);
+  const shiftOptionsStr = JSON.stringify(shiftOptions);
+  const priorityConfigStr = JSON.stringify(priorityConfig);
+  const healthStatsStr = JSON.stringify(healthStats);
+  const publishedDateStr = JSON.stringify(publishedDate);
+
+  // ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制)
   useEffect(() => {
     // 1. 防呆檢查：必須載入完成且是管理員
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
@@ -930,30 +933,31 @@ const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) =>
     // 2. 設定一個 2000 毫秒 (2秒) 的定時炸彈
     const timeoutId = setTimeout(() => {
         saveGlobalSettings({
-          shiftOptions: shiftOptions || [],
-          priorityConfig: priorityConfig || {},
-          publishedDate: publishedDate || { year: 2026, month: 2 }
+          shiftOptions: JSON.parse(shiftOptionsStr) || [],
+          priorityConfig: JSON.parse(priorityConfigStr) || {},
+          publishedDate: JSON.parse(publishedDateStr) || { year: 2026, month: 2 }
         });
 
         saveGlobalStaff({
-          staffData: staffData || [],
-          healthStats: healthStats || []
+          staffData: JSON.parse(staffDataStr) || [],
+          healthStats: JSON.parse(healthStatsStr) || []
         });
 
         saveMonthlySchedule(selectedYear, selectedMonth, {
-          schedule: schedule || {},
-          finalizedSchedule: finalizedSchedule || null
+          schedule: JSON.parse(scheduleStr) || {},
+          finalizedSchedule: JSON.parse(finalizedStr) || null
         });
         
         if (import.meta.env.DEV) {
             console.log("💾 [Debounce] 已自動將最新狀態批次寫入 Firebase");
         }
-    }, 2000); // 👈 靜止 2 秒後才執行寫入
+    }, 2000); 
 
-    // 3. 清除函數 (Cleanup)：如果在 2 秒內 state 又改變了，React 會先執行這裡，把舊的炸彈拆除！
+    // 3. 清除函數 (Cleanup)
     return () => clearTimeout(timeoutId);
 
-  }, [shiftOptions, priorityConfig, staffData, schedule, finalizedSchedule, publishedDate, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
+  // ★ 這裡的依賴陣列全部改為「字串變數 (Str)」，這樣只要內容不變，就不會反覆寫入！
+  }, [shiftOptionsStr, priorityConfigStr, staffDataStr, scheduleStr, finalizedStr, publishedDateStr, healthStatsStr, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
 
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
