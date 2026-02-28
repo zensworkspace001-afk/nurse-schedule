@@ -925,39 +925,36 @@ const [historyYear, setHistoryYear] = useState(() => {
   const healthStatsStr = JSON.stringify(healthStats);
   const publishedDateStr = JSON.stringify(publishedDate);
 
-  // ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制)
+// ☁️ 雲端引擎 2：自動寫入 (加入 Debounce 防抖機制)
   useEffect(() => {
-    // 1. 防呆檢查：必須載入完成且是管理員
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
 
-    // 2. 設定一個 2000 毫秒 (2秒) 的定時炸彈
     const timeoutId = setTimeout(() => {
+        // ★ 核心修復：把 publishedDate 和 finalizedSchedule 移出自動儲存！
+        // 讓它們只有在按下「發布按鈕」時才會更新，防止 B 電腦把 A 電腦的發布洗掉。
         saveGlobalSettings({
-          shiftOptions: JSON.parse(shiftOptionsStr) || [],
-          priorityConfig: JSON.parse(priorityConfigStr) || {},
-          publishedDate: JSON.parse(publishedDateStr) || { year: 2026, month: 2 }
+          shiftOptions: shiftOptions || [],
+          priorityConfig: priorityConfig || {}
         });
 
         saveGlobalStaff({
-          staffData: JSON.parse(staffDataStr) || [],
-          healthStats: JSON.parse(healthStatsStr) || []
+          staffData: staffData || [],
+          healthStats: healthStats || []
         });
 
         saveMonthlySchedule(selectedYear, selectedMonth, {
-          schedule: JSON.parse(scheduleStr) || {},
-          finalizedSchedule: JSON.parse(finalizedStr) || null
+          schedule: schedule || {}
         });
         
         if (import.meta.env.DEV) {
-            console.log("💾 [Debounce] 已自動將最新狀態批次寫入 Firebase");
+            console.log("💾 [Debounce] 已自動儲存草稿與設定");
         }
     }, 2000); 
 
-    // 3. 清除函數 (Cleanup)
     return () => clearTimeout(timeoutId);
 
-  // ★ 這裡的依賴陣列全部改為「字串變數 (Str)」，這樣只要內容不變，就不會反覆寫入！
-  }, [shiftOptionsStr, priorityConfigStr, staffDataStr, scheduleStr, finalizedStr, publishedDateStr, healthStatsStr, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
+  // ★ 依賴陣列也必須把 finalizedSchedule 和 publishedDate 刪除
+  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
 
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
