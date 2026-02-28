@@ -62,11 +62,12 @@ export const saveGlobalStaff = async (data) => {
 };
 
 // ============================================================================
-// 3. 每月排班表 (Schedules)
+// 3. 每月排班表 (Schedules) -> 修正為 4 段式合法路徑
 // ============================================================================
 export const subscribeToSchedule = (year, month, callback) => {
   const docId = `${year}_${month}`;
-const docRef = doc(db, 'NurseApp', 'Schedules', docId);
+  // 修正：NurseApp (1) / MainData (2) / Schedules (3) / docId (4)
+  const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
   return onSnapshot(docRef, (docSnap) => {
     if (docSnap.exists()) callback(docSnap.data());
     else callback(null);
@@ -75,13 +76,13 @@ const docRef = doc(db, 'NurseApp', 'Schedules', docId);
 
 export const saveMonthlySchedule = async (year, month, data) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'Schedules', docId);
+  const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
   await setDoc(docRef, data, { merge: true });
 };
 
 export const updateStaffSchedule = async (year, month, finalizedSchedule) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'Schedules', docId);
+  const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
   await setDoc(docRef, { finalizedSchedule }, { merge: true });
 };
 
