@@ -3,6 +3,7 @@ import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moo
 
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports } from './api/database';
+import { doc, setDoc } from 'firebase/firestore'; // ★ 新增這行
 import { signOut } from "firebase/auth"; // 加到 import
 
 // ============================================================================
@@ -1540,7 +1541,7 @@ const handleReset = () => {
     }
   };
 
- // 2. 選項 A：先封存至伺服器歷史區，再重新生成
+// 2. 選項 A：先封存至伺服器歷史區，再重新生成
   const handleArchiveThenGenerate = async () => {
       const targetSchedule = finalizedSchedule || schedule;
       
@@ -1548,33 +1549,38 @@ const handleReset = () => {
           setIsBackingUp(true); // 讓按鈕顯示 Loading
           
           try {
-              const backupId = `${selectedYear}_${selectedMonth}_${Date.now()}`; // 加上時間戳記避免檔名重複
-              
-              // ★ 將舊班表上傳至 Firebase 伺服器 (建立一個名為 ScheduleBackups 的備份庫)
-              // 寫法 A (Firebase v9 最新版寫法，若頂部有 import { doc, setDoc } from 'firebase/firestore'):
-              /*
-              await setDoc(doc(db, 'ScheduleBackups', backupId), {
+              // ★ 動作 1：先把原本躺在「歷史區」的班表 Archieve 備份到伺服器 (避免被覆蓋消失)
+              if (historySchedule && Object.keys(historySchedule).length > 0) {
+                  const historyBackupId = `History_${historyYear}_${historyMonth}_${Date.now()}`;
+                  await setDoc(doc(db, 'ScheduleBackups', historyBackupId), {
+                      year: historyYear,
+                      month: historyMonth,
+                      schedule: historySchedule,
+                      backedUpAt: new Date().toISOString(),
+                      note: "歷史區舊班表被覆蓋前自動歸檔"
+                  });
+              }
+
+              // ★ 動作 2：把目前工作桌上的班表也備份一次，以防萬一
+              const deskBackupId = `Desk_${selectedYear}_${selectedMonth}_${Date.now()}`;
+              await setDoc(doc(db, 'ScheduleBackups', deskBackupId), {
                   year: selectedYear,
                   month: selectedMonth,
                   schedule: targetSchedule,
                   backedUpAt: new Date().toISOString(),
                   note: "重新生成 AI 班表前自動備份"
               });
-              */
-              
-              // 寫法 B (如果您是使用 compat 舊版語法，或上方沒有 import setDoc):
-            await saveArchiveReport(selectedYear, selectedMonth, csv);
 
-              // ★ 同步更新前端畫面歷史區的狀態
+              // ★ 動作 3：將目前工作桌的班表，移動並「覆蓋」掉歷史區原本躺著的班表
               setHistoryYear(selectedYear);
               setHistoryMonth(selectedMonth);
               setHistorySchedule(targetSchedule);
               
-              console.log("✅ 舊班表已成功備份至伺服器資料庫！");
+              console.log("✅ 舊班表已成功歸檔至伺服器，並完成歷史區替換！");
 
           } catch (error) {
               console.error("伺服器備份失敗:", error);
-              alert("❌ 備份至伺服器失敗，請確認網路連線！\n(為保護資料，已停止重新生成)");
+              alert("❌ 備份至伺服器失敗，請確認網路與 db 設定！\n(錯誤：" + error.message + ")");
               setIsBackingUp(false);
               return; // 如果備份失敗，就強制中斷，保護舊資料不被洗掉
           }
@@ -1582,7 +1588,7 @@ const handleReset = () => {
           setIsBackingUp(false);
       }
       
-      // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表
+      // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表 (新生成的會出現在工作桌)
       setShowOverwriteModal(false);
       executeGeminiSolve();
   };
