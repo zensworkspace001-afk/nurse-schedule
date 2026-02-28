@@ -58,7 +58,7 @@ export const saveGlobalStaff = async (data) => {
 // ============================================================================
 export const subscribeToSchedule = (year, month, callback) => {
   if (!year || !month) return () => {};
-  const docId = `${year}-${month}`;
+  const docId = `${year}_${month}`;
   return onSnapshot(doc(db, 'Schedules', docId), (snap) => {
     callback(snap.exists() ? snap.data() : null);
   }, (err) => console.error('subscribeToSchedule 失敗:', err));
