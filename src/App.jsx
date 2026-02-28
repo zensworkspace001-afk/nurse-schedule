@@ -3551,14 +3551,14 @@ const PublishPanel = ({
         return { score, deductions };
     };
 
-  // ★★★ 核心邏輯 1：單點拔除名字，轉回待認領 ★★★
-    const handleUnassignSingleStaff = (staffId) => {
+// ★★★ 核心邏輯 1：單點拔除名字，轉回待認領 ★★★
+    // 👉 加上 async
+    const handleUnassignSingleStaff = async (staffId) => { 
         const staffName = staffData.find(s => s.staff_id === staffId)?.name || staffId;
         if (!window.confirm(`⚠️ 確定要拔除「${staffName}」的班表嗎？\n\n這將把此排班轉為「待認領 (Dxxx)」空缺，\n員工介面會立刻同步釋出，供其他人重新選擇。`)) return;
 
         const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         
-        // 尋找下一個可用的虛擬代號
         let vIndex = 1; let newVirtualId = '';
         while (true) {
             newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
@@ -3566,22 +3566,28 @@ const PublishPanel = ({
             vIndex++;
         }
 
-        // 轉移資料並刪除原員工
         newSchedule[newVirtualId] = newSchedule[staffId];
         delete newSchedule[staffId];
 
         setFinalizedSchedule(newSchedule);
-        // (註：App.jsx 的 debounce 機制會自動把這個變更寫入 Firebase，所以不用手動 call API)
+
+        // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
+        try {
+            await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
+        } catch (error) {
+            console.error("拔除失敗:", error);
+            alert("❌ 雲端同步失敗，請檢查網路連線！");
+        }
     };
 
     // ★★★ 核心邏輯 2：一鍵拔除所有人 ★★★
-    const handleUnassignAll = () => {
+    // 👉 加上 async
+    const handleUnassignAll = async () => {
         if (!window.confirm(`⚠️ 確定要【拔除所有人】的班表嗎？\n\n這會將目前畫面上所有已認領的班表，全部退回「待認領 (Dxxx)」狀態！\n員工必須重新登入選擇。`)) return;
 
         const newSchedule = {};
         let vIndex = 1;
 
-        // 將所有人的資料重新洗牌成 D001, D002...
         Object.keys(finalizedSchedule).sort().forEach(rowId => {
             const newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
             newSchedule[newVirtualId] = finalizedSchedule[rowId];
@@ -3589,7 +3595,15 @@ const PublishPanel = ({
         });
 
         setFinalizedSchedule(newSchedule);
-        // (註：系統會自動透過 debounce 將這個狀態更新到雲端)
+
+        // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
+        try {
+            await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
+            alert("✅ 所有人員已成功拔除並同步至雲端！");
+        } catch (error) {
+            console.error("拔除失敗:", error);
+            alert("❌ 雲端同步失敗，請檢查網路連線！");
+        }
     };
 
  return (
