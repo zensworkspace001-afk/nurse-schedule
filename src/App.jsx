@@ -2690,7 +2690,7 @@ let combinedData = "";
                       </label>
                   </div>
                   <label style={{display:'block', fontWeight:'bold', marginBottom:'5px', marginTop:'20px', color: 'black'}}>優先入閘人數 (Top N):</label>
-                  <input type="number" min="1" max={staffData.length} value={priorityConfig.count} onChange={e => setPriorityConfig({...priorityConfig, count: Number(e.target.value)})} style={{ width:'100%', padding:'8px', borderRadius:'6px', border:'1px solid #ccc', fontSize:'1rem', color: 'black' }} />
+                  <input type="number" min="1" max={staffData.length} value={priorityConfig.count} onChange={e => setPriorityConfig({...priorityConfig, count: Number(e.target.value)})} style={{ width:'100%', padding:'8px', borderRadius:'6px', border:'1px solid #ccc', fontSize:'1rem', color: 'white' }} />
               </div>
               <div style={{ flex:2, background:'#f1f3f5', padding:'15px', borderRadius:'8px' }}>
                   <div style={{fontWeight:'bold', marginBottom:'10px', color:'#555'}}>📋 目前符合優先資格名單 ({priorityList.length}人):</div>
@@ -2773,7 +2773,7 @@ let combinedData = "";
                     onKeyPress={(e) => e.key === 'Enter' && handleAskAI()} 
                     placeholder={hasData ? `可以問：「比較 ${loadedMonths[0]} 和另外幾個月的請假狀況」...` : "等待雲端載入資料..."} 
                     disabled={!hasData || isAnalyzing}
-                    style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #dcdde1', color: 'black', fontSize: '1rem', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.05)' }} 
+                    style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #dcdde1', color: 'black', fontSize: '1rem', boxShadow: 'inset 0 1px 3px rgba(253, 247, 247, 0.05)' }} 
                 />
                 <button 
                     onClick={handleAskAI} 
