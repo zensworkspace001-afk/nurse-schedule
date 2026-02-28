@@ -1,4 +1,4 @@
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { 
   getFirestore, 
@@ -12,7 +12,6 @@ import {
   orderBy
 } from "firebase/firestore";
 
-// ★★★ 請將以下設定替換為你自己的真實 Firebase Config ★★★
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -22,114 +21,90 @@ const firebaseConfig = {
   appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-// 初始化 Firebase (這段之前被你不小心刪掉了！)
-const app = initializeApp(firebaseConfig);
+// ★ 核心修復：防止重複初始化造成 INTERNAL ASSERTION FAILED
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// 匯出 auth 與 db 供其他檔案 (如 App.jsx) 使用
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+export const db   = getFirestore(app);
 
 // ============================================================================
-// 1. 全域設定 (Settings) -> 使用 NurseApp 資料夾
+// 1. 全域設定
 // ============================================================================
 export const subscribeToSettings = (callback) => {
-  const docRef = doc(db, 'NurseApp', 'Settings');
-  return onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) callback(docSnap.data());
-    else callback(null);
-  });
+  return onSnapshot(doc(db, 'NurseApp', 'Settings'), (snap) => {
+    callback(snap.exists() ? snap.data() : null);
+  }, (err) => console.error('subscribeToSettings 失敗:', err));
 };
 
 export const saveGlobalSettings = async (data) => {
-  const docRef = doc(db, 'NurseApp', 'Settings');
-  await setDoc(docRef, data, { merge: true });
+  await setDoc(doc(db, 'NurseApp', 'Settings'), data, { merge: true });
 };
 
 // ============================================================================
-// 2. 員工與健康度資料 (Staff & Health Stats) -> 使用 NurseApp 資料夾
+// 2. 員工資料
 // ============================================================================
 export const subscribeToStaff = (callback) => {
-  const docRef = doc(db, 'NurseApp', 'Staff');
-  return onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) callback(docSnap.data());
-    else callback(null);
-  });
+  return onSnapshot(doc(db, 'NurseApp', 'Staff'), (snap) => {
+    callback(snap.exists() ? snap.data() : null);
+  }, (err) => console.error('subscribeToStaff 失敗:', err));
 };
 
 export const saveGlobalStaff = async (data) => {
-  const docRef = doc(db, 'NurseApp', 'Staff');
-  await setDoc(docRef, data, { merge: true });
+  await setDoc(doc(db, 'NurseApp', 'Staff'), data, { merge: true });
 };
 
-// database.js 內部的修改範例
+// ============================================================================
+// 3. 每月班表 — 路徑改為 2 段 Schedules/{year_month}
+// ============================================================================
 export const subscribeToSchedule = (year, month, callback) => {
+  if (!year || !month) return () => {};
   const docId = `${year}_${month}`;
-  // ★ 修正為 4 段：NurseApp (1) -> MainData (2) -> Schedules (3) -> docId (4)
-  const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
-  return onSnapshot(docRef, (docSnap) => {
-    if (docSnap.exists()) callback(docSnap.data());
-    else callback(null);
-  }, (err) => console.error("班表監聽失敗:", err)); // 加上錯誤捕捉
+  return onSnapshot(doc(db, 'Schedules', docId), (snap) => {
+    callback(snap.exists() ? snap.data() : null);
+  }, (err) => console.error('subscribeToSchedule 失敗:', err));
 };
 
 export const saveMonthlySchedule = async (year, month, data) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
-  await setDoc(docRef, data, { merge: true });
+  await setDoc(doc(db, 'Schedules', docId), data, { merge: true });
 };
 
 export const updateStaffSchedule = async (year, month, finalizedSchedule) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
-  await setDoc(docRef, { finalizedSchedule }, { merge: true });
+  await setDoc(doc(db, 'Schedules', docId), { finalizedSchedule }, { merge: true });
 };
 
 // ============================================================================
-// 4. 跨月大數據報表封存 (Archive Reports)
+// 4. 跨月封存報表
 // ============================================================================
 export const saveArchiveReport = async (year, month, csvData) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'archive_reports', docId);
-  await setDoc(docRef, { 
-    csv: csvData,
+  await setDoc(doc(db, 'archive_reports', docId), {
+    csv: csvData, year, month,
     timestamp: new Date().toISOString()
   }, { merge: true });
 };
 
-// ============================================================================
-// 4. 跨月大數據報表封存 (Archive Reports)
-// ============================================================================
 export const subscribeToArchiveReports = (callback) => {
-  const colRef = collection(db, 'archive_reports');
-  return onSnapshot(colRef, (snapshot) => {
+  return onSnapshot(collection(db, 'archive_reports'), (snapshot) => {
     const reports = {};
-    snapshot.forEach(doc => {
-      // ★ 修改這裡：回傳整包物件，不要只回傳 csv，這樣系統才看得到自動備份檔
-      reports[doc.id] = doc.data(); 
-    });
+    snapshot.forEach(d => { reports[d.id] = d.data(); });
     callback(reports);
-  });
+  }, (err) => console.error('subscribeToArchiveReports 失敗:', err));
 };
 
 export const clearArchiveReports = async () => {
-  const colRef = collection(db, 'archive_reports');
-  const snapshot = await getDocs(colRef);
-  const deletePromises = [];
-  snapshot.forEach(document => {
-    deletePromises.push(deleteDoc(doc(db, 'archive_reports', document.id)));
-  });
-  await Promise.all(deletePromises);
+  const snapshot = await getDocs(collection(db, 'archive_reports'));
+  await Promise.all(snapshot.docs.map(d => deleteDoc(d.ref)));
 };
 
 // ============================================================================
-// 5. 班表安全備份 (統一歸檔至 archive_reports/YYYY_M)
+// 5. 班表安全備份
 // ============================================================================
 export const backupScheduleToArchive = async (year, month, schedule, note) => {
-  const docId = `${year}_${month}`; 
-  const docRef = doc(db, 'archive_reports', docId);
-  await setDoc(docRef, {
-    year,
-    month,
+  const docId = `${year}_${month}`;
+  await setDoc(doc(db, 'archive_reports', docId), {
+    year, month,
     schedule_backup: schedule,
     backedUpAt: new Date().toISOString(),
     note
@@ -137,19 +112,16 @@ export const backupScheduleToArchive = async (year, month, schedule, note) => {
 };
 
 // ============================================================================
-// 6. 讀取雲端班表備份 (Read Backups)
+// 6. 讀取備份列表
 // ============================================================================
 export const fetchScheduleBackups = async () => {
   try {
-    const q = query(collection(db, 'ScheduleBackups'), orderBy('backedUpAt', 'desc'));
-    const snapshot = await getDocs(q);
-    const backups = [];
-    snapshot.forEach(doc => {
-      backups.push({ id: doc.id, ...doc.data() });
-    });
-    return backups;
+    const snapshot = await getDocs(
+      query(collection(db, 'archive_reports'), orderBy('backedUpAt', 'desc'))
+    );
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
   } catch (error) {
-    console.error("讀取備份失敗:", error);
-    throw error;
+    console.error('讀取備份失敗:', error);
+    return [];
   }
 };
