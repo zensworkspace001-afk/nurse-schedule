@@ -61,17 +61,15 @@ export const saveGlobalStaff = async (data) => {
   await setDoc(docRef, data, { merge: true });
 };
 
-// ============================================================================
-// 3. 每月排班表 (Schedules) -> 修正為 4 段式合法路徑
-// ============================================================================
+// database.js 內部的修改範例
 export const subscribeToSchedule = (year, month, callback) => {
   const docId = `${year}_${month}`;
-  // 修正：NurseApp (1) / MainData (2) / Schedules (3) / docId (4)
+  // ★ 修正為 4 段：NurseApp (1) -> MainData (2) -> Schedules (3) -> docId (4)
   const docRef = doc(db, 'NurseApp', 'MainData', 'Schedules', docId); 
   return onSnapshot(docRef, (docSnap) => {
     if (docSnap.exists()) callback(docSnap.data());
     else callback(null);
-  });
+  }, (err) => console.error("班表監聽失敗:", err)); // 加上錯誤捕捉
 };
 
 export const saveMonthlySchedule = async (year, month, data) => {
