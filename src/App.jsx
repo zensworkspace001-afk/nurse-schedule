@@ -1549,10 +1549,10 @@ const handleReset = () => {
       const targetSchedule = finalizedSchedule || schedule;
       
       if (targetSchedule && Object.keys(targetSchedule).length > 0) {
-          setIsBackingUp(true); // 讓按鈕顯示 Loading
+          setIsBackingUp(true); 
           
           try {
-              // ★ 動作 1：先把原本躺在「歷史區」的班表 Archieve 備份到伺服器 (避免被覆蓋消失)
+              // ★ 動作 1：先把原本躺在「歷史區」的班表備份到伺服器 (避免被覆蓋消失)
               if (historySchedule && Object.keys(historySchedule).length > 0) {
                   const historyBackupId = `History_${historyYear}_${historyMonth}_${Date.now()}`;
                   await setDoc(doc(db, 'ScheduleBackups', historyBackupId), {
@@ -1575,23 +1575,23 @@ const handleReset = () => {
               });
 
               // ★ 動作 3：將目前工作桌的班表，移動並「覆蓋」掉歷史區原本躺著的班表
-              setHistoryYear(selectedYear);
-              setHistoryMonth(selectedMonth);
-              setHistorySchedule(targetSchedule);
+              if (setHistoryYear) setHistoryYear(selectedYear);
+              if (setHistoryMonth) setHistoryMonth(selectedMonth);
+              if (setHistorySchedule) setHistorySchedule(targetSchedule);
               
               console.log("✅ 舊班表已成功歸檔至伺服器，並完成歷史區替換！");
 
           } catch (error) {
               console.error("伺服器備份失敗:", error);
-              alert("❌ 備份至伺服器失敗，請確認網路與 db 設定！\n(錯誤：" + error.message + ")");
+              alert("❌ 備份至伺服器失敗，請確認網路！\n(錯誤：" + error.message + ")");
               setIsBackingUp(false);
-              return; // 如果備份失敗，就強制中斷，保護舊資料不被洗掉
+              return; 
           }
           
           setIsBackingUp(false);
       }
       
-      // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表 (新生成的會出現在工作桌)
+      // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表
       setShowOverwriteModal(false);
       executeGeminiSolve();
   };
