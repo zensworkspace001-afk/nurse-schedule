@@ -1258,6 +1258,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             onPushToHistory={handlePushToHistory} // 👈 補上這行
             accumulatedReports={accumulatedReports} // 👈 補上這行
             setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
+            onManualRefresh={handleManualRefresh}  
           />
         ) : (
           <StaffDashboard
@@ -1288,7 +1289,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports // 👈 補上這兩個變數！ // 👈 補上這行
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh // 👈 補上這兩個變數！ // 👈 補上這行
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
@@ -1348,6 +1349,7 @@ const ManagerInterface = ({
           historyYear={historyYear}
           historyMonth={historyMonth}
           historySchedule={historySchedule}
+          onManualRefresh={onManualRefresh} 
         />
       )}
       
@@ -1483,7 +1485,7 @@ const SchedulePanel = ({
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions,setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
-    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule,historyYear, historyMonth, historySchedule
+    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule,historyYear, historyMonth, historySchedule, onManualRefresh
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
@@ -1888,7 +1890,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
            </div>
            {/* ★★★★ 請把這顆「手動同步按鈕」加在這裡！ ★★★★ */}
            <button 
-             onClick={handleManualRefresh}
+             onClick={onManualRefresh}
              style={{ padding: '0.5rem 1rem', background: '#3498db', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', marginLeft: '5px', marginRight: '5px' }}
            >
              🔄 手動同步
