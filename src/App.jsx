@@ -954,40 +954,63 @@ const handleGenerateSchedule = (providedSchedule = null) => {
     }
   };
 
-// ★★★ 新增：手動將本月班表封存至歷史區，並推進下個月 ★★★
-  const handlePushToHistory = () => {
+const handlePushToHistory = async () => {
     if (!finalizedSchedule || Object.keys(finalizedSchedule).length === 0) {
         alert("目前沒有發布的班表可供封存！");
         return;
     }
-    if (window.confirm(`確定要將 ${selectedYear}年${selectedMonth}月 的班表結算並封存嗎？\n\n⚠️ 執行後：\n1. 此班表將移至「✅ 3. 結算與歷史」\n2. 發布區將被清空\n3. 系統將自動切換至下一個月，準備新的排班`)) {
-        
-        // 1. 把目前的年月指派給歷史大帳本
-        setHistoryYear(selectedYear);
-        setHistoryMonth(selectedMonth);
-        setHistorySchedule(finalizedSchedule); // 畫面無縫切換
+    if (!window.confirm(`確定要將 ${selectedYear}年${selectedMonth}月 的班表結算並封存嗎？\n\n⚠️ 執行後：\n1. 此班表將移至「✅ 3. 結算與歷史」\n2. 若歷史區已有舊班表，舊班表將先備份至雲端封存庫\n3. 發布區將被清空\n4. 系統將自動切換至下一個月，準備新的排班`)) return;
 
-        // 2. 計算下個月
-        let nextMonth = selectedMonth + 1;
-        let nextYear = selectedYear;
-        if (nextMonth > 12) {
-            nextMonth = 1;
-            nextYear++;
+    // ★ 步驟 1：若歷史區已有舊班表，先將它 archive 到 Firebase 再覆蓋
+    if (historySchedule && Object.keys(historySchedule).length > 0) {
+        try {
+            const daysInOldMonth = new Date(historyYear, historyMonth, 0).getDate();
+            let csv = `\uFEFF被覆蓋封存 - ${historyYear}年${historyMonth}月班表\n`;
+            csv += `封存時間,${new Date().toLocaleString('zh-TW')}\n\n`;
+            csv += '工號,姓名,';
+            for (let d = 1; d <= daysInOldMonth; d++) csv += `${d}號,`;
+            csv += '\n';
+
+            Object.keys(historySchedule).sort().forEach(rowId => {
+                const staff = staffData.find(s => s.staff_id === rowId);
+                const name = staff ? staff.name : '待認領';
+                let row = `${rowId},${name},`;
+                for (let d = 1; d <= daysInOldMonth; d++) {
+                    const cell = historySchedule[rowId]?.[d];
+                    row += `${(typeof cell === 'object' ? cell?.type : cell) || ''},`;
+                }
+                csv += row + '\n';
+            });
+
+            await saveArchiveReport(historyYear, historyMonth, csv);
+            console.log(`✅ 舊班表 ${historyYear}年${historyMonth}月 已成功備份至雲端封存庫`);
+        } catch (e) {
+            console.error("❌ 舊班表備份失敗:", e);
+            // 備份失敗不阻斷主流程
         }
-
-        // 3. 更新全域的目前年月
-        setSelectedYear(nextYear);
-        setSelectedMonth(nextMonth);
-        const newPubDate = { year: nextYear, month: nextMonth };
-        setPublishedDate(newPubDate);
-        localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
-
-        // 4. 清空草稿工作桌與發布區
-        setSchedule({});
-        setFinalizedSchedule(null);
-
-        alert(`✅ 封存成功！\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
     }
+
+    // ★ 步驟 2：把目前發布的班表放入歷史區（覆蓋舊的）
+    setHistoryYear(selectedYear);
+    setHistoryMonth(selectedMonth);
+    setHistorySchedule(finalizedSchedule);
+
+    // ★ 步驟 3：計算並切換到下個月
+    let nextMonth = selectedMonth + 1;
+    let nextYear = selectedYear;
+    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+
+    setSelectedYear(nextYear);
+    setSelectedMonth(nextMonth);
+    const newPubDate = { year: nextYear, month: nextMonth };
+    setPublishedDate(newPubDate);
+    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
+
+    // ★ 步驟 4：清空草稿工作桌與發布區
+    setSchedule({});
+    setFinalizedSchedule(null);
+
+    alert(`✅ 封存成功！\n${selectedYear}年${selectedMonth}月 班表已移至「結算與歷史」。\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
   };
 
 const handleLogout = async () => {

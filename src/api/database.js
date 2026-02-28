@@ -1,99 +1,131 @@
-import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, onSnapshot, collection, getDocs, deleteDoc } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+// src/api/database.js
+import { initializeApp, getApps } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import {
+  getFirestore,
+  doc, setDoc, getDoc,
+  collection, onSnapshot, deleteDoc, getDocs
+} from 'firebase/firestore';
 
-// 1. Firebase 初始化設定 (集中管理)
+// ★ Firebase 設定（從環境變數讀取）
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket:     import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID
+  appId:             import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = initializeApp(firebaseConfig);
+// ★ 防止 HMR 重複初始化
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+
+// ★ 核心修復：db 和 auth 在這裡統一初始化，所有函式都能存取
+export const auth = getAuth(app);
 const db = getFirestore(app);
-export const auth = getAuth(app); // 匯出 auth 給 App.jsx 的登入功能使用
 
-// ==========================================
-// 讀取 API (Read / Subscribe)
-// ==========================================
-
-export const subscribeToSettings = (onDataReceived) => {
-  return onSnapshot(doc(db, "NurseApp", "Settings"), (docSnap) => {
-    onDataReceived(docSnap.exists() ? docSnap.data() : null);
+// ============================================================
+// Settings（班別選項、優先設定、發布日期）
+// ============================================================
+export const subscribeToSettings = (callback) => {
+  const ref = doc(db, 'global', 'settings');
+  return onSnapshot(ref, (snap) => {
+    callback(snap.exists() ? snap.data() : null);
   });
 };
 
-export const subscribeToStaff = (onDataReceived) => {
-  return onSnapshot(doc(db, "NurseApp", "Staff"), (docSnap) => {
-    onDataReceived(docSnap.exists() ? docSnap.data() : null);
+export const saveGlobalSettings = async (data) => {
+  await setDoc(doc(db, 'global', 'settings'), data, { merge: true });
+};
+
+// ============================================================
+// Staff（員工資料、健康度歷史）
+// ============================================================
+export const subscribeToStaff = (callback) => {
+  const ref = doc(db, 'global', 'staff');
+  return onSnapshot(ref, (snap) => {
+    callback(snap.exists() ? snap.data() : null);
   });
 };
 
-export const subscribeToSchedule = (year, month, onDataReceived) => {
-  const scheduleDocId = `${year}-${month}`;
-  return onSnapshot(doc(db, "Schedules", scheduleDocId), (docSnap) => {
-    onDataReceived(docSnap.exists() ? docSnap.data() : null);
+export const saveGlobalStaff = async (data) => {
+  await setDoc(doc(db, 'global', 'staff'), data, { merge: true });
+};
+
+// ============================================================
+// Monthly Schedule（每月草稿 + 發布班表）
+// ============================================================
+export const subscribeToSchedule = (year, month, callback) => {
+  const docId = `${year}-${String(month).padStart(2, '0')}`;
+  const ref = doc(db, 'schedules', docId);
+  return onSnapshot(ref, (snap) => {
+    callback(snap.exists() ? snap.data() : null);
   });
 };
 
-// ==========================================
-// 寫入 API (Write / Update)
-// ==========================================
-
-export const saveGlobalSettings = async (settingsData) => {
-  await setDoc(doc(db, "NurseApp", "Settings"), settingsData);
+export const saveMonthlySchedule = async (year, month, data) => {
+  const docId = `${year}-${String(month).padStart(2, '0')}`;
+  await setDoc(doc(db, 'schedules', docId), data, { merge: true });
 };
 
-export const saveGlobalStaff = async (staffData) => {
-  await setDoc(doc(db, "NurseApp", "Staff"), staffData);
+// ★ 員工認領班表（即時寫入 finalizedSchedule）
+export const updateStaffSchedule = async (year, month, newFinalizedSchedule) => {
+  const docId = `${year}-${String(month).padStart(2, '0')}`;
+  await setDoc(
+    doc(db, 'schedules', docId),
+    { finalizedSchedule: newFinalizedSchedule },
+    { merge: true }
+  );
 };
 
-export const saveMonthlySchedule = async (year, month, scheduleData) => {
-  const scheduleDocId = `${year}-${month}`;
-  await setDoc(doc(db, "Schedules", scheduleDocId), scheduleData);
+// ============================================================
+// Archive Reports（封存歷史班表 CSV）
+// ★ 核心修復：原本 db 未定義，現在統一從上面取得
+// ============================================================
+
+/**
+ * 儲存封存報表到 Firebase
+ * @param {number} year
+ * @param {number} month
+ * @param {string} csvContent - CSV 字串內容
+ */
+export const saveArchiveReport = async (year, month, csvContent) => {
+  const docId = `${year}-${String(month).padStart(2, '0')}`;
+  await setDoc(
+    doc(db, 'archiveReports', docId),
+    {
+      year,
+      month,
+      csvContent,
+      savedAt: new Date().toISOString(),
+    },
+    { merge: true }
+  );
 };
 
-export const updateStaffSchedule = async (year, month, finalizedSchedule) => {
-  const scheduleDocId = `${year}-${month}`;
-  await updateDoc(doc(db, "Schedules", scheduleDocId), { finalizedSchedule });
-};
-
-// 1. 上傳單月報表至雲端 Firestore
-export const saveArchiveReport = async (year, month, csvData) => {
-    // 存入 'archive_reports' 集合中，文件 ID 命名為 "2026_3"
-    const docRef = doc(db, 'archive_reports', `${year}_${month}`);
-    await setDoc(docRef, { csv: csvData, timestamp: Date.now() });
-};
-
-// 2. 自動監聽雲端上的所有報表 (使用 onSnapshot 達到即時同步)
+/**
+ * 即時監聽所有封存報表
+ * @param {function} callback - 回傳 { [monthKey]: csvContent } 格式
+ */
 export const subscribeToArchiveReports = (callback) => {
-    const colRef = collection(db, 'archive_reports');
-    
-    return onSnapshot(colRef, (snapshot) => {
-        const formatted = {};
-        snapshot.forEach((docSnap) => {
-            const data = docSnap.data();
-            const [y, m] = docSnap.id.split('_'); // 把 "2026_3" 拆回年跟月
-            formatted[`${y}年${m}月`] = data.csv;
-        });
-        callback(formatted);
+  const ref = collection(db, 'archiveReports');
+  return onSnapshot(ref, (snapshot) => {
+    const reports = {};
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      const key = `${data.year}年${data.month}月`;
+      reports[key] = data.csvContent;
     });
+    callback(reports);
+  });
 };
 
-// 3. 清空雲端的報表記憶庫
+/**
+ * 清除所有封存報表
+ */
 export const clearArchiveReports = async () => {
-    const colRef = collection(db, 'archive_reports');
-    const snapshot = await getDocs(colRef);
-    
-    // Firestore 不能直接刪除整個 Collection，必須把裡面的 Document 抓出來逐一刪除
-    const deletePromises = [];
-    snapshot.forEach((docSnap) => {
-        deletePromises.push(deleteDoc(docSnap.ref));
-    });
-    
-    // 等待所有報表文件都刪除完畢
-    await Promise.all(deletePromises);
+  const ref = collection(db, 'archiveReports');
+  const snapshot = await getDocs(ref);
+  const deletes = snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref));
+  await Promise.all(deletes);
 };
