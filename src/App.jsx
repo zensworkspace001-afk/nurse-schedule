@@ -1047,15 +1047,15 @@ const handlePushToHistory = async () => {
     alert(`✅ 封存成功！\n${selectedYear}年${selectedMonth}月 班表已移至「結算與歷史」。\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
   };
 
-const handleLogout = () => {
-  signOut(auth).then(() => {
+   const handleLogout = () => {
+      signOut(auth).then(() => {
     // ★ 核心修復：登出時，把瀏覽器裡面所有記住的髒東西全部炸掉！
-    localStorage.clear(); 
-    window.location.reload(); // 強制重整網頁，回到最乾淨的狀態
-  }).catch((error) => {
-    console.error("登出失敗:", error);
-  });
-};
+      localStorage.clear(); 
+      window.location.reload(); // 強制重整網頁，回到最乾淨的狀態
+         }).catch((error) => {
+      console.error("登出失敗:", error);
+    });
+  };
 // ★ 核心功能 1：寄送 Email 的共用小幫手
   const sendSystemEmail = async (toEmail, subject, htmlContent) => {
       try {
