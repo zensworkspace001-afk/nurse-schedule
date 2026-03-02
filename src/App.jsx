@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
-import { doc, getDoc,setDoc, addDoc, collection, arrayUnion } from 'firebase/firestore';
+import { 
+  doc, getDoc, setDoc, addDoc, collection, 
+  query, orderBy, limit, getDocs, arrayUnion 
+} from 'firebase/firestore';
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive, fetchScheduleBackups } from './api/database';
 import { signOut } from "firebase/auth"; // 加到 import
@@ -1186,32 +1189,38 @@ const handleLogout = () => {
           }];
         });
 
-        // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
-        await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
-        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
-        // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
+
+// 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
         await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         
-        // 🌟 ★★★ 新增：將該員工加入「已完賽黑名單」，並呼叫 AI 尋找下一個人 ★★★
+        // =========================================================
+        // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
+        // =========================================================
         try {
+            // A. 把這名員工加入本月的「已完賽黑名單」，確保 AI 之後不會再選到他
             const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
             await setDoc(progressRef, {
-                submitted_staff: arrayUnion(result.staffId) // 鎖死他，本月不能再被 AI 選中
+                submitted_staff: arrayUnion(result.staffId) 
             }, { merge: true });
-            
-            // 背景呼叫 AI 決策引擎 (不需 await 卡住畫面)
-            calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+
+            // B. 背景呼叫 AI 決策引擎 (尋找下一位最需要補血的人並寄信)
+            if (typeof calculateAndNotifyNextStaff === 'function') {
+                calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+            } else {
+                console.warn("⚠️ 找不到 calculateAndNotifyNextStaff 函式，無法自動交棒。");
+            }
         } catch (e) {
             console.error("交棒處理失敗:", e);
         }
+        // =========================================================
 
-        alert(`✅ 認領成功！\n系統已自動通知下一位優先同仁。`);
+        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
         
     } catch (error) {
         console.error("寫入失敗:", error);
         alert("❌ 認領失敗：權限不足或網路異常。");
     }
-  }
+  } // <-- 這是 handleStaffScheduleUpdate 的結尾
 
   // 🔄 手動強制同步最新雲端班表
   const handleManualRefresh = async () => {
