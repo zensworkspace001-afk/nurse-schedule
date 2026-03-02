@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
-import { doc, getDoc } from 'firebase/firestore';
-
+import { doc, getDoc,setDoc, addDoc, collection, arrayUnion } from 'firebase/firestore';
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive, fetchScheduleBackups } from './api/database';
 import { signOut } from "firebase/auth"; // 加到 import
@@ -895,17 +894,18 @@ const [historyYear, setHistoryYear] = useState(() => {
   }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
 // ☁️ 雲端引擎 1：即時讀取 (使用抽象化 API)
   useEffect(() => {
-    if (!currentUser) return;
-
+    // ★ 核心修復 1：移除「if (!currentUser) return;」的限制！
+    // 讓系統在「登入畫面」就能提前在背景抓好最新的員工姓名
+    
     let isSettingsLoaded = false; let isStaffLoaded = false; let isScheduleLoaded = false;
     const checkAllLoaded = () => { if (isSettingsLoaded && isStaffLoaded && isScheduleLoaded) setIsCloudLoaded(true); };
 
+    // 1. 任何人 (包含尚未登入的訪客) 都可以在背景同步「員工名單」與「全域設定」
     const unsubSettings = subscribeToSettings((data) => {
       if (data) {
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         
-        // ★ 核心修復 1：深度比對！如果月份沒變，就不要更新狀態，打破無窮迴圈！
         if (data.publishedDate) {
           setPublishedDate(prev => {
             if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
@@ -924,31 +924,41 @@ const [historyYear, setHistoryYear] = useState(() => {
       isStaffLoaded = true; checkAllLoaded();
     });
 
-    const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
-    const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+    // 2. ★ 核心修復 2：只有「已經登入成功」的人，才去抓取機密的排班與歷史報表
+    let unsubSchedule = () => {};
+    let unsubHistory = () => {};
+    let unsubReports = () => {};
 
-    const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
-      if (data) {
-        setSchedule(data.schedule || {});
-        setFinalizedSchedule(data.finalizedSchedule || null); 
-      } else {
-        setSchedule({}); setFinalizedSchedule(null);
-      }
-      isScheduleLoaded = true; checkAllLoaded();
-    });
+    if (currentUser) {
+        const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
+        const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
 
-    const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
-        setHistorySchedule(data?.finalizedSchedule || {});
-    });
-    const unsubReports = subscribeToArchiveReports((data) => {
-        setAccumulatedReports(data);
-    });
+        unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+          if (data) {
+            setSchedule(data.schedule || {});
+            setFinalizedSchedule(data.finalizedSchedule || null); 
+          } else {
+            setSchedule({}); setFinalizedSchedule(null);
+          }
+          isScheduleLoaded = true; checkAllLoaded();
+        });
+
+        unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
+            setHistorySchedule(data?.finalizedSchedule || {});
+        });
+        
+        unsubReports = subscribeToArchiveReports((data) => {
+            setAccumulatedReports(data);
+        });
+    } else {
+        // 若尚未登入，標記班表為已載入（避免卡住 Loading）
+        isScheduleLoaded = true; 
+        checkAllLoaded();
+    }
 
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
     
-  // ★ 核心修復 2：把 publishedDate 改成 publishedDate.year 與 publishedDate.month
   }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
-
   // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
   useEffect(() => {
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
@@ -1047,7 +1057,85 @@ const handleLogout = () => {
     console.error("登出失敗:", error);
   });
 };
+// ★ 核心功能 1：寄送 Email 的共用小幫手
+  const sendSystemEmail = async (toEmail, subject, htmlContent) => {
+      try {
+          await fetch('/api/sendEmail', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: toEmail, subject, html: htmlContent })
+          });
+      } catch (error) {
+          console.error("Email 發送失敗:", error);
+      }
+  };
 
+  // ★ 核心功能 2：AI 動態決策下一位優先選班者
+  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth) => {
+      try {
+          // 1. 抓取「已經選過」的黑名單 (已完賽標記)
+          const progressRef = doc(db, "SelectionProgress", `${currentYear}_${currentMonth}`);
+          const snap = await getDoc(progressRef);
+          const submittedList = snap.exists() ? (snap.data().submitted_staff || []) : [];
+
+          // 2. 篩選出「尚未選班」的活躍員工
+          const unassignedStaff = staffData.filter(s => s.is_active && !submittedList.includes(s.staff_id));
+
+          // 3. 終止條件：所有人都選完了！
+          if (unassignedStaff.length === 0) {
+              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'your-admin-email@hospital.com';
+              await sendSystemEmail(adminEmail, `✅ ${currentMonth}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
+              return;
+          }
+
+          // 4. 準備大數據給 AI (給定尚未選班者的歷史健康度、OT、夜班餘額)
+          const scores = statsData.map(stat => stat.score || 100);
+          const average = scores.length > 0 ? Math.round(scores.reduce((sum, val) => sum + val, 0) / scores.length) : 100;
+
+          let aiPrompt = `【自動接力選班決策】\n團隊歷史平均健康度: ${average}分\n尚未選班之候選人現況：\n`;
+          unassignedStaff.forEach(staff => {
+              const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
+              aiPrompt += `- ${staff.staff_id} (${staff.name}): 歷史健康度 ${historyScore}分, 積假餘額 ${staff.accumulated_ot}, 夜班結餘 ${staff.night_shift_balance}\n`;
+          });
+
+          aiPrompt += `\n請根據上述數據，選出「分數最低、最疲勞、最需要優先選好班」的 1 位員工。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
+
+          // 5. 呼叫 Gemini 進行決策
+          const token = await auth.currentUser.getIdToken();
+          const response = await fetch('/api/gemini', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ prompt: aiPrompt })
+          });
+          const data = await response.json();
+          const text = data.text.replace(/```json|```/g, '').trim();
+          const decision = JSON.parse(text);
+
+          // 6. 寫入 AI Data Log 背景紀錄
+          await addDoc(collection(db, "AI_Decision_Logs"), {
+              timestamp: new Date(), year: currentYear, month: currentMonth,
+              selected_staff: decision.selected_staff_id, ai_logic: decision.reason, candidates_data: aiPrompt
+          });
+
+          // 7. 更新發球權狀態機
+          await setDoc(doc(db, "SelectionTurn", `${currentYear}_${currentMonth}`), {
+              active_staff_id: decision.selected_staff_id, updatedAt: new Date()
+          });
+
+          // 8. 抓取該員工 Email 並寄出通知
+          const targetStaff = staffData.find(s => s.staff_id === decision.selected_staff_id);
+          if (targetStaff && targetStaff.email) {
+              await sendSystemEmail(
+                  targetStaff.email, 
+                  `🌟 ${targetStaff.name} 優先選班通知！現在輪到您了！`, 
+                  `<h3>親愛的 ${targetStaff.name}：</h3><p>系統已開放您的選班權限！</p><p><strong>🤖 系統判斷讓您先選的理由：</strong><br/>${decision.reason}</p><p>請盡速登入系統完成選班，以利下一位同仁進行，謝謝！</p>`
+              );
+          }
+
+      } catch (error) {
+          console.error("AI 決策接力失敗:", error);
+      }
+  };
 // ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★
   const handleStaffScheduleUpdate = async (result) => { 
     try {
@@ -1101,6 +1189,23 @@ const handleLogout = () => {
         // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
         await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表。`);
+        // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
+        await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
+        
+        // 🌟 ★★★ 新增：將該員工加入「已完賽黑名單」，並呼叫 AI 尋找下一個人 ★★★
+        try {
+            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
+            await setDoc(progressRef, {
+                submitted_staff: arrayUnion(result.staffId) // 鎖死他，本月不能再被 AI 選中
+            }, { merge: true });
+            
+            // 背景呼叫 AI 決策引擎 (不需 await 卡住畫面)
+            calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+        } catch (e) {
+            console.error("交棒處理失敗:", e);
+        }
+
+        alert(`✅ 認領成功！\n系統已自動通知下一位優先同仁。`);
         
     } catch (error) {
         console.error("寫入失敗:", error);
@@ -1535,6 +1640,7 @@ const SchedulePanel = ({
   const [showOverwriteModal, setShowOverwriteModal] = useState(false);
   const [isBackingUp, setIsBackingUp] = useState(false);
   const [customAiInstruction, setCustomAiInstruction] = useState('');
+  const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
 
@@ -1611,14 +1717,21 @@ const handleReset = () => {
 
 
 // --- ★ 升級版的 AI 生成邏輯 ---
-
-  // 1. 點擊「生成 AI 班表」時的檢查點
+// 1. 點擊「生成 AI 班表」時，第一步先跳出要求詢問視窗
   const handleGeminiSolveClick = () => {
-    if (schedule && Object.keys(schedule).length > 0) {
-        setShowOverwriteModal(true); // 如果有資料，跳出我們自己做的漂亮視窗
-    } else {
-        executeGeminiSolve(); // 如果是空的，直接執行生成
-    }
+      setShowInstructionModal(true); 
+  };
+
+  // 1.5 當使用者在詢問視窗輸入完要求，按下「確認並繼續」時的邏輯
+  const handleConfirmInstruction = () => {
+      setShowInstructionModal(false); // 關閉要求詢問視窗
+      
+      // 接著檢查畫面上是不是已經有舊班表了？
+      if (schedule && Object.keys(schedule).length > 0) {
+          setShowOverwriteModal(true); // 如果有資料，跳出覆蓋警告視窗
+      } else {
+          executeGeminiSolve(); // 如果是空的，直接發送給 AI 開始生成
+      }
   };
 
 // 2. 選項 A：先封存至伺服器歷史區，再重新生成
@@ -1677,6 +1790,23 @@ const handleReset = () => {
 
   // 4. 真正的 AI 呼叫核心 (原來的 handleGeminiSolve 邏輯移到這裡)
   const executeGeminiSolve = async () => {
+    // ★★★ 新增：自動計算本月的週末與國定假日 ★★★
+    const weekends = [];
+    const natHolidays = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+        const date = new Date(selectedYear, selectedMonth - 1, d);
+        const dayOfWeek = date.getDay();
+        const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+        
+        if (dayOfWeek === 0 || dayOfWeek === 6) weekends.push(d);
+        if (publicHolidays.includes(dateStr)) natHolidays.push(d);
+    }
+    
+    const calendarContext = `
+[本月曆法資訊]
+- 週末 (六日) 日期：${weekends.join(', ')} 號
+- 國定假日 日期：${natHolidays.length > 0 ? natHolidays.join(', ') + ' 號' : '無'}
+    `;
     setShowGemini(true);
     setProcessing(true);
     const dailyNeeded = (requirements.D || 0) + (requirements.E || 0) + (requirements.N || 0);
@@ -1689,7 +1819,7 @@ const handleReset = () => {
     let currentPrompt = `
 [角色定義]
 你是一個高階排班演算法引擎，採用「目標規劃法 (Goal Programming)」邏輯。你精通台灣勞動基準法 (Taiwan Labor Standards Act) 與護理人員排班規則。
-
+${calendarContext}
 [使用者額外指令]
 ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` : "無額外特殊要求，請依照一般最佳化原則排班。"}
 [任務目標]
@@ -1871,7 +2001,37 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
           <div style={{ marginTop: '8px', fontSize: '0.95rem', color: '#7f8c8d' }}>{loadingStatus}</div>
         </div>
       )}
-
+{/* ★★★ 新增的：AI 需求詢問視窗 (Modal) ★★★ */}
+      {showInstructionModal && (
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, borderRadius: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '500px', boxShadow: '0 10px 30px rgba(0,0,0,0.3)' }}>
+                <h3 style={{ marginTop: 0, color: '#8e44ad', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '1.3rem' }}>
+                    ✨ 告訴 AI 您的特殊要求
+                </h3>
+                <p style={{ color: '#555', lineHeight: '1.6', marginBottom: '15px' }}>
+                    除了遵守勞基法與基本人力外，您本月還有什麼特別想交代的嗎？<br/>
+                    <span style={{fontSize:'0.85rem', color:'#888'}}>(例如：「請盡量讓 N001 都在週末休假」、「大夜班盡量安排給年資高的人」)</span>
+                </p>
+                
+                <textarea 
+                    value={customAiInstruction}
+                    onChange={(e) => setCustomAiInstruction(e.target.value)}
+                    placeholder="請輸入您的特殊要求 (若無特殊要求，可直接留空並點擊繼續)..."
+                    style={{ width: '100%', height: '100px', padding: '12px', borderRadius: '8px', border: '1px solid #ccc', resize: 'vertical', marginBottom: '20px', fontSize: '1rem', boxSizing: 'border-box' }}
+                />
+                
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setShowInstructionModal(false)} style={{ padding: '10px 20px', background: '#f1f2f6', color: '#555', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
+                        取消
+                    </button>
+                    <button onClick={handleConfirmInstruction} style={{ padding: '10px 20px', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(142,68,173,0.3)' }}>
+                        確認並繼續 🚀
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
+      {/* ★★★ 需求詢問視窗結束 ★★★ */}
       {/* ★★★ 2. 全新加入的：客製化覆蓋警告視窗 (Modal) ★★★ */}
       {showOverwriteModal && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, borderRadius: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -2118,7 +2278,7 @@ useEffect(() => {
     const newId = `N${String(maxNum + 1).padStart(3, '0')}`;
     
     const newStaff = {
-      staff_id: newId, name: '新員工', level: 'N0', tenure_years: 0, is_leader: false,
+      staff_id: newId, name: '新員工', email: '', level: 'N0', tenure_years: 0, // 👈 加上 email: ''
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       prevMonthLeave: [false, false, false, false, false, false, false]
@@ -2252,6 +2412,7 @@ const handleSave = async () => {
   const columns = [
     { key: 'staff_id', label: '工號', type: 'text', width: '60px', readOnly: true },
     { key: 'name', label: '姓名', type: 'text', width: '80px' },
+    { key: 'email', label: 'Email信箱', type: 'text', width: '160px' }, // 👈 ★★★ 新增這行 ★★★
     { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
     { key: 'prevMonthLeave', label: '上月末休假', type: 'week_picker', width: '220px' },
     { key: 'tenure_years', label: '年資', type: 'number', width: '60px' },
@@ -2657,51 +2818,39 @@ let combinedData = "";
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       
-      {/* 1. 優先選班控制台 */}
-      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #667eea', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+{/* 1. 全新：🤖 AI 接力選班監控中心 */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #2980b9', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
           <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'20px'}}>
              <div>
-                 <h2 style={{ margin: '0 0 5px 0', color: '#2c3e50', fontSize:'1.4rem' }}>🏆 優先選班控制台</h2>
-                 <p style={{ margin: 0, color: '#7f8c8d', fontSize:'0.9rem' }}>設定誰可以優先進場認領班表 (滿足任一條件即可)</p>
+                 <h2 style={{ margin: '0 0 5px 0', color: '#2c3e50', fontSize:'1.4rem' }}>🚀 AI 接力選班引擎</h2>
+                 <p style={{ margin: 0, color: '#7f8c8d', fontSize:'0.9rem' }}>一鍵啟動自動化接力，AI 將依據大數據自動判斷順位並寄發 Email</p>
              </div>
-             <div style={{ display:'flex', alignItems:'center', gap:'15px', background:'#f8f9fa', padding:'10px 20px', borderRadius:'50px' }}>
-                 <span style={{fontWeight:'bold', color:'#333'}}>目前狀態:</span>
-                 {priorityConfig.isOpenToAll ? (
-                     <span style={{color:'green', fontWeight:'bold', display:'flex', alignItems:'center', gap:'5px'}}>🟢 全面開放 (所有人可選)</span>
-                 ) : (
-                     <span style={{color:'#e67e22', fontWeight:'bold', display:'flex', alignItems:'center', gap:'5px'}}>🔒 僅限優先人員 ({priorityList.length}人)</span>
-                 )}
-                 <button onClick={() => setPriorityConfig({...priorityConfig, isOpenToAll: !priorityConfig.isOpenToAll})} style={{ marginLeft:'10px', padding:'5px 15px', borderRadius:'20px', border:'none', cursor:'pointer', fontWeight:'bold', background: priorityConfig.isOpenToAll ? '#e74c3c' : '#27ae60', color:'white' }}>
-                    {priorityConfig.isOpenToAll ? '改為限制模式' : '開啟全面開放'}
-                 </button>
-             </div>
+             
+             <button 
+                onClick={() => {
+                   if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動分析數據，並發送 Email 給最需要補血的第一位同仁。")) {
+                       // 帶入今年今月啟動
+                       const y = Number(localStorage.getItem('selectedYear')) || 2026;
+                       const m = Number(localStorage.getItem('selectedMonth')) || 2;
+                       calculateAndNotifyNextStaff({}, healthStats, y, m);
+                       alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+                   }
+                }} 
+                style={{ padding:'10px 20px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'bold', background: '#3498db', color:'white', fontSize: '1rem', boxShadow: '0 4px 6px rgba(52, 152, 219, 0.3)' }}
+             >
+                ▶️ 啟動自動選班接力
+             </button>
           </div>
-          <div style={{ marginTop:'20px', display:'flex', gap:'30px', flexWrap:'wrap' }}>
-              <div style={{ flex:1, minWidth:'250px' }}>
-                  <label style={{display:'block', fontWeight:'bold', marginBottom:'10px', color: 'black'}}>優先依據指標 (可多選):</label>
-                  <div style={{display:'flex', gap:'10px', flexDirection:'column'}}>
-                      <label style={{cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', fontSize:'1rem', color: 'black'}}>
-                          <input type="checkbox" checked={priorityConfig.types.includes('accumulated_ot')} onChange={e => { const newTypes = e.target.checked ? [...priorityConfig.types, 'accumulated_ot'] : priorityConfig.types.filter(t => t !== 'accumulated_ot'); setPriorityConfig({...priorityConfig, types: newTypes}); }} style={{width:'18px', height:'18px'}} />
-                          🔥 積借休時數 (OT) 前 {priorityConfig.count} 名
-                      </label>
-                      <label style={{cursor:'pointer', display:'flex', alignItems:'center', gap:'5px', fontSize:'1rem', color: 'black'}}>
-                          <input type="checkbox" checked={priorityConfig.types.includes('night_shift_balance')} onChange={e => { const newTypes = e.target.checked ? [...priorityConfig.types, 'night_shift_balance'] : priorityConfig.types.filter(t => t !== 'night_shift_balance'); setPriorityConfig({...priorityConfig, types: newTypes}); }} style={{width:'18px', height:'18px'}} />
-                          🌙 夜班結餘 (Night) 前 {priorityConfig.count} 名
-                      </label>
-                  </div>
-                  <label style={{display:'block', fontWeight:'bold', marginBottom:'5px', marginTop:'20px', color: 'black'}}>優先入閘人數 (Top N):</label>
-                  <input type="number" min="1" max={staffData.length} value={priorityConfig.count} onChange={e => setPriorityConfig({...priorityConfig, count: Number(e.target.value)})} style={{ width:'100%', padding:'8px', borderRadius:'6px', border:'1px solid #ccc', fontSize:'1rem', color: 'white' }} />
-              </div>
-              <div style={{ flex:2, background:'#f1f3f5', padding:'15px', borderRadius:'8px' }}>
-                  <div style={{fontWeight:'bold', marginBottom:'10px', color:'#555'}}>📋 目前符合優先資格名單 ({priorityList.length}人):</div>
-                  <div style={{display:'flex', gap:'10px', flexWrap:'wrap'}}>
-                      {priorityList.length === 0 ? <span style={{color:'#999'}}>無符合條件人員 (請勾選指標)</span> : priorityList.map(s => (
-                          <span key={s.staff_id} style={{background:'white', padding:'4px 12px', borderRadius:'15px', fontSize:'0.9rem', border:'1px solid #ddd', color:'#333', boxShadow:'0 2px 2px rgba(0,0,0,0.05)'}}>
-                              {s.name} <span style={{color:'#888', fontSize:'0.8rem'}}>({s.reason})</span>
-                          </span>
-                      ))}
-                  </div>
-              </div>
+
+          <div style={{ marginTop:'20px', background:'#f8f9fa', padding:'15px', borderRadius:'8px', border: '1px dashed #bdc3c7', fontSize: '0.95rem', color: '#555' }}>
+              <div style={{ fontWeight: 'bold', color: '#34495e', marginBottom: '10px' }}>⚙️ 運作邏輯說明：</div>
+              <ul style={{ paddingLeft: '20px', margin: 0, lineHeight: '1.6' }}>
+                  <li>啟動後，AI 會自動掃描「尚未選班」的員工，抓出歷史健康度最低、OT/夜班最不平衡的員工。</li>
+                  <li>系統自動發送 Email 通知該名員工登入選班，並附上 AI 的判斷理由（以昭公信）。</li>
+                  <li>當該名員工挑選完畢按下「確認認領」後，系統會將他標記為「已完賽（鎖定）」。</li>
+                  <li>系統瞬間重啟 AI，從剩下的人中再挑出最慘的下一位，無限接力直到全滿。</li>
+                  <li>AI 每次的判斷邏輯皆會被寫入 Firebase 的 <code>AI_Decision_Logs</code> 以供未來稽核。</li>
+              </ul>
           </div>
       </div>
 
