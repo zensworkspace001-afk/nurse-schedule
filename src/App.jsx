@@ -566,25 +566,35 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
   const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = s); setPreviewSchedule(map); setCurrentStep(3); };
-  const handleFinalSubmit = () => {
-    // ★ 防護 1：防止同一個人重複認領吃掉空缺
+const handleFinalSubmit = async () => { // 🌟 1. 加上 async
     if (hasClaimed) {
-        alert("⚠️ 您已經認領過班表，無法重複認領！\n如需修改請聯繫護理長為您釋出空缺。");
+        alert("⚠️ 您已經認領過班表，無法重複認領！");
         return;
     }
 
     const choice = aiSlots.find(opt => opt.id === selectedOption);
-    // ★ 防護 2：防止同時點擊，搶到別人剛選走的班表
     if (!choice || choice.isClaimed) {
-        alert("⚠️ 此班表已被他人搶先選擇並鎖住！\n請返回重新選擇其他班表。");
+        alert("⚠️ 此班表已被他人搶先選擇並鎖住！\n請返回重新選擇。");
         setCurrentStep(2);
         return;
     }
 
-    onConfirmSchedule({ staffId: currentUser.id, staffName: currentUser.name, shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType, chosenSchedule: { id: choice.id, title: choice.title }, fullMonthData: previewSchedule });
+    // 🌟 2. 啟動鎖定狀態，防止員工亂點
+    setIsProcessing(true); 
+
+    // 🌟 3. 加上 await，強制等待主程式 (存檔 + AI算分數 + 寄信) 跑完！
+    await onConfirmSchedule({ 
+        staffId: currentUser.id, 
+        staffName: currentUser.name, 
+        shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType, 
+        chosenSchedule: { id: choice.id, title: choice.title }, 
+        fullMonthData: previewSchedule 
+    });
+
+    // 🌟 4. 全部跑完才解鎖並進入成功畫面
+    setIsProcessing(false);
     setCurrentStep(4);
   };
-
   const getShiftColor = (shift) => { if (shift === 'D') return '#FFD93D'; if (shift === 'E') return '#FF6B9D'; if (shift === 'N') return '#4D96FF'; return '#f0f0f0'; };
   const firstDayOfWeek = new Date(targetYear, targetMonth - 1, 1).getDay();
 
@@ -750,7 +760,13 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
               })}
           </div>
           <div style={{textAlign:'center', marginTop:'30px'}}>
-             <button onClick={handleFinalSubmit} style={{padding:'12px 40px', background:'#667eea', color:'white', border:'none', borderRadius:'20px', cursor:'pointer', fontSize:'1.1rem', fontWeight:'bold', boxShadow:'0 4px 10px rgba(102, 126, 234, 0.4)'}}>確認認領</button>
+            <button 
+    onClick={handleFinalSubmit} 
+    disabled={isProcessing}
+    style={{padding:'12px 40px', background: isProcessing ? '#95a5a6' : '#667eea', color:'white', border:'none', borderRadius:'20px', cursor: isProcessing ? 'not-allowed' : 'pointer', fontSize:'1.1rem', fontWeight:'bold', boxShadow:'0 4px 10px rgba(102, 126, 234, 0.4)'}}
+>
+    {isProcessing ? '⏳ 正在交棒給下一位 (約需10秒)...' : '確認認領'}
+</button>
           </div>
         </div>
       )}
@@ -1189,8 +1205,6 @@ const handleLogout = () => {
           }];
         });
 
-
-// 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
 // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
         await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         
@@ -1202,12 +1216,10 @@ const handleLogout = () => {
             }, { merge: true });
             
             // 背景呼叫 AI，不卡住畫面
-            calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+            await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
         } catch (e) {
             console.error("交棒失敗:", e);
         }
-
-        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
         // =========================================================
         // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
         // =========================================================
