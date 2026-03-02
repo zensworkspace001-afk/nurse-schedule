@@ -2528,6 +2528,22 @@ const handleSave = async () => {
 // ============================================================================
 const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff }) => {
   
+// ★★★ 1. 把 AI 決策歷史的邏輯插在這裡 ★★★
+  const [decisionLogs, setDecisionLogs] = useState([]);
+
+  const fetchDecisionLogs = async () => {
+      try {
+          const q = query(collection(db, "AI_Decision_Logs"), orderBy("timestamp", "desc"), limit(5));
+          const snap = await getDocs(q);
+          setDecisionLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      } catch (e) {
+          console.error("讀取 AI 日誌失敗:", e);
+      }
+  };
+
+  useEffect(() => { 
+      fetchDecisionLogs(); 
+  }, []);
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
   const hasData = loadedMonths.length > 0;
@@ -2856,6 +2872,33 @@ let combinedData = "";
               </ul>
           </div>
       </div>
+        {/* ★★★ 2. 把 AI 決策歷史看板 UI 插在這裡 ★★★ */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #3498db', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ marginTop: 0, color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem' }}>
+              <FileText size={20} color="#3498db" /> AI 決策歷史看板 (最近 5 筆)
+          </h3>
+          <div style={{ display: 'grid', gap: '15px', marginTop: '15px' }}>
+              {decisionLogs.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6', background: '#f8f9fa', borderRadius: '12px' }}>
+                      暫無 AI 決策數據
+                  </div>
+              ) : decisionLogs.map(log => (
+                  <div key={log.id} style={{ background: '#fff', border: '1px solid #ecf0f1', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                          <strong style={{ color: '#e67e22' }}>🎯 優先選班者：{log.selected_staff}</strong>
+                          <span style={{ fontSize: '0.8rem', color: '#95a5a6' }}>
+                              {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : '時間載入中...'}
+                          </span>
+                      </div>
+                      <div style={{ fontSize: '0.9rem', color: '#34495e', lineHeight: '1.5', background: '#f1f2f6', padding: '10px', borderRadius: '8px' }}>
+                          <strong>🤖 AI 判斷邏輯：</strong><br/>
+                          {log.ai_logic}
+                      </div>
+                  </div>
+              ))}
+          </div>
+      </div>
+      {/* ★★★ 插入結束 ★★★ */}
 
       {/* 2. 健康度趨勢圖 */}
       <div style={{ background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e0e0e0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
@@ -2941,6 +2984,7 @@ let combinedData = "";
     </div>
   );
 };
+
 // ============================================================================
 // ✅ 結算與歷史大帳本面板 (ScheduleReviewPanel)
 // ============================================================================
