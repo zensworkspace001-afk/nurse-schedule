@@ -1403,6 +1403,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             accumulatedReports={accumulatedReports} // 👈 補上這行
             setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
             onManualRefresh={handleManualRefresh}  
+            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
           />
         ) : (
           <StaffDashboard
@@ -1433,7 +1434,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh // 👈 補上這兩個變數！ // 👈 補上這行
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff, // 👈 ★ 這裡要接住 // 👈 補上這兩個變數！ // 👈 補上這行
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
@@ -1531,6 +1532,8 @@ const ManagerInterface = ({
         healthStats={healthStats} // ★ 傳遞歷年數據給報表畫圖
         accumulatedReports={accumulatedReports}       // 👈 補上：把雲端抓下來的報表傳進去
             setAccumulatedReports={setAccumulatedReports} // 👈 補上：讓面板可以清空記憶
+            // 🌟 ★★★ 這裡再往下傳給 StatisticsPanel ★★★
+            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
         />
       )}
 
@@ -2523,7 +2526,7 @@ const handleSave = async () => {
 // ============================================================================
 // 統計報表面板 (包含優先選班、健康度折線圖，與全新 AI 跨月報表分析)
 // ============================================================================
-const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports }) => {
+const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff }) => {
   
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
