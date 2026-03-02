@@ -308,29 +308,24 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
     // ★ 系統轉換：將工號 (如 N001 或 admin) 轉換為 Firebase 需要的 Email 格式
     const emailToLogin = `${inputId}@hospital.com`;
 
-    try {
-        // ★ 呼叫 Firebase 伺服器進行真實密碼比對！
+try {
+        // 1. 呼叫 Firebase 伺服器進行真實密碼比對！
         await signInWithEmailAndPassword(auth, emailToLogin, password);
         
-        // 登入成功後，判斷角色權限
+        // 2. 登入成功後，判斷角色權限
         if (inputId === 'admin') {
             onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
         } else {
-            // 從 staffData 中找出這名員工的中文姓名與設定
-            const staff = staffData.find(s => s.staff_id.toLowerCase() === inputId);
-            if (staff) {
-                onLogin({ 
-                    id: staff.staff_id, 
-                    name: staff.name, 
-                    role: 'staff',
-                    rule: staff.special_status === 'Standard' ? 'Standard' : 'BiWeekly'
-                });
-            } else {
-                // 如果 Firebase 登入成功，但資料庫沒這個人 (通常是舊測試資料)
-                onLogin({ id: inputId.toUpperCase(), name: '未知員工', role: 'staff' });
-            }
+            // 🌟 核心修復：登入瞬間先給一個「載入中」的假名字，不要去依賴空的 staffData
+            onLogin({ 
+                id: inputId.toUpperCase(), 
+                name: '載入中...',  
+                role: 'staff',
+                rule: 'Standard' 
+            });
         }
     } catch (err) {
+        // ... 原本的 catch 錯誤處理保留不動 ...
         if (import.meta.env.DEV) {
         console.error("登入錯誤:", err.code);
         }
@@ -773,6 +768,22 @@ const handleFinalSubmit = () => {
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
+  // 🌟 核心修復：當 Firebase 成功把員工名單下載下來後，自動替換掉「載入中...」的假名字
+  useEffect(() => {
+      if (currentUser && currentUser.role === 'staff' && staffData.length > 0) {
+          const realStaff = staffData.find(s => s.staff_id === currentUser.id);
+          
+          if (realStaff && currentUser.name !== realStaff.name) {
+              setCurrentUser(prev => ({ 
+                  ...prev, 
+                  name: realStaff.name, 
+                  rule: realStaff.special_status === 'Standard' ? 'Standard' : 'BiWeekly' 
+              }));
+          }
+      }
+  }, [staffData, currentUser]);
+  
+  // ... 下面保留你原本的 useState 宣告 ...
 
 
 // --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
@@ -894,18 +905,17 @@ const [historyYear, setHistoryYear] = useState(() => {
   }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
 // ☁️ 雲端引擎 1：即時讀取 (使用抽象化 API)
   useEffect(() => {
-    // ★ 核心修復 1：移除「if (!currentUser) return;」的限制！
-    // 讓系統在「登入畫面」就能提前在背景抓好最新的員工姓名
-    
+    // 🌟 1. 核心修復：把安全門加回來！沒有登入的人，絕對不准去要資料！
+    if (!currentUser) return; 
+
     let isSettingsLoaded = false; let isStaffLoaded = false; let isScheduleLoaded = false;
     const checkAllLoaded = () => { if (isSettingsLoaded && isStaffLoaded && isScheduleLoaded) setIsCloudLoaded(true); };
 
-    // 1. 任何人 (包含尚未登入的訪客) 都可以在背景同步「員工名單」與「全域設定」
+    // 2. 登入成功後，開始安全地下載所有資料
     const unsubSettings = subscribeToSettings((data) => {
       if (data) {
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
-        
         if (data.publishedDate) {
           setPublishedDate(prev => {
             if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
@@ -924,37 +934,26 @@ const [historyYear, setHistoryYear] = useState(() => {
       isStaffLoaded = true; checkAllLoaded();
     });
 
-    // 2. ★ 核心修復 2：只有「已經登入成功」的人，才去抓取機密的排班與歷史報表
-    let unsubSchedule = () => {};
-    let unsubHistory = () => {};
-    let unsubReports = () => {};
+    const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
+    const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
 
-    if (currentUser) {
-        const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
-        const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+    const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+      if (data) {
+        setSchedule(data.schedule || {});
+        setFinalizedSchedule(data.finalizedSchedule || null); 
+      } else {
+        setSchedule({}); setFinalizedSchedule(null);
+      }
+      isScheduleLoaded = true; checkAllLoaded();
+    });
 
-        unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
-          if (data) {
-            setSchedule(data.schedule || {});
-            setFinalizedSchedule(data.finalizedSchedule || null); 
-          } else {
-            setSchedule({}); setFinalizedSchedule(null);
-          }
-          isScheduleLoaded = true; checkAllLoaded();
-        });
-
-        unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
-            setHistorySchedule(data?.finalizedSchedule || {});
-        });
-        
-        unsubReports = subscribeToArchiveReports((data) => {
-            setAccumulatedReports(data);
-        });
-    } else {
-        // 若尚未登入，標記班表為已載入（避免卡住 Loading）
-        isScheduleLoaded = true; 
-        checkAllLoaded();
-    }
+    const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
+        setHistorySchedule(data?.finalizedSchedule || {});
+    });
+    
+    const unsubReports = subscribeToArchiveReports((data) => {
+        setAccumulatedReports(data);
+    });
 
     return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
     
@@ -2412,7 +2411,7 @@ const handleSave = async () => {
   const columns = [
     { key: 'staff_id', label: '工號', type: 'text', width: '60px', readOnly: true },
     { key: 'name', label: '姓名', type: 'text', width: '80px' },
-    { key: 'email', label: 'Email信箱', type: 'text', width: '160px' }, // 👈 ★★★ 新增這行 ★★★
+    { key: 'email', label: 'Email信箱', type: 'text', width: '160px' , color:'black'}, // 👈 ★★★ 新增這行 ★★★
     { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
     { key: 'prevMonthLeave', label: '上月末休假', type: 'week_picker', width: '220px' },
     { key: 'tenure_years', label: '年資', type: 'number', width: '60px' },
