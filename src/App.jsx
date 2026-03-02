@@ -1191,8 +1191,23 @@ const handleLogout = () => {
 
 
 // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
+// 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
         await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         
+        // 🌟 ★★★ 關鍵修復：把該員工加入黑名單，並觸發 AI 找下一個人 ★★★
+        try {
+            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
+            await setDoc(progressRef, {
+                submitted_staff: arrayUnion(result.staffId)
+            }, { merge: true });
+            
+            // 背景呼叫 AI，不卡住畫面
+            calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+        } catch (e) {
+            console.error("交棒失敗:", e);
+        }
+
+        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
         // =========================================================
         // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
         // =========================================================
@@ -2881,6 +2896,7 @@ let combinedData = "";
               </ul>
           </div>
       </div>
+        
         {/* ★★★ 2. 把 AI 決策歷史看板 UI 插在這裡 ★★★ */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #3498db', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
           <h3 style={{ marginTop: 0, color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem' }}>
