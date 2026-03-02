@@ -768,22 +768,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
-  // 🌟 核心修復：當 Firebase 成功把員工名單下載下來後，自動替換掉「載入中...」的假名字
-  useEffect(() => {
-      if (currentUser && currentUser.role === 'staff' && staffData.length > 0) {
-          const realStaff = staffData.find(s => s.staff_id === currentUser.id);
-          
-          if (realStaff && currentUser.name !== realStaff.name) {
-              setCurrentUser(prev => ({ 
-                  ...prev, 
-                  name: realStaff.name, 
-                  rule: realStaff.special_status === 'Standard' ? 'Standard' : 'BiWeekly' 
-              }));
-          }
-      }
-  }, [staffData, currentUser]);
-  
-  // ... 下面保留你原本的 useState 宣告 ...
+
 
 
 // --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
@@ -879,6 +864,22 @@ const [historyYear, setHistoryYear] = useState(() => {
     };
     fetchHolidays();
   }, [selectedYear]);
+    // 🌟 核心修復：當 Firebase 成功把員工名單下載下來後，自動替換掉「載入中...」的假名字
+  useEffect(() => {
+      if (currentUser && currentUser.role === 'staff' && staffData.length > 0) {
+          const realStaff = staffData.find(s => s.staff_id === currentUser.id);
+          
+          if (realStaff && currentUser.name !== realStaff.name) {
+              setCurrentUser(prev => ({ 
+                  ...prev, 
+                  name: realStaff.name, 
+                  rule: realStaff.special_status === 'Standard' ? 'Standard' : 'BiWeekly' 
+              }));
+          }
+      }
+  }, [staffData, currentUser]);
+  
+  // ... 下面保留你原本的 useState 宣告 ...
 
 // ★★★ 法遵檢查、安全防護與風險掃描自動化引擎 ★★★
   useEffect(() => {
