@@ -2,7 +2,11 @@
   "crons": [
     {
       "path": "/api/cron/check-timeout",
-      "schedule": "0 * * * *" 
+      "schedule": "0 0 * * *" 
     }
+  ],
+  "rewrites": [
+    { "source": "/api/(.*)", "destination": "/api/$1" },
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
