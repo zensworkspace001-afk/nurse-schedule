@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Calendar, Users, Clock, AlertCircle, CheckCircle, Download, Upload, Moon, Sun, Sunset, Search, Filter, Settings, Bell, FileText, TrendingUp, Award, Trash2 } from 'lucide-react';
 import { 
   doc, getDoc, setDoc, addDoc, collection, 
-  query, orderBy, limit, getDocs, arrayUnion 
+  query, orderBy, limit, getDocs, arrayUnion, onSnapshot
 } from 'firebase/firestore';
 import { signInWithEmailAndPassword, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, saveArchiveReport, subscribeToArchiveReports, clearArchiveReports, backupScheduleToArchive, fetchScheduleBackups } from './api/database';
@@ -2580,6 +2580,58 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   useEffect(() => { 
       fetchDecisionLogs(); 
   }, []);
+  // 👇👇👇 ★★★ 1. 把你的「雷達監聽與跳過邏輯」貼在這裡 ★★★ 👇👇👇
+  const [activeTurn, setActiveTurn] = useState(null);
+
+  // 📡 即時監聽「目前輪到誰選班」
+  useEffect(() => {
+      const y = Number(localStorage.getItem('selectedYear')) || 2026;
+      const m = Number(localStorage.getItem('selectedMonth')) || 2;
+      const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
+
+      const unsub = onSnapshot(turnRef, (docSnap) => {
+          if (docSnap.exists()) {
+              setActiveTurn(docSnap.data());
+          } else {
+              setActiveTurn(null);
+          }
+      });
+      return () => unsub();
+  }, []);
+
+  // ⏭️ 強制跳過目前卡住的員工
+  const handleForceSkip = async () => {
+      if (!activeTurn?.active_staff_id) return;
+      
+      const targetStaffId = activeTurn.active_staff_id;
+      const targetName = staffData.find(s => s.staff_id === targetStaffId)?.name || targetStaffId;
+
+      if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？\n\n這將剝奪他本回合的優先選班權，並立刻讓 AI 尋找下一位遞補者寄發 Email！`)) return;
+
+      try {
+          const y = Number(localStorage.getItem('selectedYear')) || 2026;
+          const m = Number(localStorage.getItem('selectedMonth')) || 2;
+
+          // 1. 將該名員工打入冷宮 (加入已送出黑名單)
+          const progressRef = doc(db, "SelectionProgress", `${y}_${m}`);
+          await setDoc(progressRef, {
+              submitted_staff: arrayUnion(targetStaffId)
+          }, { merge: true });
+
+          // 2. 清除雷達畫面
+          const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
+          await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
+
+          // 3. 呼叫 AI 找下一個人
+          alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
+          if (typeof calculateAndNotifyNextStaff === 'function') {
+              calculateAndNotifyNextStaff({}, healthStats, y, m);
+          }
+      } catch (error) {
+          console.error("強制跳過失敗:", error);
+          alert("❌ 操作失敗，請檢查網路連線。");
+      }
+  };
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
   const hasData = loadedMonths.length > 0;
@@ -2648,6 +2700,8 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
           }
       }
   };
+
+  
 
   // -- ★ 呼叫 AI 進行跨月分析 --
   const handleAskAI = async () => {
@@ -2873,41 +2927,62 @@ let combinedData = "";
   return (
     <div style={{ display:'flex', flexDirection:'column', gap:'20px' }}>
       
-{/* 1. 全新：🤖 AI 接力選班監控中心 */}
+{/* 👇👇👇 ★★★ 2. 替換這整個區塊 ★★★ 👇👇👇 */}
+      {/* 🚀 AI 接力選班監控中心 (含雷達與棄權) */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #2980b9', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'20px'}}>
-             <div>
-                 <h2 style={{ margin: '0 0 5px 0', color: '#2c3e50', fontSize:'1.4rem' }}>🚀 AI 接力選班引擎</h2>
-                 <p style={{ margin: 0, color: '#7f8c8d', fontSize:'0.9rem' }}>一鍵啟動自動化接力，AI 將依據大數據自動判斷順位並寄發 Email</p>
+          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'20px'}}>
+             <div style={{ flex: 1, minWidth: '300px' }}>
+                 <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50', fontSize:'1.4rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                     🚀 AI 接力選班引擎與監控雷達
+                 </h2>
+                 <p style={{ margin: '0 0 15px 0', color: '#7f8c8d', fontSize:'0.9rem' }}>
+                     一鍵啟動自動化接力，AI 將依據大數據自動判斷順位並寄發 Email。<br/>
+                     若遇同仁遲遲未認領卡住流程，可使用強制跳過功能。
+                 </p>
+
+                 {/* 📡 雷達顯示器 */}
+                 <div style={{ background: activeTurn?.active_staff_id ? '#e8f8f5' : '#f8f9fa', border: `1px solid ${activeTurn?.active_staff_id ? '#2ecc71' : '#ddd'}`, padding: '15px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                     <div>
+                         <div style={{ fontSize: '0.85rem', color: '#7f8c8d', fontWeight: 'bold', marginBottom: '5px' }}>目前發球權 (Waiting for...)</div>
+                         {activeTurn?.active_staff_id ? (
+                             <div style={{ fontSize: '1.2rem', color: '#27ae60', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                 <span style={{ animation: 'pulse 2s infinite' }}>⏳</span>
+                                 等待 {staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id} 認領中...
+                             </div>
+                         ) : (
+                             <div style={{ fontSize: '1.1rem', color: '#95a5a6', fontWeight: 'bold' }}>⏸️ 引擎待機中 / 或已全數選完</div>
+                         )}
+                     </div>
+                     
+                     {/* ⏭️ 強制跳過按鈕 (只有當雷達有人時才顯示) */}
+                     {activeTurn?.active_staff_id && (
+                         <button onClick={handleForceSkip} style={{ padding: '8px 15px', background: '#fff', color: '#e74c3c', border: '2px solid #e74c3c', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(231,76,60,0.1)' }}>
+                             ⏭️ 逾時強制跳過
+                         </button>
+                     )}
+                 </div>
              </div>
              
-             <button 
-                onClick={() => {
-                   if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動分析數據，並發送 Email 給最需要補血的第一位同仁。")) {
-                       // 帶入今年今月啟動
-                       const y = Number(localStorage.getItem('selectedYear')) || 2026;
-                       const m = Number(localStorage.getItem('selectedMonth')) || 2;
-                       calculateAndNotifyNextStaff({}, healthStats, y, m);
-                       alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
-                   }
-                }} 
-                style={{ padding:'10px 20px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'bold', background: '#3498db', color:'white', fontSize: '1rem', boxShadow: '0 4px 6px rgba(52, 152, 219, 0.3)' }}
-             >
-                ▶️ 啟動自動選班接力
-             </button>
-          </div>
-
-          <div style={{ marginTop:'20px', background:'#f8f9fa', padding:'15px', borderRadius:'8px', border: '1px dashed #bdc3c7', fontSize: '0.95rem', color: '#555' }}>
-              <div style={{ fontWeight: 'bold', color: '#34495e', marginBottom: '10px' }}>⚙️ 運作邏輯說明：</div>
-              <ul style={{ paddingLeft: '20px', margin: 0, lineHeight: '1.6' }}>
-                  <li>啟動後，AI 會自動掃描「尚未選班」的員工，抓出歷史健康度最低、OT/夜班最不平衡的員工。</li>
-                  <li>系統自動發送 Email 通知該名員工登入選班，並附上 AI 的判斷理由（以昭公信）。</li>
-                  <li>當該名員工挑選完畢按下「確認認領」後，系統會將他標記為「已完賽（鎖定）」。</li>
-                  <li>系統瞬間重啟 AI，從剩下的人中再挑出最慘的下一位，無限接力直到全滿。</li>
-                  <li>AI 每次的判斷邏輯皆會被寫入 Firebase 的 <code>AI_Decision_Logs</code> 以供未來稽核。</li>
-              </ul>
+             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                 <button 
+                    onClick={() => {
+                       if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
+                           const y = Number(localStorage.getItem('selectedYear')) || 2026;
+                           const m = Number(localStorage.getItem('selectedMonth')) || 2;
+                           if (typeof calculateAndNotifyNextStaff === 'function') {
+                               calculateAndNotifyNextStaff({}, healthStats, y, m);
+                               alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+                           }
+                       }
+                    }} 
+                    style={{ padding:'12px 25px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'bold', background: '#3498db', color:'white', fontSize: '1.1rem', boxShadow: '0 4px 6px rgba(52, 152, 219, 0.3)' }}
+                 >
+                    ▶️ 啟動 / 重啟自動接力
+                 </button>
+             </div>
           </div>
       </div>
+      {/* 👆👆👆 ★★★ 替換結束 ★★★ 👆👆👆 */}
         
         {/* ★★★ 2. 把 AI 決策歷史看板 UI 插在這裡 ★★★ */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #3498db', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
