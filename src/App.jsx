@@ -2574,22 +2574,29 @@ const ScheduleReviewPanel = ({
       if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code)); 
   };
   
-const handleCellChange = (staffId, day, newValue) => {
-        // === RG 絕對防護罩 ===
-        const currentCell = finalizedSchedule[staffId]?.[day];
-        const currentValue = (typeof currentCell === 'object') ? currentCell?.type : currentCell;
-        const workShifts = ['D', 'E', 'N', '支援', 'OT']; 
-        if (currentValue === 'RG' && workShifts.some(shift => newValue.includes(shift))) {
-            alert('🚨 勞基法天條攔截：\n「例假 (RG)」絕對禁止出勤！\n\n系統已強制阻擋您將 RG 變更為上班班別。');
-            return; 
-        }
-        // ===================
+const handleCellChange = async (staffId, day, newValue) => {
+      // === RG 絕對防護罩 (針對 historySchedule) ===
+      const currentCell = historySchedule[staffId]?.[day];
+      const currentValue = (typeof currentCell === 'object') ? currentCell?.type : currentCell;
+      const workShifts = ['D', 'E', 'N', '支援', 'OT']; 
+      if (currentValue === 'RG' && workShifts.some(shift => newValue.includes(shift))) {
+          alert('🚨 勞基法天條攔截：\n「例假 (RG)」絕對禁止出勤！\n\n系統已強制阻擋您將 RG 變更為上班班別。');
+          return; 
+      }
+      // =========================================
 
-        const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
-        if (!newSchedule[staffId]) newSchedule[staffId] = {};
-        newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
-        setFinalizedSchedule(newSchedule);
-    };
+      const newSchedule = JSON.parse(JSON.stringify(historySchedule));
+      if (!newSchedule[staffId]) newSchedule[staffId] = {};
+      newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+      setHistorySchedule(newSchedule);
+
+      // 同步寫入 Firebase 雲端
+      try {
+          await updateStaffSchedule(historyYear, historyMonth, newSchedule);
+      } catch (e) {
+          console.error("同步歷史班表失敗", e);
+      }
+  };
 
   // --- 抓取結算數據 ---
   const getSettlementData = () => {
@@ -3217,30 +3224,20 @@ const PublishPanel = ({
         if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code));
     };
 
-   // 🌟 之前加上 async 的這個函式
-  const handleCellChange = async (staffId, day, newValue) => {
-      
-      // =========================================================
-      // ★★★ 新增：RG 絕對防護罩 (UI 攔截) ★★★
-      // =========================================================
-      const currentCell = historySchedule[staffId]?.[day];
-      const currentValue = (typeof currentCell === 'object') ? currentCell?.type : currentCell;
-      
-      // 定義哪些班別屬於「出勤上班」 (包含加班)
-      const workShifts = ['D', 'E', 'N', '支援', 'OT']; 
-      
-      // 只要這格原本是 RG，且護理長想把它改成上班班別，直接擋下！
-      if (currentValue === 'RG' && workShifts.some(shift => newValue.includes(shift))) {
-          alert('🚨 勞基法天條攔截：\n「例假 (RG)」絕對禁止出勤！\n\n系統已強制阻擋您將 RG 變更為上班班別。');
-          return; // ★ 關鍵：直接中斷程式，不執行後續的存檔動作！
-      }
-      // =========================================================
-
-      // --- (下面是您原本的程式碼) ---
-      const newSchedule = JSON.parse(JSON.stringify(historySchedule));
-      if (!newSchedule[staffId]) newSchedule[staffId] = {};
-      newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
-      setHistorySchedule(newSchedule);
+        const handleCellChange = async (staffId, day, newValue) => {
+        // === RG 絕對防護罩 (針對 finalizedSchedule) ===
+        const currentCell = finalizedSchedule[staffId]?.[day];
+        const currentValue = (typeof currentCell === 'object') ? currentCell?.type : currentCell;
+        const workShifts = ['D', 'E', 'N', '支援', 'OT']; 
+        if (currentValue === 'RG' && workShifts.some(shift => newValue.includes(shift))) {
+            alert('🚨 勞基法天條攔截：\n「例假 (RG)」絕對禁止出勤！\n\n系統已強制阻擋您將 RG 變更為上班班別。');
+            return; 
+        }
+const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
+        if (!newSchedule[staffId]) newSchedule[staffId] = {};
+        newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+        setFinalizedSchedule(newSchedule);
+    
 
       try {
           await updateStaffSchedule(historyYear, historyMonth, newSchedule);
