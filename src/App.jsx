@@ -2336,14 +2336,21 @@ const ScheduleReviewPanel = ({
 
   useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
 
-  // ★★★ 自動同步：當結算班表或月份變更時，靜默計算最後7天並寫入員工 prevMonthLeave ★★★
-  // 儲存格式：按「日期順序」存，idx0=倒數第7天, idx6=最後一天（月底）
+  // ★★★ 自動同步：結算月份變更且班表載入後，靜默更新員工 prevMonthLeave ★★★
+  // 用 ref 記錄「上次已同步的月份」，避免重複覆蓋
+  const lastSyncedMonthRef = useRef(null);
+
   useEffect(() => {
     if (!historySchedule || Object.keys(historySchedule).length === 0) return;
     if (!setStaffData) return;
 
+    const monthKey = `${historyYear}-${historyMonth}`;
+    // 同一個月份已同步過就不重複執行
+    if (lastSyncedMonthRef.current === monthKey) return;
+    lastSyncedMonthRef.current = monthKey;
+
     const daysInThisMonth = new Date(historyYear, historyMonth, 0).getDate();
-    // 最後7天，依日期從小到大：[月底-6, 月底-5, ..., 月底]
+    // 按日期順序存：idx0=倒數第7天, idx6=月底最後一天
     const last7Days = Array.from({ length: 7 }, (_, i) => daysInThisMonth - 6 + i);
 
     const isLeaveShift = (shift) => {
@@ -2356,7 +2363,6 @@ const ScheduleReviewPanel = ({
       prevData.map(staff => {
         const staffSchedule = historySchedule[staff.staff_id];
         if (!staffSchedule) return staff;
-        // idx 0 = 倒數第7天, idx 6 = 最後一天（月底）
         const newPrevMonthLeave = last7Days.map(day => isLeaveShift(staffSchedule[day]));
         return { ...staff, prevMonthLeave: newPrevMonthLeave };
       })
