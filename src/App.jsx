@@ -39,80 +39,6 @@ const LABOR_LAW_RULES = {
 // ============================================================================
 // 法遵檢查邏輯 (全功能版：含工時、間隔、休假、加班)
 // ============================================================================
-// ★ 跨月邊界專用檢查：舊班表最後N天 + 新班表前N天
-const checkCrossMonthBoundary = (prevSchedule, nextSchedule, staffData, prevYear, prevMonth, nextYear, nextMonth, boundaryDays = 7) => {
-  const violations = [];
-  const prevDays = new Date(prevYear, prevMonth, 0).getDate();
-  const SHIFT_HOURS = { 'D': 8, 'E': 8, 'N': 8, '支援': 8, 'OFF': 0, 'RG': 0, 'RC': 0 };
-  const isForbiddenSeq = (a, b) => (a==='E'&&b==='D') || (a==='N'&&b==='D') || (a==='N'&&b==='E');
-  const isWork = s => SHIFT_HOURS[s] > 0;
-
-  const allStaffIds = new Set([
-    ...Object.keys(prevSchedule || {}),
-    ...Object.keys(nextSchedule || {})
-  ]);
-
-  allStaffIds.forEach(staffId => {
-    if (staffId.startsWith('D')) return;
-    const staff = staffData.find(s => s.staff_id === staffId);
-    if (!staff) return;
-
-    // 取舊班表最後 boundaryDays 天 + 新班表前 boundaryDays 天
-    const prevShifts = [];
-    for (let d = prevDays - boundaryDays + 1; d <= prevDays; d++) {
-      const cell = prevSchedule?.[staffId]?.[d] || 'OFF';
-      const type = typeof cell === 'object' ? (cell.type || 'OFF') : cell;
-      prevShifts.push({ day: d, month: prevMonth, type });
-    }
-    const nextShifts = [];
-    for (let d = 1; d <= boundaryDays; d++) {
-      const cell = nextSchedule?.[staffId]?.[d] || 'OFF';
-      const type = typeof cell === 'object' ? (cell.type || 'OFF') : cell;
-      nextShifts.push({ day: d, month: nextMonth, type });
-    }
-    const combined = [...prevShifts, ...nextShifts];
-
-    // A. 跨月輪班間隔（舊月最後一班 → 新月第一班）
-    const lastPrevWork = [...prevShifts].reverse().find(s => isWork(s.type));
-    const firstNextWork = nextShifts.find(s => isWork(s.type));
-    if (lastPrevWork && firstNextWork && isForbiddenSeq(lastPrevWork.type, firstNextWork.type)) {
-      violations.push({
-        staffId, staffName: staff.name, type: 'CROSS_SHIFT_INTERVAL',
-        message: `🚨 跨月輪班間隔不足：${prevMonth}月${lastPrevWork.day}日 ${lastPrevWork.type} → ${nextMonth}月${firstNextWork.day}日 ${firstNextWork.type}（休息 < 11小時）`
-      });
-    }
-
-    // B. 跨月連續工作（七休一）
-    let streak = 0; let streakStart = null;
-    combined.forEach(({ day, month, type }) => {
-      if (isWork(type)) {
-        streak++;
-        if (streak === 1) streakStart = { day, month };
-        if (streak > 6) {
-          violations.push({
-            staffId, staffName: staff.name, type: 'CROSS_CONSECUTIVE_DAYS',
-            message: `🚨 跨月連續工作超過6天：從 ${streakStart.month}月${streakStart.day}日 起連續 ${streak} 天（違反七休一）`
-          });
-        }
-      } else {
-        streak = 0; streakStart = null;
-      }
-    });
-
-    // C. 大夜後無連休跨月（N班在舊月最後一天，新月第一天又上班）
-    const prevLastDay = prevShifts[prevShifts.length - 1];
-    const nextFirstDay = nextShifts[0];
-    if (prevLastDay?.type === 'N' && nextFirstDay && isWork(nextFirstDay.type)) {
-      violations.push({
-        staffId, staffName: staff.name, type: 'CROSS_NIGHT_NO_REST',
-        message: `⚠️ 跨月大夜接班：${prevMonth}月${prevLastDay.day}日 大夜(N) → ${nextMonth}月${nextFirstDay.day}日 ${nextFirstDay.type}，建議至少休息一天`
-      });
-    }
-  });
-
-  return violations;
-};
-
 const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) => {
   const violations = [];
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -461,8 +387,7 @@ try {
 // ============================================================================
 // 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
 // ============================================================================
-// ★★★ 修正 1：補上 prevMonthSchedule 參數 ★★★
-const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], setStaffData, priorityConfig, prevMonthSchedule }) => {
+const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], setStaffData, priorityConfig }) => {  
   
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -518,30 +443,27 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
     setAiSlots(formattedSlots);
   }, [currentSchedule, targetYear, targetMonth, staffData]);
 
-// ★ 改為直接從雲端上個月的班表計算連續上班天數 (不再受限於 7 天)
+// 計算上個月底的「連續上班天數」，用來銜接本月 1 號的七休一防呆
   const getPrevMonthStreak = () => {
     if (!currentUser || !currentUser.id) return 0;
+    if (!staffData || staffData.length === 0) return 0;
     
-    let prevM = targetMonth - 1;
-    let prevY = targetYear;
-    if (prevM === 0) { prevM = 12; prevY--; }
-    const daysInPrevMonth = new Date(prevY, prevM, 0).getDate();
-
-    const staffSchedule = prevMonthSchedule?.[currentUser.id];
-    if (!staffSchedule) return 0; // 若無歷史資料則為 0
-
+    const staff = staffData.find(s => s.staff_id === currentUser.id);
+    if (!staff || !staff.prevMonthLeave) return 0;
+    
+    // prevMonthLeave 陣列紀錄上個月最後 7 天的「休假狀態」
+    // 💡 狀態對應：true = 有休假 (UI打勾)，false = 有上班 (UI未打勾)
+    const leaves = staff.prevMonthLeave; 
     let streak = 0;
-    // 從上個月最後一天往前倒推
-    for (let day = daysInPrevMonth; day >= 1; day--) {
-        const cell = staffSchedule[day];
-        const type = (typeof cell === 'object') ? cell?.type : cell;
-        const isOff = ['OFF', 'RG', 'RC', '事假', '病假', '特休', '空班'].includes(type || 'OFF');
-        
-        if (isOff) {
-            break; // 遇到休假，代表連續上班被切斷了
-        }
-        streak++;  
+    
+    // 從陣列尾端 (i=6，代表上個月最後一天) 往前倒推檢查
+    for (let i = 6; i >= 0; i--) { 
+      if (leaves[i] === true) {
+          break; // 遇到休假，代表連續上班的狀態被切斷了，停止計算
+      }
+      streak++;  // 遇到 false (代表那天有上班)，連續上班天數 +1
     }
+    
     return streak;
   };
   const prevStreak = getPrevMonthStreak();
@@ -862,835 +784,6 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
 // ============================================================================
 // 3. NurseSchedulingSystem (主元件)
 // ============================================================================
-const NurseSchedulingSystem = () => {
-  const [currentUser, setCurrentUser] = useState(null);
-
-
-
-
-// --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
-  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
-  // ★★★ 新增：Admin 密碼狀態與修改視窗 ★★★
-
-  const [showAdminPwdModal, setShowAdminPwdModal] = useState(false);
-  const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
-  const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
-  // ★★★ 新增 1：儲存健康度歷史數據的狀態 ★★★
-  const [healthStats, setHealthStats] = useState([]); 
-// ★★★ 新增：專門用來儲存「上個月班表」的狀態 ★★★
-  const [prevMonthSchedule, setPrevMonthSchedule] = useState({});
-
-  // ★★★ 新增：自動監聽上個月的真實班表，只要有變更就更新 ★★★
-  useEffect(() => {
-      if (!currentUser) return;
-      
-      let prevM = selectedMonth - 1;
-      let prevY = selectedYear;
-      if (prevM === 0) { prevM = 12; prevY--; }
-
-      const unsubPrev = subscribeToSchedule(prevY, prevM, (data) => {
-          setPrevMonthSchedule(data?.finalizedSchedule || {});
-      });
-      return () => unsubPrev();
-  }, [selectedYear, selectedMonth, currentUser]);
-  // ★★★ 新增 2：計算並更新當月健康度的函式 ★★★
-  const handleUpdateHealthStats = (year, month, avg, median) => {
-      setHealthStats(prev => {
-          const newData = [...prev];
-          const existingIndex = newData.findIndex(d => d.year === year && d.month === month);
-          if (existingIndex >= 0) {
-              newData[existingIndex] = { year, month, avg, median };
-          } else {
-              newData.push({ year, month, avg, median });
-          }
-          // 依照年月排序，並只保留最近 12 個月
-          newData.sort((a, b) => (a.year - b.year) || (a.month - b.month));
-          return newData.slice(-12); 
-      });
-  };
-
-
-  const [shiftOptions, setShiftOptions] = useState([
-    { code: 'D', name: '白班', color: '#FFD93D', time: '08:00-16:00' },
-    { code: 'E', name: '小夜', color: '#FF6B9D', time: '16:00-24:00' },
-    { code: 'N', name: '大夜', color: '#4D96FF', time: '00:00-08:00' },
-    { code: 'RG', name: '例假', color: '#2ecc71', time: '例假' }, 
-    { code: 'RC', name: '休假', color: '#d5f5e3', time: '休假' },
-    { code: 'OFF', name: '空班', color: '#E8E8E8', time: '空班' },
-    { code: '支援', name: '支援', color: '#D4AC0D', time: '09:00-18:00' },
-    { code: '事假', name: '事假', color: '#95a5a6', time: '扣全薪' }, // ✨ 新增
-    { code: '病假', name: '病假', color: '#bdc3c7', time: '扣半薪' }, // ✨ 新增
-     { code: '特休', name: '特休', color: '#9af33b', time: '全薪' }, // ✨ 新增
-
-  ]);
-  const [priorityConfig, setPriorityConfig] = useState({ types: ['accumulated_ot'], count: 5, isOpenToAll: false });
-  const [staffData, setStaffData] = useState([]);
-  const [schedule, setSchedule] = useState(null);
-  const [finalizedSchedule, setFinalizedSchedule] = useState(null);
-  // 修改後（從 localStorage 讀正確的發布月份）
-const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
-  // --- 2. 本機暫存狀態 (不需上雲端) ---
-  const [historyData, setHistoryData] = useState([]);
-  const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
-  const [preferences, setPreferences] = useState({});
-  const [violations, setViolations] = useState([]);
-  const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
-  const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
-  const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
-// ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
-  const [historyMonth, setHistoryMonth] = useState(() => {
-  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
-  return m === 1 ? 12 : m - 1;
-});
-const [historyYear, setHistoryYear] = useState(() => {
-  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
-  const y = Number(localStorage.getItem('selectedYear'))  || new Date().getFullYear();
-  return m === 1 ? y - 1 : y;
-});
-  const [historySchedule, setHistorySchedule] = useState({});
-  const [accumulatedReports, setAccumulatedReports] = useState({});
-  
-  useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
-  useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
-
-  // ★★★ 新增：自動抓取台灣國定假日 API ★★★
-  const [publicHolidays, setPublicHolidays] = useState([]);
-  
-  useEffect(() => {
-    const fetchHolidays = async () => {
-      try {
-        // 使用開源的台灣行事曆 JSON 資料
-        const res = await fetch(`https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`);
-        const data = await res.json();
-        
-        // 過濾出「放假」且「有描述 (代表是國定假日或補假，而非一般週休二日)」的日期
-        const holidays = data
-            .filter(d => d.isHoliday && d.description !== "")
-            .map(d => d.date); // 格式為 "YYYYMMDD"
-            
-        setPublicHolidays(holidays);
-      } catch (error) {
-        console.error("無法抓取國定假日，使用預設空陣列:", error);
-        setPublicHolidays([]);
-      }
-    };
-    fetchHolidays();
-  }, [selectedYear]);
-    // 🌟 核心修復：當 Firebase 成功把員工名單下載下來後，自動替換掉「載入中...」的假名字
-  useEffect(() => {
-      if (currentUser && currentUser.role === 'staff' && staffData.length > 0) {
-          const realStaff = staffData.find(s => s.staff_id === currentUser.id);
-          
-          if (realStaff && currentUser.name !== realStaff.name) {
-              setCurrentUser(prev => ({ 
-                  ...prev, 
-                  name: realStaff.name, 
-                  rule: realStaff.special_status === 'Standard' ? 'Standard' : 'BiWeekly' 
-              }));
-          }
-      }
-  }, [staffData, currentUser]);
-  
-  // ... 下面保留你原本的 useState 宣告 ...
-
-// ★★★ 法遵檢查、安全防護與風險掃描自動化引擎 ★★★
-  useEffect(() => {
-    const targetSchedule = finalizedSchedule || schedule; 
-    if (targetSchedule && Object.keys(targetSchedule).length > 0) {
-      
-      // 1. 跑硬性違規檢查 (勞基法紅燈)
-      const lawViolations = checkLaborLawCompliance(targetSchedule, staffData, historyData, selectedYear, selectedMonth);
-      
-      // 2. 跑護理專業安全檢查 (資歷搭配紅燈) ★ 這裡呼叫我們剛寫的引擎
-      const mixViolations = checkSkillMixSafety(targetSchedule, staffData, selectedYear, selectedMonth);
-      
-      // 將兩種警告合併顯示
-      setViolations([...lawViolations, ...mixViolations]);
-      
-      // 3. 跑軟性風險掃描 (壓力與公平性黃燈)
-      const newRisks = calculateScheduleRisks(targetSchedule, staffData, publicHolidays, selectedYear, selectedMonth);
-      setScheduleRisks(newRisks);
-      
-    } else {
-      setViolations([]);
-      setScheduleRisks([]);
-    }
-  }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
-// ☁️ 雲端引擎 1：即時讀取 (使用抽象化 API)
-  useEffect(() => {
-    // 🌟 1. 核心修復：把安全門加回來！沒有登入的人，絕對不准去要資料！
-    if (!currentUser) return; 
-
-    let isSettingsLoaded = false; let isStaffLoaded = false; let isScheduleLoaded = false;
-    const checkAllLoaded = () => { if (isSettingsLoaded && isStaffLoaded && isScheduleLoaded) setIsCloudLoaded(true); };
-
-    // 2. 登入成功後，開始安全地下載所有資料
-    const unsubSettings = subscribeToSettings((data) => {
-      if (data) {
-        if (data.shiftOptions) setShiftOptions(data.shiftOptions);
-        if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
-        if (data.publishedDate) {
-          setPublishedDate(prev => {
-            if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
-            return data.publishedDate;
-          });
-        }
-      }
-      isSettingsLoaded = true; checkAllLoaded();
-    });
-
-    const unsubStaff = subscribeToStaff((data) => {
-      if (data) {
-        if (data.staffData) setStaffData(data.staffData);
-        if (data.healthStats) setHealthStats(data.healthStats);
-      }
-      isStaffLoaded = true; checkAllLoaded();
-    });
-
-    const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
-    const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
-
-    const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
-      if (data) {
-        setSchedule(data.schedule || {});
-        setFinalizedSchedule(data.finalizedSchedule || null); 
-      } else {
-        setSchedule({}); setFinalizedSchedule(null);
-      }
-      isScheduleLoaded = true; checkAllLoaded();
-    });
-
-    const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
-        setHistorySchedule(data?.finalizedSchedule || {});
-    });
-    
-    const unsubReports = subscribeToArchiveReports((data) => {
-        setAccumulatedReports(data);
-    });
-
-    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
-    
-  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
-  // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
-  useEffect(() => {
-    if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
-
-    const timeoutId = setTimeout(() => {
-        
-        // ★ 核心修復 2：絕對禁止把「空畫面」寫入雲端覆蓋掉別人的心血！
-        if (schedule && Object.keys(schedule).length > 0) {
-            saveMonthlySchedule(selectedYear, selectedMonth, {
-              schedule: schedule
-              // ★ 警告：絕對不能在這裡自動寫入 finalizedSchedule，只能由發布按鈕寫入！
-            });
-        }
-
-        saveGlobalSettings({
-          shiftOptions: shiftOptions || [],
-          priorityConfig: priorityConfig || {}
-          // ★ 警告：絕對不能在這裡寫入 publishedDate，只能由發布按鈕寫入！
-        });
-
-        saveGlobalStaff({
-          staffData: staffData || [],
-          healthStats: healthStats || []
-        });
-        
-    }, 2000); 
-
-    return () => clearTimeout(timeoutId);
-
-  // ★ 核心修復 3：移除了 finalizedSchedule 與 publishedDate 的依賴，徹底打破無限覆蓋迴圈
-  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
-const handleGenerateSchedule = (providedSchedule = null) => {
-    let newSchedule = providedSchedule;
-    if (!newSchedule) { return; }
-    if (newSchedule) {
-        setSchedule(newSchedule);
-        setFinalizedSchedule(null); // ★★★ 關鍵修復 1：生成新班表時，連帶把發布區的幽靈資料殺掉
-        const newViolations = checkLaborLawCompliance(newSchedule, staffData, historyData, selectedYear, selectedMonth);
-        setViolations(newViolations);
-    }
-  };
-
-const handlePushToHistory = async () => {
-    if (!finalizedSchedule || Object.keys(finalizedSchedule).length === 0) {
-        alert("目前沒有發布的班表可供封存！");
-        return;
-    }
-    if (!window.confirm(`確定要將 ${selectedYear}年${selectedMonth}月 的班表結算並封存嗎？\n\n⚠️ 執行後：\n1. 此班表將移至「✅ 3. 結算與歷史」\n2. 若歷史區已有舊班表，舊班表將先備份至雲端封存庫\n3. 發布區將被清空\n4. 系統將自動切換至下一個月，準備新的排班`)) return;
-
-// ★ 步驟 1：若歷史區已有舊班表，先將它 archive 到 Firebase 再覆蓋
-    if (historySchedule && Object.keys(historySchedule).length > 0) {
-        try {
-            // 🌟 ★★★ 核心修復：改用智能 JSON 備份，不再產生會覆蓋健康度的笨蛋 CSV ★★★ 🌟
-            await backupScheduleToArchive(
-                historyYear, 
-                historyMonth, 
-                historySchedule, 
-                "歷史區舊班表被覆蓋前自動歸檔"
-            );
-            console.log(`✅ 舊班表 ${historyYear}年${historyMonth}月 已成功備份至雲端封存庫`);
-        } catch (e) {
-            console.error("❌ 舊班表備份失敗:", e);
-            // 備份失敗不阻斷主流程
-        }
-    }
-
-    // ★ 步驟 2：把目前發布的班表放入歷史區（覆蓋舊的）
-    setHistoryYear(selectedYear);
-    setHistoryMonth(selectedMonth);
-    setHistorySchedule(finalizedSchedule);
-
-    // ★ 步驟 3：計算並切換到下個月
-    let nextMonth = selectedMonth + 1;
-    let nextYear = selectedYear;
-    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
-
-    setSelectedYear(nextYear);
-    setSelectedMonth(nextMonth);
-    const newPubDate = { year: nextYear, month: nextMonth };
-    setPublishedDate(newPubDate);
-    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
-
-    // ★ 步驟 4：清空草稿工作桌與發布區
-    setSchedule({});
-    setFinalizedSchedule(null);
-
-    alert(`✅ 封存成功！\n${selectedYear}年${selectedMonth}月 班表已移至「結算與歷史」。\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
-  };
-
-const handleLogout = () => {
-  signOut(auth).then(() => {
-    // ★ 核心修復：登出時，把瀏覽器裡面所有記住的髒東西全部炸掉！
-    localStorage.clear(); 
-    window.location.reload(); // 強制重整網頁，回到最乾淨的狀態
-  }).catch((error) => {
-    console.error("登出失敗:", error);
-  });
-};
-// ★ 核心功能 1：寄送 Email 的共用小幫手
-  const sendSystemEmail = async (toEmail, subject, htmlContent) => {
-      try {
-          await fetch('/api/sendEmail', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ to: toEmail, subject, html: htmlContent })
-          });
-      } catch (error) {
-          console.error("Email 發送失敗:", error);
-      }
-  };
-
-  // ★ 核心功能 2：AI 動態決策下一位優先選班者
-  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth, customInstruction = '') => {
-      try {
-          // 1. 抓取「已經選過」的黑名單 (已完賽標記)
-          const progressRef = doc(db, "SelectionProgress", `${currentYear}_${currentMonth}`);
-          const snap = await getDoc(progressRef);
-          const submittedList = snap.exists() ? (snap.data().submitted_staff || []) : [];
-
-          // 2. 篩選出「尚未選班」的活躍員工
-          const unassignedStaff = staffData.filter(s => s.is_active && !submittedList.includes(s.staff_id));
-
-          // 3. 終止條件：所有人都選完了！
-          if (unassignedStaff.length === 0) {
-              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'your-admin-email@hospital.com';
-              await sendSystemEmail(adminEmail, `✅ ${currentMonth}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
-              return;
-          }
-
-          // 4. 準備大數據給 AI (給定尚未選班者的歷史健康度、OT、夜班餘額)
-          const scores = statsData.map(stat => stat.score || 100);
-          const average = scores.length > 0 ? Math.round(scores.reduce((sum, val) => sum + val, 0) / scores.length) : 100;
-
-       let aiPrompt = `【自動接力選班決策】\\n團隊歷史平均健康度: ${average}分\\n\\n尚未選班之候選人完整資料：\\n`;
-          unassignedStaff.forEach(staff => {
-              const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
-              aiPrompt += `- ${staff.staff_id} (${staff.name}): 性別=${staff.gender||'女'}, 職級=${staff.level}, 年資=${staff.tenure_years}年, 歷史健康度=${historyScore}分, 積假餘額=${staff.accumulated_ot}, 夜班結餘=${staff.night_shift_balance}, 可夜班=${staff.can_night_shift?'是':'否'}\\n`;
-          });
-
-          if (customInstruction && customInstruction.trim()) {
-              aiPrompt += `\\n【護理長額外指令】「${customInstruction}」\\n請根據此指令自動判斷需分析哪些資料欄位，並在 reason 中說明如何運用。\\n`;
-          }
-
-          aiPrompt += `\\n請選出最適合優先選班的 1 位員工。\\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "判斷理由"}`;
-
-          // 5. 呼叫 Gemini 進行決策
-          const token = await auth.currentUser.getIdToken();
-          const response = await fetch('/api/gemini', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ prompt: aiPrompt })
-          });
-          const data = await response.json();
-          const text = data.text.replace(/```json|```/g, '').trim();
-          const decision = JSON.parse(text);
-
-          // 6. 寫入 AI Data Log 背景紀錄
-          await addDoc(collection(db, "AI_Decision_Logs"), {
-              timestamp: new Date(), year: currentYear, month: currentMonth,
-              selected_staff: decision.selected_staff_id, ai_logic: decision.reason, candidates_data: aiPrompt
-          });
-
-          // 7. 更新發球權狀態機
-          await setDoc(doc(db, "SelectionTurn", `${currentYear}_${currentMonth}`), {
-              active_staff_id: decision.selected_staff_id, updatedAt: new Date()
-          });
-
-          // 8. 抓取該員工 Email 並寄出通知
-          const targetStaff = staffData.find(s => s.staff_id === decision.selected_staff_id);
-          if (targetStaff && targetStaff.email) {
-              await sendSystemEmail(
-                  targetStaff.email, 
-                  `🌟 ${targetStaff.name} 優先選班通知！現在輪到您了！`, 
-                  `<h3>親愛的 ${targetStaff.name}：</h3><p>系統已開放您的選班權限！</p><p><strong>🤖 系統判斷讓您先選的理由：</strong><br/>${decision.reason}</p><p>請盡速登入系統完成選班，以利下一位同仁進行，謝謝！</p>`
-              );
-          }
-
-      } catch (error) {
-          console.error("AI 決策接力失敗:", error);
-      }
-  };
-// ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★
-  const handleStaffScheduleUpdate = async (result) => { 
-    try {
-        // 1. 🛑 寫入前，先向 Firebase 索取「最熱騰騰」的最新班表
-        const docRef = doc(db, 'Schedules', `${publishedDate.year}_${publishedDate.month}`);
-        const snap = await getDoc(docRef);
-
-        if (!snap.exists()) {
-            alert("❌ 找不到該月份的班表資料！");
-            return;
-        }
-
-        const latestData = snap.data();
-        const latestSchedule = latestData.finalizedSchedule || {};
-
-        // 2. 🛑 檢查想要認領的班表，是不是剛剛被別人搶走了？
-        const targetVirtualId = result.chosenSchedule?.id;
-        if (targetVirtualId && !latestSchedule[targetVirtualId]) {
-            alert("⚠️ 慢了一步！這個班表剛剛被別人選走了！\n系統將為您重新整理畫面，請選擇其他班表。");
-            window.location.reload(); 
-            return;
-        }
-
-        // 3. 基於雲端的「最新資料」進行修改：加入新員工
-        const next = { ...latestSchedule };
-        next[result.staffId] = result.fullMonthData; 
-        
-        // 4. ★ 最重要的一步：從物件中徹底刪除舊的空缺班表 (例如 D001)
-        if (targetVirtualId && next[targetVirtualId]) {
-            delete next[targetVirtualId]; 
-        } else {
-            const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
-            if (fallbackId) delete next[fallbackId];
-        }
-
-        // 5. 更新本地畫面
-        setFinalizedSchedule(next); 
-
-        // 更新員工資料 (維持原樣)
-        setStaffData(prevData => {
-          const exists = prevData.find(s => s.staff_id === result.staffId);
-          if (exists) return prevData;
-          return [...prevData, { 
-            staff_id: result.staffId, name: result.staffName, 
-            special_status: result.shiftType === 'D' ? 'Standard' : 'BiWeekly', 
-            is_active: true, accumulated_ot: 0, night_shift_balance: 0,
-            prevMonthLeave: [false,false,false,false,false,false,false]
-          }];
-        });
-
-// 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
-        await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
-        
-        // 🌟 ★★★ 關鍵修復：把該員工加入黑名單，並觸發 AI 找下一個人 ★★★
-        try {
-            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
-            await setDoc(progressRef, {
-                submitted_staff: arrayUnion(result.staffId)
-            }, { merge: true });
-            
-            // 背景呼叫 AI，不卡住畫面
-            await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
-        } catch (e) {
-            console.error("交棒失敗:", e);
-        }
-        // =========================================================
-        // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
-        // =========================================================
-        try {
-            // A. 把這名員工加入本月的「已完賽黑名單」，確保 AI 之後不會再選到他
-            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
-            await setDoc(progressRef, {
-                submitted_staff: arrayUnion(result.staffId) 
-            }, { merge: true });
-
-            // B. 背景呼叫 AI 決策引擎 (尋找下一位最需要補血的人並寄信)
-            if (typeof calculateAndNotifyNextStaff === 'function') {
-                calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
-            } else {
-                console.warn("⚠️ 找不到 calculateAndNotifyNextStaff 函式，無法自動交棒。");
-            }
-        } catch (e) {
-            console.error("交棒處理失敗:", e);
-        }
-        // =========================================================
-
-        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
-        
-    } catch (error) {
-        console.error("寫入失敗:", error);
-        alert("❌ 認領失敗：權限不足或網路異常。");
-    }
-  } // <-- 這是 handleStaffScheduleUpdate 的結尾
-
-  // 🔄 手動強制同步最新雲端班表
-  const handleManualRefresh = async () => {
-    try {
-      // 顯示讀取中的提示 (可選，讓使用者知道有在跑)
-      console.log("🔄 正在向雲端請求最新資料...");
-      
-      // 直接向 Firebase 請求目前選擇的「年_月」的真實資料
-      const docRef = doc(db, 'Schedules', `${selectedYear}_${selectedMonth}`);
-      const snap = await getDoc(docRef);
-
-      if (snap.exists()) {
-        const data = snap.data();
-        setSchedule(data.schedule || {});
-        setFinalizedSchedule(data.finalizedSchedule || null);
-        alert(`✅ 已成功從雲端同步 ${selectedYear} 年 ${selectedMonth} 月的最新班表！`);
-      } else {
-        setSchedule({});
-        setFinalizedSchedule(null);
-        alert(`☁️ 雲端目前沒有 ${selectedYear} 年 ${selectedMonth} 月的班表資料。`);
-      }
-    } catch (error) {
-      console.error("手動同步失敗:", error);
-      alert("❌ 同步失敗，請檢查網路連線或權限設定。");
-    }
-  };
-
-const handleSaveAndPublish = async () => {
-    if (!schedule || Object.keys(schedule).length === 0) {
-      alert("❌ 目前沒有班表內容，無法儲存！");
-      return;
-    }
-
-    
-    const newFinalized = JSON.parse(JSON.stringify(schedule));
-
-    
-    const newPubDate = { year: selectedYear, month: selectedMonth };
-    setPublishedDate(newPubDate);
-    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
-
-    // ★★★ 強制立即存檔到雲端，不等待 2 秒防抖機制 ★★★
-    try {
-        await saveGlobalSettings({
-            shiftOptions: shiftOptions || [],
-            priorityConfig: priorityConfig || {},
-            publishedDate: newPubDate
-        });
-        await saveMonthlySchedule(selectedYear, selectedMonth, {
-            schedule: schedule || {},
-            finalizedSchedule: newFinalized
-        });
-    } catch(e) {
-        console.error("發布至雲端失敗:", e);
-    }
-    
-    alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
-  };
-
-// ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
-  const handleAdminPasswordSubmit = async (e) => {
-      e.preventDefault();
-
-      // 1. 基本防呆與強度檢查
-      if (adminPwdData.new !== adminPwdData.confirm) {
-          return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
-      }
-      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
-      if (!strongPasswordRegex.test(adminPwdData.new)) {
-          return setAdminPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
-      }
-
-      try {
-          const user = auth.currentUser;
-
-          if (user) {
-              // ★ 核心修補：先用「舊密碼」向 Firebase 進行重新驗證 (防護 Session 劫持)
-              const credential = EmailAuthProvider.credential(user.email, adminPwdData.old);
-              await reauthenticateWithCredential(user, credential);
-
-              // 驗證通過後，正式更新密碼
-              await updatePassword(user, adminPwdData.new);
-
-              setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
-
-              setTimeout(() => {
-                  setShowAdminPwdModal(false);
-                  setAdminPwdData({ old: '', new: '', confirm: '' });
-                  setAdminPwdMsg({ type: '', text: '' });
-              }, 2000);
-          } else {
-              setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
-          }
-      } catch (error) {
-          // 在 Production 環境隱藏詳細錯誤碼，避免資安外洩
-          if (import.meta.env.DEV) {
-              console.error("修改密碼失敗:", error);
-          }
-
-          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
-              setAdminPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
-          } else if (error.code === 'auth/requires-recent-login') {
-              setAdminPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
-          } else {
-              setAdminPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
-          }
-      }
-  };
-
-  if (!currentUser) {
-return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
-  }
-
-  return (
-    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '2rem', fontFamily: 'sans-serif' }}>
-      {/* ★★★ 新增：Admin 修改密碼 Modal ★★★ */}
-      {showAdminPwdModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '400px', position: 'relative' }}>
-                <button onClick={() => setShowAdminPwdModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666' }}>✖</button>
-                <h3 style={{ marginTop: 0, color: '#333' }}>⚙️ 修改管理員密碼</h3>
-                <form onSubmit={handleAdminPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
-                    <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼</label>
-                        <input type="password" value={adminPwdData.old} onChange={e=>setAdminPwdData({...adminPwdData, old: e.target.value})} required style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼</label>
-                        <input type="password" value={adminPwdData.new} onChange={e=>setAdminPwdData({...adminPwdData, new: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
-                    </div>
-                    <div>
-                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>確認新密碼</label>
-                        <input type="password" value={adminPwdData.confirm} onChange={e=>setAdminPwdData({...adminPwdData, confirm: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
-                    </div>
-                    {adminPwdMsg.text && (
-                        <div style={{ color: adminPwdMsg.type === 'error' ? '#e74c3c' : '#27ae60', background: adminPwdMsg.type === 'error' ? '#fdecea' : '#e8f8f5', padding: '10px', borderRadius: '8px', fontSize: '0.9rem' }}>
-                            {adminPwdMsg.text}
-                        </div>
-                    )}
-                    <button type="submit" style={{ padding: '12px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>儲存修改</button>
-                </form>
-            </div>
-        </div>
-      )}
-
-      <div style={{ maxWidth: '1400px', margin: '0 auto 2rem', background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <Calendar size={28} color="#667eea" />
-            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#333' }}>智能排班系統</h1>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <span style={{ color: '#555', fontWeight: 'bold' }}>👋 {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
-            {/* 就是這裡！判斷如果是 admin 才會顯示這個按鈕 */}
-            {currentUser.role === 'admin' && (
-                <button onClick={() => setShowAdminPwdModal(true)} style={{ background: '#f8f9fa', border: '1px solid #ddd', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.85rem', color: '#555', fontWeight: 'bold' }}>⚙️ 修改密碼</button>
-            )}
-            <button onClick={handleLogout} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>登出</button>
-          </div>
-      </div>
-
-      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
-        {currentUser.role === 'admin' ? (
-          <ManagerInterface
-            staffData={staffData} setStaffData={setStaffData} historyData={historyData}
-            requirements={requirements} setRequirements={setRequirements}
-            preferences={preferences} setPreferences={setPreferences}
-            schedule={schedule} violations={violations}
-            selectedYear={selectedYear} 
-            selectedMonth={selectedMonth}
-            onGenerateSchedule={handleGenerateSchedule} 
-            setSchedule={setSchedule} setViolations={setViolations}
-            setSelectedYear={setSelectedYear}   // <--- 補上這行 (讓子元件能修改年份)
-            setSelectedMonth={setSelectedMonth} // <--- 補上這行 (讓子元件能修改月份)
-            onSaveSchedule={handleSaveAndPublish}
-            shiftOptions={shiftOptions}       // <--- 補上這個
-            setShiftOptions={setShiftOptions} // <--- 補上這個
-            priorityConfig={priorityConfig}       // <--- 補上
-            setPriorityConfig={setPriorityConfig} // <--- 補上
-            publicHolidays={publicHolidays} // <--- ★★★ 補上這一行 ★★★
-            scheduleRisks={scheduleRisks} // <--- ★★★ 補上這行 ★★★
-            finalizedSchedule={finalizedSchedule}       // <--- ★ 補上這行
-            setFinalizedSchedule={setFinalizedSchedule} // <--- ★ 補上這行
-            healthStats={healthStats}                     // ★★★ 補上這行
-            onUpdateHealthStats={handleUpdateHealthStats} // ★★★ 補上這行
-            historyYear={historyYear} historyMonth={historyMonth}
-            setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
-            historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
-            onPushToHistory={handlePushToHistory} // 👈 補上這行
-            accumulatedReports={accumulatedReports} // 👈 補上這行
-            setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
-            onManualRefresh={handleManualRefresh}  
-            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
-            prevMonthSchedule={prevMonthSchedule} 
-          />
-        ) : (
-          <StaffDashboard
-          currentUser={currentUser}
-            targetYear={publishedDate.year}
-  targetMonth={publishedDate.month}
-  currentSchedule={finalizedSchedule} 
-  onConfirmSchedule={handleStaffScheduleUpdate} 
-  staffData={staffData}
-  priorityConfig={priorityConfig} // <--- ★★★ 補上這個，用於判斷權限
-  setStaffData={setStaffData} // <--- ★★★ 補上這行：讓員工有權限改自己密碼 ★★★
-  prevMonthSchedule={prevMonthSchedule} // <--- ★★★ 補上這行 ★★★
-          />
-        )}
-      </div>
-    </div>
-  );
-};
-
-// ============================================================================
-// 子元件區 (ManagerInterface) - 負責管理分頁切換
-// ============================================================================
-const ManagerInterface = ({
-  staffData, setStaffData, historyData, requirements, setRequirements,
-  preferences, setPreferences, schedule, violations,
-  scheduleRisks,
-  shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
-  selectedYear, setSelectedYear, 
-  selectedMonth, setSelectedMonth,
-  onGenerateSchedule, onSaveSchedule, setSchedule, 
-  finalizedSchedule, prevMonthSchedule,
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff, // 👈 ★ 這裡要接住 // 👈 補上這兩個變數！ // 👈 補上這行
-}) => {
-  const [activeTab, setActiveTab] = useState('requirements');
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      
-      <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        {['requirements', 'staff', 'schedule', 'publish','review', 'statistics', 'simulation'].map(tab => (
-          <button 
-            key={tab} 
-            onClick={() => setActiveTab(tab)} 
-            style={{
-              flex: 1, padding: '1rem', border: 'none', borderRadius: '10px', cursor: 'pointer',
-              fontWeight: 'bold', transition: 'all 0.2s',
-              background: activeTab === tab ? '#667eea' : 'transparent', 
-              color: activeTab === tab ? 'white' : '#666',
-              boxShadow: activeTab === tab ? '0 4px 6px rgba(102, 126, 234, 0.3)' : 'none'
-            }}
-          >
-            {tab === 'requirements' && '⚙️ 人力需求'}
-            {tab === 'staff' && '👥 員工管理'}
-            {tab === 'schedule' && '🛠️ 排班工作桌'} 
-            {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
-            {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
-            {tab === 'statistics' && '📊 統計報表'}
-            {tab === 'simulation' && '🔮 制度模擬'}
-          </button>
-        ))}
-      </div>
-
-      {activeTab === 'requirements' && (
-        <RequirementsPanel
-          requirements={requirements} setRequirements={setRequirements}
-          onGenerateSchedule={onGenerateSchedule} 
-          onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
-          selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
-        />
-      )}
-      
-      {activeTab === 'staff' && (
-        <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} 
-        prevMonthSchedule={prevMonthSchedule} // 👈 補上這行
-            selectedYear={selectedYear}           // 👈 補上這行
-            selectedMonth={selectedMonth}         // 👈 補上這行
-        />
-      )}
-      
-      {activeTab === 'schedule' && (
-        <SchedulePanel
-          schedule={schedule} staffData={staffData} violations={violations}
-          requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
-          onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
-          selectedYear={selectedYear} selectedMonth={selectedMonth}
-          setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
-          shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-          finalizedSchedule={finalizedSchedule}
-          setHistoryYear={setHistoryYear} 
-          setHistoryMonth={setHistoryMonth} 
-          setHistorySchedule={setHistorySchedule}
-// 👇 請在這裡補上下面這三行 👇
-          historyYear={historyYear}
-          historyMonth={historyMonth}
-          historySchedule={historySchedule}
-          onManualRefresh={onManualRefresh} 
-          healthStats={healthStats}
-        />
-      )}
-      
-{/* ★ 新增：階段二 (發布與認領區) */}
-      {activeTab === 'publish' && (
-        <PublishPanel 
-           staffData={staffData}
-           violations={violations} scheduleRisks={scheduleRisks} 
-           selectedYear={selectedYear} selectedMonth={selectedMonth}
-           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-           publicHolidays={publicHolidays}
-           finalizedSchedule={finalizedSchedule} 
-           setFinalizedSchedule={setFinalizedSchedule}
-           onPushToHistory={onPushToHistory} // 👈 補上這行
-        />
-      )}
-
-      {/* ★ 修改：階段三 (結算與歷史區)，改吃 history 狀態 */}
-      {activeTab === 'review' && (
-        <ScheduleReviewPanel 
-           staffData={staffData} setStaffData={setStaffData}
-           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-           publicHolidays={publicHolidays}
-           onUpdateHealthStats={onUpdateHealthStats}
-           
-           // 改吃專屬的歷史狀態
-           historyYear={historyYear} historyMonth={historyMonth}
-           setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
-           historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
-        />
-      )}
-      
-      {activeTab === 'statistics' && (
-        <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
-        healthStats={healthStats} // ★ 傳遞歷年數據給報表畫圖
-        accumulatedReports={accumulatedReports}       // 👈 補上：把雲端抓下來的報表傳進去
-            setAccumulatedReports={setAccumulatedReports} // 👈 補上：讓面板可以清空記憶
-            // 🌟 ★★★ 這裡再往下傳給 StatisticsPanel ★★★
-            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
-        />
-      )}
-
-      {activeTab === 'simulation' && (
-        <SimulationPanel 
-            staffData={staffData} requirements={requirements}
-            baseSalary={localStorage.getItem('globalBaseSalary') || 40000}
-            publicHolidays={publicHolidays} selectedYear={selectedYear}
-            selectedMonth={selectedMonth} shiftOptions={shiftOptions}
-        />
-      )}
-    </div>
-  );
-};
-// ============================================================================
-// 人力需求設定面板 (含：年月選擇器 + 儲存按鈕)
-// ============================================================================
 const RequirementsPanel = ({ 
   requirements, setRequirements, 
   selectedYear, setSelectedYear, selectedMonth, setSelectedMonth,
@@ -1772,7 +865,7 @@ const SchedulePanel = ({
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions,setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
-    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule,historyYear, historyMonth, historySchedule, onManualRefresh, healthStats
+    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule,historyYear, historyMonth, historySchedule, onManualRefresh
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]); 
   const [geminiInput, setGeminiInput] = useState('');       
@@ -2094,19 +1187,14 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
       } finally { setProcessing(false); setLoadingStatus(''); }
   };
 
-// 🌟 加上 async
-  const handleCellChange = async (staffId, day, newValue) => {
-    const newSchedule = JSON.parse(JSON.stringify(historySchedule));
+  const handleCellChange = (staffId, day, newValue) => {
+    const newSchedule = JSON.parse(JSON.stringify(schedule));
     if (!newSchedule[staffId]) newSchedule[staffId] = {};
-    newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
-    setHistorySchedule(newSchedule);
-
-    // ★ 關鍵修復：立即同步到 Firebase！這樣一改，員工管理面板與防呆邏輯就會瞬間跟著變動！
-    try {
-        await updateStaffSchedule(historyYear, historyMonth, newSchedule);
-    } catch (e) {
-        console.error("同步歷史班表失敗", e);
-    }
+    const oldCell = newSchedule[staffId][day];
+    const opt = shiftOptions.find(o => o.code === newValue);
+    const defaultTime = opt ? opt.time : '';
+    newSchedule[staffId][day] = { ...(typeof oldCell === 'object' ? oldCell : {}), type: newValue, time: defaultTime };
+    setSchedule(newSchedule);
   };
 
   const handleAddOption = () => {
@@ -2390,16 +1478,10 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 // ============================================================================
 // 員工管理面板 (更新：加入「重置密碼」功能)
 // ============================================================================
-// ★★★ 修正 3：補上這三個漏掉的參數 ★★★
-const StaffManagementPanel = ({ staffData, setStaffData, prevMonthSchedule, selectedYear, selectedMonth }) => {
+const StaffManagementPanel = ({ staffData, setStaffData }) => {
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
-// ★ 計算上個月的最後 7 天是幾號
-  let prevM = selectedMonth - 1;
-  let prevY = selectedYear;
-  if (prevM === 0) { prevM = 12; prevY--; }
-  const daysInPrevMonth = new Date(prevY, prevM, 0).getDate();
-  const last7Days = Array.from({length: 7}, (_, i) => daysInPrevMonth - 6 + i);
+
 useEffect(() => {
   // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
   setIsDirty(prev => {
@@ -2436,7 +1518,6 @@ useEffect(() => {
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       prevMonthLeave: [false, false, false, false, false, false, false]
-      
     };
     
     setLocalStaff([...localStaff, newStaff]);
@@ -2625,20 +1706,23 @@ const handleSave = async () => {
                       <input type="checkbox" checked={staff[col.key] === true || staff[col.key] === 'True'} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
                     ) : col.type === 'select' ? (
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}>{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
-) : col.type === 'auto_shifts' ? (
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {last7Days.map((day) => {
-                          const cell = prevMonthSchedule?.[staff.staff_id]?.[day];
-                          const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
-                          const isWork = ['D', 'E', 'N', '支援'].includes(type) || (type && type.includes('OT'));
-                          
-                          return (
-                            <div key={day} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: isWork ? '#ffebee' : '#e8f8f5', padding: '2px 4px', borderRadius: '4px', minWidth: '24px' }}>
-                              <span style={{ fontSize: '0.65rem', color: '#666' }}>{day}日</span>
-                              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: isWork ? '#c0392b' : '#27ae60' }}>{type}</span>
-                            </div>
-                          );
-                        })}
+                    ) : col.type === 'week_picker' ? (
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {['一','二','三','四','五','六','日'].map((day, idx) => (
+                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#555', marginBottom: '2px' }}>{day}</span>
+                            <input 
+                              type="checkbox" 
+                              checked={staff[col.key]?.[idx] || false} 
+                              onChange={(e) => {
+                                const newWeek = [...(staff[col.key] || [false,false,false,false,false,false,false])];
+                                newWeek[idx] = e.target.checked;
+                                handleChange(staff.staff_id, col.key, newWeek);
+                              }}
+                              style={{ width: '18px', height: '18px', cursor: 'pointer', margin: 0 }} 
+                            />
+                          </div>
+                        ))}
                       </div>
                     ) : (
                       <input 
@@ -2679,10 +1763,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   
 // ★★★ 1. 把 AI 決策歷史的邏輯插在這裡 ★★★
   const [decisionLogs, setDecisionLogs] = useState([]);
-  const [showRelayModal, setShowRelayModal] = useState(false);
-  const [relayInstruction, setRelayInstruction] = useState('');
-  const [relayMode, setRelayMode] = useState('start');
-  const [skipTargetId, setSkipTargetId] = useState(null);
 
   const fetchDecisionLogs = async () => {
       try {
@@ -2716,41 +1796,37 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       return () => unsub();
   }, []);
 
-const handleForceSkip = () => {
+  // ⏭️ 強制跳過目前卡住的員工
+  const handleForceSkip = async () => {
       if (!activeTurn?.active_staff_id) return;
-      setSkipTargetId(activeTurn.active_staff_id);
-      setRelayMode('skip');
-      setRelayInstruction('');
-      setShowRelayModal(true);
-  };
+      
+      const targetStaffId = activeTurn.active_staff_id;
+      const targetName = staffData.find(s => s.staff_id === targetStaffId)?.name || targetStaffId;
 
-  const handleRelayConfirm = async () => {
-      setShowRelayModal(false);
-      const y = Number(localStorage.getItem('selectedYear')) || 2026;
-      const m = Number(localStorage.getItem('selectedMonth')) || 2;
+      if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？\n\n這將剝奪他本回合的優先選班權，並立刻讓 AI 尋找下一位遞補者寄發 Email！`)) return;
 
-      if (relayMode === 'skip') {
-          const targetStaffId = skipTargetId;
-          const targetName = staffData.find(s => s.staff_id === targetStaffId)?.name || targetStaffId;
-          if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？`)) return;
-          try {
-              const progressRef = doc(db, "SelectionProgress", `${y}_${m}`);
-              await setDoc(progressRef, { submitted_staff: arrayUnion(targetStaffId) }, { merge: true });
-              const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
-              await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
-              alert(`✅ 已跳過 ${targetName}！AI 正在尋找下一位...`);
-              if (typeof calculateAndNotifyNextStaff === 'function') {
-                  calculateAndNotifyNextStaff({}, healthStats, y, m, relayInstruction);
-              }
-          } catch (error) {
-              console.error("強制跳過失敗:", error);
-              alert("❌ 操作失敗，請檢查網路連線。");
-          }
-      } else {
+      try {
+          const y = Number(localStorage.getItem('selectedYear')) || 2026;
+          const m = Number(localStorage.getItem('selectedMonth')) || 2;
+
+          // 1. 將該名員工打入冷宮 (加入已送出黑名單)
+          const progressRef = doc(db, "SelectionProgress", `${y}_${m}`);
+          await setDoc(progressRef, {
+              submitted_staff: arrayUnion(targetStaffId)
+          }, { merge: true });
+
+          // 2. 清除雷達畫面
+          const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
+          await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
+
+          // 3. 呼叫 AI 找下一個人
+          alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
           if (typeof calculateAndNotifyNextStaff === 'function') {
-              calculateAndNotifyNextStaff({}, healthStats, y, m, relayInstruction);
-              alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+              calculateAndNotifyNextStaff({}, healthStats, y, m);
           }
+      } catch (error) {
+          console.error("強制跳過失敗:", error);
+          alert("❌ 操作失敗，請檢查網路連線。");
       }
   };
   // -- ★ AI 分析專用狀態 --
@@ -3104,67 +2180,6 @@ let combinedData = "";
           </div>
       </div>
       {/* 👆👆👆 ★★★ 替換結束 ★★★ 👆👆👆 */}
-      {showRelayModal && (() => {
-        const genderStats = staffData.filter(s => s.is_active).reduce((acc, s) => {
-          const g = s.gender || '女'; acc[g] = (acc[g] || 0) + 1; return acc;
-        }, {});
-        return (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '540px', boxShadow: '0 10px 40px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <h3 style={{ marginTop: 0, color: relayMode === 'skip' ? '#e74c3c' : '#2980b9', fontSize: '1.3rem' }}>
-                {relayMode === 'skip' ? '⏭️ 強制跳過 — 指定下一棒條件' : '🚀 啟動 AI 接力 — 指定優先條件'}
-              </h3>
-              <div style={{ background: '#f0f7ff', borderRadius: '10px', padding: '12px', marginBottom: '14px', fontSize: '0.85rem' }}>
-                <div style={{ fontWeight: 'bold', color: '#2980b9', marginBottom: '8px' }}>📊 AI 可自動分析的資料</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {[
-                    { label: '👥 待選人數', value: `${staffData.filter(s=>s.is_active).length} 人` },
-                    { label: '♀ 女性', value: `${genderStats['女'] || 0} 人` },
-                    { label: '♂ 男性', value: `${genderStats['男'] || 0} 人` },
-                    { label: '📈 歷史健康度', value: `${healthStats?.length || 0} 筆` },
-                    { label: '🌙 可夜班', value: `${staffData.filter(s=>s.is_active&&s.can_night_shift).length} 人` },
-                    { label: '📅 年資最高', value: `${Math.max(0,...staffData.filter(s=>s.is_active).map(s=>s.tenure_years||0))} 年` },
-                  ].map(item => (
-                    <span key={item.label} style={{ background: 'white', border: '1px solid #bee3f8', borderRadius: '6px', padding: '3px 9px', color: '#2c3e50' }}>
-                      {item.label}：<strong>{item.value}</strong>
-                    </span>
-                  ))}
-                </div>
-              </div>
-              <p style={{ color: '#999', fontSize: '0.8rem', marginBottom: '12px', lineHeight: '1.5' }}>
-                💡 例如：「優先安排女性護士」、「年資最淺的先選」、「健康度低於 70 分的優先」
-              </p>
-              <textarea
-                value={relayInstruction}
-                onChange={e => setRelayInstruction(e.target.value)}
-                placeholder="輸入優先條件（留空則依預設：健康度最低者優先）..."
-                style={{ width: '100%', height: '90px', padding: '10px', borderRadius: '8px', border: '1.5px solid #bee3f8', resize: 'vertical', fontSize: '0.95rem', boxSizing: 'border-box', marginBottom: '14px' }}
-              />
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '0.8rem', color: '#999', marginBottom: '6px' }}>⚡ 快速範本：</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {['健康度最低的優先','年資最淺的先選','女性護士優先','夜班餘額最多的先處理','積假最多的優先消化'].map(t => (
-                    <button key={t} onClick={() => setRelayInstruction(prev => prev ? prev + '、' + t : t)}
-                      style={{ padding: '4px 10px', background: '#e8f4fd', color: '#2980b9', border: '1px solid #bee3f8', borderRadius: '20px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>
-                      + {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setShowRelayModal(false)}
-                  style={{ padding: '10px 20px', background: '#f1f2f6', color: '#555', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  取消
-                </button>
-                <button onClick={handleRelayConfirm}
-                  style={{ padding: '10px 24px', background: relayMode === 'skip' ? '#e74c3c' : '#2980b9', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  {relayMode === 'skip' ? '⏭️ 確認跳過並通知下一位' : '🚀 確認並啟動 AI'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
         
         {/* ★★★ 2. 把 AI 決策歷史看板 UI 插在這裡 ★★★ */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #3498db', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
@@ -3301,33 +2316,6 @@ const ScheduleReviewPanel = ({
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
   const [showSettlement, setShowSettlement] = useState(false);
-  const [crossMonthViolations, setCrossMonthViolations] = useState([]);
-  const [nextScheduleLoaded, setNextScheduleLoaded] = useState(false);
-  const [nextMonthLabel, setNextMonthLabel] = useState('');
-
-  // ★ 跨月邊界自動檢查
-  useEffect(() => {
-    if (!historySchedule || Object.keys(historySchedule).length === 0) {
-      setCrossMonthViolations([]); return;
-    }
-    const ny = historyMonth === 12 ? historyYear + 1 : historyYear;
-    const nm = historyMonth === 12 ? 1 : historyMonth + 1;
-    setNextMonthLabel(`${ny}年${nm}月`);
-    setNextScheduleLoaded(false);
-
-    const unsub = subscribeToSchedule(ny, nm, (data) => {
-      const ns = data?.finalizedSchedule || data?.schedule || null;
-      setNextScheduleLoaded(true);
-      if (ns && Object.keys(ns).length > 0) {
-        const v = checkCrossMonthBoundary(historySchedule, ns, staffData, historyYear, historyMonth, ny, nm, 7);
-        setCrossMonthViolations(v);
-      } else {
-        setCrossMonthViolations([]);
-      }
-      unsub();
-    });
-    return () => unsub();
-  }, [historySchedule, historyYear, historyMonth]);
 
   const [baseSalary, setBaseSalary] = useState(() => {
       const saved = localStorage.getItem('globalBaseSalary');
@@ -3641,52 +2629,11 @@ return (
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
-              <button onClick={handleTestAutoSettle} style={{ padding: '0.5rem 1rem', background: '#34495e', color: 'white', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px dashed #ccc' }} title="開發者測試專用">⚙️ 測試 API</button>
+              <button onClick={handleTestAutoSettle} style={{ padding: '0.5rem 1rem', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px dashed #ccc' }} title="開發者測試專用">⚙️ 測試 API</button>
            </div>
       </div>
       {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
 
-      {/* ★ 跨月勞基法警告區塊 */}
-      {nextScheduleLoaded && (
-        <div style={{ borderRadius: '12px', padding: '1rem 1.5rem', background: crossMonthViolations.length > 0 ? '#fff5f5' : '#f0fff4', border: `2px solid ${crossMonthViolations.length > 0 ? '#e74c3c' : '#2ecc71'}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: crossMonthViolations.length > 0 ? '12px' : 0 }}>
-            <span style={{ fontSize: '1.4rem' }}>{crossMonthViolations.length > 0 ? '🚨' : '✅'}</span>
-            <div>
-              <div style={{ fontWeight: 'bold', fontSize: '1rem', color: crossMonthViolations.length > 0 ? '#c0392b' : '#27ae60' }}>
-                {crossMonthViolations.length > 0
-                  ? `跨月邊界偵測到 ${crossMonthViolations.length} 項潛在勞基法違規！`
-                  : `跨月邊界檢查通過 — 與 ${nextMonthLabel} 銜接無違規`}
-              </div>
-              <div style={{ fontSize: '0.82rem', color: '#666', marginTop: '2px' }}>
-                檢查範圍：本月最後 7 天 ↔ {nextMonthLabel} 前 7 天
-              </div>
-            </div>
-          </div>
-          {crossMonthViolations.length > 0 && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {crossMonthViolations.map((v, i) => (
-                <div key={i} style={{ background: 'white', border: '1px solid #f5c6cb', borderRadius: '8px', padding: '10px 14px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                  <div style={{ flex: 1 }}>
-                    <span style={{ fontWeight: 'bold', color: '#e74c3c', marginRight: '8px' }}>{v.staffName}</span>
-                    <span style={{ fontSize: '0.9rem', color: '#555' }}>{v.message}</span>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', background: '#e74c3c', color: 'white', borderRadius: '4px', padding: '2px 7px', whiteSpace: 'nowrap', alignSelf: 'center' }}>
-                    {v.type === 'CROSS_SHIFT_INTERVAL' ? '輪班間隔' : v.type === 'CROSS_CONSECUTIVE_DAYS' ? '連續工作' : '大夜接班'}
-                  </span>
-                </div>
-              ))}
-              <div style={{ fontSize: '0.82rem', color: '#e74c3c', marginTop: '4px', padding: '8px 12px', background: '#fff0f0', borderRadius: '8px' }}>
-                💡 建議：請修改上述員工在月底或月初的班別，存檔後本警告將自動更新。
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-      {!nextScheduleLoaded && Object.keys(historySchedule||{}).length > 0 && (
-        <div style={{ background: '#f8f9fa', borderRadius: '10px', padding: '10px 16px', color: '#888', fontSize: '0.85rem' }}>
-          ⏳ 正在讀取 {nextMonthLabel} 班表進行跨月檢查...
-        </div>
-      )}
 
       {showSettlement && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -4308,4 +3255,795 @@ const PublishPanel = ({
     );
 };
 
+const ManagerInterface = ({
+  staffData, setStaffData, historyData, requirements, setRequirements,
+  preferences, setPreferences, schedule, violations,
+  scheduleRisks,
+  shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
+  selectedYear, setSelectedYear, 
+  selectedMonth, setSelectedMonth,
+  onGenerateSchedule, onSaveSchedule, setSchedule, 
+  finalizedSchedule, 
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff, // 👈 ★ 這裡要接住 // 👈 補上這兩個變數！ // 👈 補上這行
+}) => {
+  const [activeTab, setActiveTab] = useState('requirements');
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      
+      <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+        {['requirements', 'staff', 'schedule', 'publish','review', 'statistics', 'simulation'].map(tab => (
+          <button 
+            key={tab} 
+            onClick={() => setActiveTab(tab)} 
+            style={{
+              flex: 1, padding: '1rem', border: 'none', borderRadius: '10px', cursor: 'pointer',
+              fontWeight: 'bold', transition: 'all 0.2s',
+              background: activeTab === tab ? '#667eea' : 'transparent', 
+              color: activeTab === tab ? 'white' : '#666',
+              boxShadow: activeTab === tab ? '0 4px 6px rgba(102, 126, 234, 0.3)' : 'none'
+            }}
+          >
+            {tab === 'requirements' && '⚙️ 人力需求'}
+            {tab === 'staff' && '👥 員工管理'}
+            {tab === 'schedule' && '🛠️ 排班工作桌'} 
+            {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
+            {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
+            {tab === 'statistics' && '📊 統計報表'}
+            {tab === 'simulation' && '🔮 制度模擬'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'requirements' && (
+        <RequirementsPanel
+          requirements={requirements} setRequirements={setRequirements}
+          onGenerateSchedule={onGenerateSchedule} 
+          onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+          selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
+        />
+      )}
+      
+      {activeTab === 'staff' && (
+        <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
+      )}
+      
+      {activeTab === 'schedule' && (
+        <SchedulePanel
+          schedule={schedule} staffData={staffData} violations={violations}
+          requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
+          onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
+          selectedYear={selectedYear} selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
+          shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+          finalizedSchedule={finalizedSchedule}
+          setHistoryYear={setHistoryYear} 
+          setHistoryMonth={setHistoryMonth} 
+          setHistorySchedule={setHistorySchedule}
+// 👇 請在這裡補上下面這三行 👇
+          historyYear={historyYear}
+          historyMonth={historyMonth}
+          historySchedule={historySchedule}
+          onManualRefresh={onManualRefresh} 
+        />
+      )}
+      
+{/* ★ 新增：階段二 (發布與認領區) */}
+      {activeTab === 'publish' && (
+        <PublishPanel 
+           staffData={staffData}
+           violations={violations} scheduleRisks={scheduleRisks} 
+           selectedYear={selectedYear} selectedMonth={selectedMonth}
+           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+           publicHolidays={publicHolidays}
+           finalizedSchedule={finalizedSchedule} 
+           setFinalizedSchedule={setFinalizedSchedule}
+           onPushToHistory={onPushToHistory} // 👈 補上這行
+        />
+      )}
+
+      {/* ★ 修改：階段三 (結算與歷史區)，改吃 history 狀態 */}
+      {activeTab === 'review' && (
+        <ScheduleReviewPanel 
+           staffData={staffData} setStaffData={setStaffData}
+           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+           publicHolidays={publicHolidays}
+           onUpdateHealthStats={onUpdateHealthStats}
+           
+           // 改吃專屬的歷史狀態
+           historyYear={historyYear} historyMonth={historyMonth}
+           setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
+           historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
+        />
+      )}
+      
+      {activeTab === 'statistics' && (
+        <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
+        healthStats={healthStats} // ★ 傳遞歷年數據給報表畫圖
+        accumulatedReports={accumulatedReports}       // 👈 補上：把雲端抓下來的報表傳進去
+            setAccumulatedReports={setAccumulatedReports} // 👈 補上：讓面板可以清空記憶
+            // 🌟 ★★★ 這裡再往下傳給 StatisticsPanel ★★★
+            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+        />
+      )}
+
+      {activeTab === 'simulation' && (
+        <SimulationPanel 
+            staffData={staffData} requirements={requirements}
+            baseSalary={localStorage.getItem('globalBaseSalary') || 40000}
+            publicHolidays={publicHolidays} selectedYear={selectedYear}
+            selectedMonth={selectedMonth} shiftOptions={shiftOptions}
+        />
+      )}
+    </div>
+  );
+};
+// ============================================================================
+// 人力需求設定面板 (含：年月選擇器 + 儲存按鈕)
+// ============================================================================
+const NurseSchedulingSystem = () => {
+  const [currentUser, setCurrentUser] = useState(null);
+
+
+
+
+// --- 1. 雲端狀態宣告 (等待 Firebase 載入) ---
+  const [isCloudLoaded, setIsCloudLoaded] = useState(false);
+  // ★★★ 新增：Admin 密碼狀態與修改視窗 ★★★
+
+  const [showAdminPwdModal, setShowAdminPwdModal] = useState(false);
+  const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
+  const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
+  // ★★★ 新增 1：儲存健康度歷史數據的狀態 ★★★
+  const [healthStats, setHealthStats] = useState([]); 
+
+  // ★★★ 新增 2：計算並更新當月健康度的函式 ★★★
+  const handleUpdateHealthStats = (year, month, avg, median) => {
+      setHealthStats(prev => {
+          const newData = [...prev];
+          const existingIndex = newData.findIndex(d => d.year === year && d.month === month);
+          if (existingIndex >= 0) {
+              newData[existingIndex] = { year, month, avg, median };
+          } else {
+              newData.push({ year, month, avg, median });
+          }
+          // 依照年月排序，並只保留最近 12 個月
+          newData.sort((a, b) => (a.year - b.year) || (a.month - b.month));
+          return newData.slice(-12); 
+      });
+  };
+
+
+  const [shiftOptions, setShiftOptions] = useState([
+    { code: 'D', name: '白班', color: '#FFD93D', time: '08:00-16:00' },
+    { code: 'E', name: '小夜', color: '#FF6B9D', time: '16:00-24:00' },
+    { code: 'N', name: '大夜', color: '#4D96FF', time: '00:00-08:00' },
+    { code: 'RG', name: '例假', color: '#2ecc71', time: '例假' }, 
+    { code: 'RC', name: '休假', color: '#d5f5e3', time: '休假' },
+    { code: 'OFF', name: '空班', color: '#E8E8E8', time: '空班' },
+    { code: '支援', name: '支援', color: '#D4AC0D', time: '09:00-18:00' },
+    { code: '事假', name: '事假', color: '#95a5a6', time: '扣全薪' }, // ✨ 新增
+    { code: '病假', name: '病假', color: '#bdc3c7', time: '扣半薪' }, // ✨ 新增
+     { code: '特休', name: '特休', color: '#9af33b', time: '全薪' }, // ✨ 新增
+
+  ]);
+  const [priorityConfig, setPriorityConfig] = useState({ types: ['accumulated_ot'], count: 5, isOpenToAll: false });
+  const [staffData, setStaffData] = useState([]);
+  const [schedule, setSchedule] = useState(null);
+  const [finalizedSchedule, setFinalizedSchedule] = useState(null);
+  // 修改後（從 localStorage 讀正確的發布月份）
+const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
+  // --- 2. 本機暫存狀態 (不需上雲端) ---
+  const [historyData, setHistoryData] = useState([]);
+  const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
+  const [preferences, setPreferences] = useState({});
+  const [violations, setViolations] = useState([]);
+  const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
+  const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
+  const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
+// ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
+  const [historyMonth, setHistoryMonth] = useState(() => {
+  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
+  return m === 1 ? 12 : m - 1;
+});
+const [historyYear, setHistoryYear] = useState(() => {
+  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
+  const y = Number(localStorage.getItem('selectedYear'))  || new Date().getFullYear();
+  return m === 1 ? y - 1 : y;
+});
+  const [historySchedule, setHistorySchedule] = useState({});
+  const [accumulatedReports, setAccumulatedReports] = useState({});
+  
+  useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
+  useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
+
+  // ★★★ 新增：自動抓取台灣國定假日 API ★★★
+  const [publicHolidays, setPublicHolidays] = useState([]);
+  
+  useEffect(() => {
+    const fetchHolidays = async () => {
+      try {
+        // 使用開源的台灣行事曆 JSON 資料
+        const res = await fetch(`https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`);
+        const data = await res.json();
+        
+        // 過濾出「放假」且「有描述 (代表是國定假日或補假，而非一般週休二日)」的日期
+        const holidays = data
+            .filter(d => d.isHoliday && d.description !== "")
+            .map(d => d.date); // 格式為 "YYYYMMDD"
+            
+        setPublicHolidays(holidays);
+      } catch (error) {
+        console.error("無法抓取國定假日，使用預設空陣列:", error);
+        setPublicHolidays([]);
+      }
+    };
+    fetchHolidays();
+  }, [selectedYear]);
+    // 🌟 核心修復：當 Firebase 成功把員工名單下載下來後，自動替換掉「載入中...」的假名字
+  useEffect(() => {
+      if (currentUser && currentUser.role === 'staff' && staffData.length > 0) {
+          const realStaff = staffData.find(s => s.staff_id === currentUser.id);
+          
+          if (realStaff && currentUser.name !== realStaff.name) {
+              setCurrentUser(prev => ({ 
+                  ...prev, 
+                  name: realStaff.name, 
+                  rule: realStaff.special_status === 'Standard' ? 'Standard' : 'BiWeekly' 
+              }));
+          }
+      }
+  }, [staffData, currentUser]);
+  
+  // ... 下面保留你原本的 useState 宣告 ...
+
+// ★★★ 法遵檢查、安全防護與風險掃描自動化引擎 ★★★
+  useEffect(() => {
+    const targetSchedule = finalizedSchedule || schedule; 
+    if (targetSchedule && Object.keys(targetSchedule).length > 0) {
+      
+      // 1. 跑硬性違規檢查 (勞基法紅燈)
+      const lawViolations = checkLaborLawCompliance(targetSchedule, staffData, historyData, selectedYear, selectedMonth);
+      
+      // 2. 跑護理專業安全檢查 (資歷搭配紅燈) ★ 這裡呼叫我們剛寫的引擎
+      const mixViolations = checkSkillMixSafety(targetSchedule, staffData, selectedYear, selectedMonth);
+      
+      // 將兩種警告合併顯示
+      setViolations([...lawViolations, ...mixViolations]);
+      
+      // 3. 跑軟性風險掃描 (壓力與公平性黃燈)
+      const newRisks = calculateScheduleRisks(targetSchedule, staffData, publicHolidays, selectedYear, selectedMonth);
+      setScheduleRisks(newRisks);
+      
+    } else {
+      setViolations([]);
+      setScheduleRisks([]);
+    }
+  }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
+// ☁️ 雲端引擎 1：即時讀取 (使用抽象化 API)
+  useEffect(() => {
+    // 🌟 1. 核心修復：把安全門加回來！沒有登入的人，絕對不准去要資料！
+    if (!currentUser) return; 
+
+    let isSettingsLoaded = false; let isStaffLoaded = false; let isScheduleLoaded = false;
+    const checkAllLoaded = () => { if (isSettingsLoaded && isStaffLoaded && isScheduleLoaded) setIsCloudLoaded(true); };
+
+    // 2. 登入成功後，開始安全地下載所有資料
+    const unsubSettings = subscribeToSettings((data) => {
+      if (data) {
+        if (data.shiftOptions) setShiftOptions(data.shiftOptions);
+        if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
+        if (data.publishedDate) {
+          setPublishedDate(prev => {
+            if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
+            return data.publishedDate;
+          });
+        }
+      }
+      isSettingsLoaded = true; checkAllLoaded();
+    });
+
+    const unsubStaff = subscribeToStaff((data) => {
+      if (data) {
+        if (data.staffData) setStaffData(data.staffData);
+        if (data.healthStats) setHealthStats(data.healthStats);
+      }
+      isStaffLoaded = true; checkAllLoaded();
+    });
+
+    const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
+    const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+
+    const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+      if (data) {
+        setSchedule(data.schedule || {});
+        setFinalizedSchedule(data.finalizedSchedule || null); 
+      } else {
+        setSchedule({}); setFinalizedSchedule(null);
+      }
+      isScheduleLoaded = true; checkAllLoaded();
+    });
+
+    const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
+        setHistorySchedule(data?.finalizedSchedule || {});
+    });
+    
+    const unsubReports = subscribeToArchiveReports((data) => {
+        setAccumulatedReports(data);
+    });
+
+    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
+    
+  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
+  // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
+  useEffect(() => {
+    if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
+
+    const timeoutId = setTimeout(() => {
+        
+        // ★ 核心修復 2：絕對禁止把「空畫面」寫入雲端覆蓋掉別人的心血！
+        if (schedule && Object.keys(schedule).length > 0) {
+            saveMonthlySchedule(selectedYear, selectedMonth, {
+              schedule: schedule
+              // ★ 警告：絕對不能在這裡自動寫入 finalizedSchedule，只能由發布按鈕寫入！
+            });
+        }
+
+        saveGlobalSettings({
+          shiftOptions: shiftOptions || [],
+          priorityConfig: priorityConfig || {}
+          // ★ 警告：絕對不能在這裡寫入 publishedDate，只能由發布按鈕寫入！
+        });
+
+        saveGlobalStaff({
+          staffData: staffData || [],
+          healthStats: healthStats || []
+        });
+        
+    }, 2000); 
+
+    return () => clearTimeout(timeoutId);
+
+  // ★ 核心修復 3：移除了 finalizedSchedule 與 publishedDate 的依賴，徹底打破無限覆蓋迴圈
+  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
+const handleGenerateSchedule = (providedSchedule = null) => {
+    let newSchedule = providedSchedule;
+    if (!newSchedule) { return; }
+    if (newSchedule) {
+        setSchedule(newSchedule);
+        setFinalizedSchedule(null); // ★★★ 關鍵修復 1：生成新班表時，連帶把發布區的幽靈資料殺掉
+        const newViolations = checkLaborLawCompliance(newSchedule, staffData, historyData, selectedYear, selectedMonth);
+        setViolations(newViolations);
+    }
+  };
+
+const handlePushToHistory = async () => {
+    if (!finalizedSchedule || Object.keys(finalizedSchedule).length === 0) {
+        alert("目前沒有發布的班表可供封存！");
+        return;
+    }
+    if (!window.confirm(`確定要將 ${selectedYear}年${selectedMonth}月 的班表結算並封存嗎？\n\n⚠️ 執行後：\n1. 此班表將移至「✅ 3. 結算與歷史」\n2. 若歷史區已有舊班表，舊班表將先備份至雲端封存庫\n3. 發布區將被清空\n4. 系統將自動切換至下一個月，準備新的排班`)) return;
+
+// ★ 步驟 1：若歷史區已有舊班表，先將它 archive 到 Firebase 再覆蓋
+    if (historySchedule && Object.keys(historySchedule).length > 0) {
+        try {
+            // 🌟 ★★★ 核心修復：改用智能 JSON 備份，不再產生會覆蓋健康度的笨蛋 CSV ★★★ 🌟
+            await backupScheduleToArchive(
+                historyYear, 
+                historyMonth, 
+                historySchedule, 
+                "歷史區舊班表被覆蓋前自動歸檔"
+            );
+            console.log(`✅ 舊班表 ${historyYear}年${historyMonth}月 已成功備份至雲端封存庫`);
+        } catch (e) {
+            console.error("❌ 舊班表備份失敗:", e);
+            // 備份失敗不阻斷主流程
+        }
+    }
+
+    // ★ 步驟 2：把目前發布的班表放入歷史區（覆蓋舊的）
+    setHistoryYear(selectedYear);
+    setHistoryMonth(selectedMonth);
+    setHistorySchedule(finalizedSchedule);
+
+    // ★ 步驟 3：計算並切換到下個月
+    let nextMonth = selectedMonth + 1;
+    let nextYear = selectedYear;
+    if (nextMonth > 12) { nextMonth = 1; nextYear++; }
+
+    setSelectedYear(nextYear);
+    setSelectedMonth(nextMonth);
+    const newPubDate = { year: nextYear, month: nextMonth };
+    setPublishedDate(newPubDate);
+    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
+
+    // ★ 步驟 4：清空草稿工作桌與發布區
+    setSchedule({});
+    setFinalizedSchedule(null);
+
+    alert(`✅ 封存成功！\n${selectedYear}年${selectedMonth}月 班表已移至「結算與歷史」。\n系統已為您切換至 ${nextYear}年${nextMonth}月。`);
+  };
+
+const handleLogout = () => {
+  signOut(auth).then(() => {
+    // ★ 核心修復：登出時，把瀏覽器裡面所有記住的髒東西全部炸掉！
+    localStorage.clear(); 
+    window.location.reload(); // 強制重整網頁，回到最乾淨的狀態
+  }).catch((error) => {
+    console.error("登出失敗:", error);
+  });
+};
+// ★ 核心功能 1：寄送 Email 的共用小幫手
+  const sendSystemEmail = async (toEmail, subject, htmlContent) => {
+      try {
+          await fetch('/api/sendEmail', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ to: toEmail, subject, html: htmlContent })
+          });
+      } catch (error) {
+          console.error("Email 發送失敗:", error);
+      }
+  };
+
+  // ★ 核心功能 2：AI 動態決策下一位優先選班者
+  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth) => {
+      try {
+          // 1. 抓取「已經選過」的黑名單 (已完賽標記)
+          const progressRef = doc(db, "SelectionProgress", `${currentYear}_${currentMonth}`);
+          const snap = await getDoc(progressRef);
+          const submittedList = snap.exists() ? (snap.data().submitted_staff || []) : [];
+
+          // 2. 篩選出「尚未選班」的活躍員工
+          const unassignedStaff = staffData.filter(s => s.is_active && !submittedList.includes(s.staff_id));
+
+          // 3. 終止條件：所有人都選完了！
+          if (unassignedStaff.length === 0) {
+              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'your-admin-email@hospital.com';
+              await sendSystemEmail(adminEmail, `✅ ${currentMonth}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
+              return;
+          }
+
+          // 4. 準備大數據給 AI (給定尚未選班者的歷史健康度、OT、夜班餘額)
+          const scores = statsData.map(stat => stat.score || 100);
+          const average = scores.length > 0 ? Math.round(scores.reduce((sum, val) => sum + val, 0) / scores.length) : 100;
+
+          let aiPrompt = `【自動接力選班決策】\n團隊歷史平均健康度: ${average}分\n尚未選班之候選人現況：\n`;
+          unassignedStaff.forEach(staff => {
+              const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
+              aiPrompt += `- ${staff.staff_id} (${staff.name}): 歷史健康度 ${historyScore}分, 積假餘額 ${staff.accumulated_ot}, 夜班結餘 ${staff.night_shift_balance}\n`;
+          });
+
+          aiPrompt += `\n請根據上述數據，選出「分數最低、最疲勞、最需要優先選好班」的 1 位員工。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
+
+          // 5. 呼叫 Gemini 進行決策
+          const token = await auth.currentUser.getIdToken();
+          const response = await fetch('/api/gemini', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ prompt: aiPrompt })
+          });
+          const data = await response.json();
+          const text = data.text.replace(/```json|```/g, '').trim();
+          const decision = JSON.parse(text);
+
+          // 6. 寫入 AI Data Log 背景紀錄
+          await addDoc(collection(db, "AI_Decision_Logs"), {
+              timestamp: new Date(), year: currentYear, month: currentMonth,
+              selected_staff: decision.selected_staff_id, ai_logic: decision.reason, candidates_data: aiPrompt
+          });
+
+          // 7. 更新發球權狀態機
+          await setDoc(doc(db, "SelectionTurn", `${currentYear}_${currentMonth}`), {
+              active_staff_id: decision.selected_staff_id, updatedAt: new Date()
+          });
+
+          // 8. 抓取該員工 Email 並寄出通知
+          const targetStaff = staffData.find(s => s.staff_id === decision.selected_staff_id);
+          if (targetStaff && targetStaff.email) {
+              await sendSystemEmail(
+                  targetStaff.email, 
+                  `🌟 ${targetStaff.name} 優先選班通知！現在輪到您了！`, 
+                  `<h3>親愛的 ${targetStaff.name}：</h3><p>系統已開放您的選班權限！</p><p><strong>🤖 系統判斷讓您先選的理由：</strong><br/>${decision.reason}</p><p>請盡速登入系統完成選班，以利下一位同仁進行，謝謝！</p>`
+              );
+          }
+
+      } catch (error) {
+          console.error("AI 決策接力失敗:", error);
+      }
+  };
+// ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★
+  const handleStaffScheduleUpdate = async (result) => { 
+    try {
+        // 1. 🛑 寫入前，先向 Firebase 索取「最熱騰騰」的最新班表
+        const docRef = doc(db, 'Schedules', `${publishedDate.year}_${publishedDate.month}`);
+        const snap = await getDoc(docRef);
+
+        if (!snap.exists()) {
+            alert("❌ 找不到該月份的班表資料！");
+            return;
+        }
+
+        const latestData = snap.data();
+        const latestSchedule = latestData.finalizedSchedule || {};
+
+        // 2. 🛑 檢查想要認領的班表，是不是剛剛被別人搶走了？
+        const targetVirtualId = result.chosenSchedule?.id;
+        if (targetVirtualId && !latestSchedule[targetVirtualId]) {
+            alert("⚠️ 慢了一步！這個班表剛剛被別人選走了！\n系統將為您重新整理畫面，請選擇其他班表。");
+            window.location.reload(); 
+            return;
+        }
+
+        // 3. 基於雲端的「最新資料」進行修改：加入新員工
+        const next = { ...latestSchedule };
+        next[result.staffId] = result.fullMonthData; 
+        
+        // 4. ★ 最重要的一步：從物件中徹底刪除舊的空缺班表 (例如 D001)
+        if (targetVirtualId && next[targetVirtualId]) {
+            delete next[targetVirtualId]; 
+        } else {
+            const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
+            if (fallbackId) delete next[fallbackId];
+        }
+
+        // 5. 更新本地畫面
+        setFinalizedSchedule(next); 
+
+        // 更新員工資料 (維持原樣)
+        setStaffData(prevData => {
+          const exists = prevData.find(s => s.staff_id === result.staffId);
+          if (exists) return prevData;
+          return [...prevData, { 
+            staff_id: result.staffId, name: result.staffName, 
+            special_status: result.shiftType === 'D' ? 'Standard' : 'BiWeekly', 
+            is_active: true, accumulated_ot: 0, night_shift_balance: 0,
+            prevMonthLeave: [false,false,false,false,false,false,false]
+          }];
+        });
+
+// 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
+        await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
+        
+        // =========================================================
+        // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
+        // =========================================================
+        try {
+            // A. 把這名員工加入本月的「已完賽黑名單」，確保 AI 之後不會再選到他
+            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
+            await setDoc(progressRef, {
+                submitted_staff: arrayUnion(result.staffId) 
+            }, { merge: true });
+
+            // B. 背景呼叫 AI 決策引擎 (尋找下一位最需要補血的人並寄信)
+            if (typeof calculateAndNotifyNextStaff === 'function') {
+                calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+            } else {
+                console.warn("⚠️ 找不到 calculateAndNotifyNextStaff 函式，無法自動交棒。");
+            }
+        } catch (e) {
+            console.error("交棒處理失敗:", e);
+        }
+        // =========================================================
+
+        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
+        
+    } catch (error) {
+        console.error("寫入失敗:", error);
+        alert("❌ 認領失敗：權限不足或網路異常。");
+    }
+  } // <-- 這是 handleStaffScheduleUpdate 的結尾
+
+  // 🔄 手動強制同步最新雲端班表
+  const handleManualRefresh = async () => {
+    try {
+      // 顯示讀取中的提示 (可選，讓使用者知道有在跑)
+      console.log("🔄 正在向雲端請求最新資料...");
+      
+      // 直接向 Firebase 請求目前選擇的「年_月」的真實資料
+      const docRef = doc(db, 'Schedules', `${selectedYear}_${selectedMonth}`);
+      const snap = await getDoc(docRef);
+
+      if (snap.exists()) {
+        const data = snap.data();
+        setSchedule(data.schedule || {});
+        setFinalizedSchedule(data.finalizedSchedule || null);
+        alert(`✅ 已成功從雲端同步 ${selectedYear} 年 ${selectedMonth} 月的最新班表！`);
+      } else {
+        setSchedule({});
+        setFinalizedSchedule(null);
+        alert(`☁️ 雲端目前沒有 ${selectedYear} 年 ${selectedMonth} 月的班表資料。`);
+      }
+    } catch (error) {
+      console.error("手動同步失敗:", error);
+      alert("❌ 同步失敗，請檢查網路連線或權限設定。");
+    }
+  };
+
+const handleSaveAndPublish = async () => {
+    if (!schedule || Object.keys(schedule).length === 0) {
+      alert("❌ 目前沒有班表內容，無法儲存！");
+      return;
+    }
+
+    
+    const newFinalized = JSON.parse(JSON.stringify(schedule));
+
+    
+    const newPubDate = { year: selectedYear, month: selectedMonth };
+    setPublishedDate(newPubDate);
+    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
+
+    // ★★★ 強制立即存檔到雲端，不等待 2 秒防抖機制 ★★★
+    try {
+        await saveGlobalSettings({
+            shiftOptions: shiftOptions || [],
+            priorityConfig: priorityConfig || {},
+            publishedDate: newPubDate
+        });
+        await saveMonthlySchedule(selectedYear, selectedMonth, {
+            schedule: schedule || {},
+            finalizedSchedule: newFinalized
+        });
+    } catch(e) {
+        console.error("發布至雲端失敗:", e);
+    }
+    
+    alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
+  };
+
+// ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
+  const handleAdminPasswordSubmit = async (e) => {
+      e.preventDefault();
+
+      // 1. 基本防呆與強度檢查
+      if (adminPwdData.new !== adminPwdData.confirm) {
+          return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
+      }
+      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
+      if (!strongPasswordRegex.test(adminPwdData.new)) {
+          return setAdminPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
+      }
+
+      try {
+          const user = auth.currentUser;
+
+          if (user) {
+              // ★ 核心修補：先用「舊密碼」向 Firebase 進行重新驗證 (防護 Session 劫持)
+              const credential = EmailAuthProvider.credential(user.email, adminPwdData.old);
+              await reauthenticateWithCredential(user, credential);
+
+              // 驗證通過後，正式更新密碼
+              await updatePassword(user, adminPwdData.new);
+
+              setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
+
+              setTimeout(() => {
+                  setShowAdminPwdModal(false);
+                  setAdminPwdData({ old: '', new: '', confirm: '' });
+                  setAdminPwdMsg({ type: '', text: '' });
+              }, 2000);
+          } else {
+              setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
+          }
+      } catch (error) {
+          // 在 Production 環境隱藏詳細錯誤碼，避免資安外洩
+          if (import.meta.env.DEV) {
+              console.error("修改密碼失敗:", error);
+          }
+
+          if (error.code === 'auth/invalid-credential' || error.code === 'auth/wrong-password') {
+              setAdminPwdMsg({ type: 'error', text: '❌ 舊密碼輸入錯誤，請重新確認！' });
+          } else if (error.code === 'auth/requires-recent-login') {
+              setAdminPwdMsg({ type: 'error', text: '⚠️ 基於安全考量，請先「登出再重新登入」後，才能修改密碼。' });
+          } else {
+              setAdminPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
+          }
+      }
+  };
+
+  if (!currentUser) {
+return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
+  }
+
+  return (
+    <div style={{ minHeight: '100vh', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', padding: '2rem', fontFamily: 'sans-serif' }}>
+      {/* ★★★ 新增：Admin 修改密碼 Modal ★★★ */}
+      {showAdminPwdModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '400px', position: 'relative' }}>
+                <button onClick={() => setShowAdminPwdModal(false)} style={{ position: 'absolute', top: '10px', right: '15px', background: 'none', border: 'none', fontSize: '1.2rem', cursor: 'pointer', color: '#666' }}>✖</button>
+                <h3 style={{ marginTop: 0, color: '#333' }}>⚙️ 修改管理員密碼</h3>
+                <form onSubmit={handleAdminPasswordSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '15px', marginTop: '15px' }}>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>舊密碼</label>
+                        <input type="password" value={adminPwdData.old} onChange={e=>setAdminPwdData({...adminPwdData, old: e.target.value})} required style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>新密碼</label>
+                        <input type="password" value={adminPwdData.new} onChange={e=>setAdminPwdData({...adminPwdData, new: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    <div>
+                        <label style={{ fontSize: '0.85rem', color: '#666', marginBottom: '5px', display: 'block' }}>確認新密碼</label>
+                        <input type="password" value={adminPwdData.confirm} onChange={e=>setAdminPwdData({...adminPwdData, confirm: e.target.value})} required minLength="4" style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }} />
+                    </div>
+                    {adminPwdMsg.text && (
+                        <div style={{ color: adminPwdMsg.type === 'error' ? '#e74c3c' : '#27ae60', background: adminPwdMsg.type === 'error' ? '#fdecea' : '#e8f8f5', padding: '10px', borderRadius: '8px', fontSize: '0.9rem' }}>
+                            {adminPwdMsg.text}
+                        </div>
+                    )}
+                    <button type="submit" style={{ padding: '12px', background: '#667eea', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', marginTop: '10px' }}>儲存修改</button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      <div style={{ maxWidth: '1400px', margin: '0 auto 2rem', background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <Calendar size={28} color="#667eea" />
+            <h1 style={{ margin: 0, fontSize: '1.8rem', color: '#333' }}>智能排班系統</h1>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span style={{ color: '#555', fontWeight: 'bold' }}>👋 {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
+            {/* 就是這裡！判斷如果是 admin 才會顯示這個按鈕 */}
+            {currentUser.role === 'admin' && (
+                <button onClick={() => setShowAdminPwdModal(true)} style={{ background: '#f8f9fa', border: '1px solid #ddd', padding: '6px 12px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.85rem', color: '#555', fontWeight: 'bold' }}>⚙️ 修改密碼</button>
+            )}
+            <button onClick={handleLogout} style={{ padding: '0.5rem 1rem', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>登出</button>
+          </div>
+      </div>
+
+      <div style={{ maxWidth: '1400px', margin: '0 auto' }}>
+        {currentUser.role === 'admin' ? (
+          <ManagerInterface
+            staffData={staffData} setStaffData={setStaffData} historyData={historyData}
+            requirements={requirements} setRequirements={setRequirements}
+            preferences={preferences} setPreferences={setPreferences}
+            schedule={schedule} violations={violations}
+            selectedYear={selectedYear} 
+            selectedMonth={selectedMonth}
+            onGenerateSchedule={handleGenerateSchedule} 
+            setSchedule={setSchedule} setViolations={setViolations}
+            setSelectedYear={setSelectedYear}   // <--- 補上這行 (讓子元件能修改年份)
+            setSelectedMonth={setSelectedMonth} // <--- 補上這行 (讓子元件能修改月份)
+            onSaveSchedule={handleSaveAndPublish}
+            shiftOptions={shiftOptions}       // <--- 補上這個
+            setShiftOptions={setShiftOptions} // <--- 補上這個
+            priorityConfig={priorityConfig}       // <--- 補上
+            setPriorityConfig={setPriorityConfig} // <--- 補上
+            publicHolidays={publicHolidays} // <--- ★★★ 補上這一行 ★★★
+            scheduleRisks={scheduleRisks} // <--- ★★★ 補上這行 ★★★
+            finalizedSchedule={finalizedSchedule}       // <--- ★ 補上這行
+            setFinalizedSchedule={setFinalizedSchedule} // <--- ★ 補上這行
+            healthStats={healthStats}                     // ★★★ 補上這行
+            onUpdateHealthStats={handleUpdateHealthStats} // ★★★ 補上這行
+            historyYear={historyYear} historyMonth={historyMonth}
+            setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
+            historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
+            onPushToHistory={handlePushToHistory} // 👈 補上這行
+            accumulatedReports={accumulatedReports} // 👈 補上這行
+            setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
+            onManualRefresh={handleManualRefresh}  
+            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+          />
+        ) : (
+          <StaffDashboard
+          currentUser={currentUser}
+            targetYear={publishedDate.year}
+  targetMonth={publishedDate.month}
+  currentSchedule={finalizedSchedule} 
+  onConfirmSchedule={handleStaffScheduleUpdate} 
+  staffData={staffData}
+  priorityConfig={priorityConfig} // <--- ★★★ 補上這個，用於判斷權限
+  setStaffData={setStaffData} // <--- ★★★ 補上這行：讓員工有權限改自己密碼 ★★★
+          />
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================================
+// 子元件區 (ManagerInterface) - 負責管理分頁切換
+// ============================================================================
 export default NurseSchedulingSystem;
