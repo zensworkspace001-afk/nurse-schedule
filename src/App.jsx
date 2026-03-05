@@ -2363,10 +2363,13 @@ const ScheduleReviewPanel = ({
 
     setStaffData(prevData =>
       prevData.map(staff => {
+        // Step 1: 先清空（避免舊資料殘留）
+        const cleared = { ...staff, prevMonthLeave: null };
+        // Step 2: 只有在 historySchedule 裡有這位員工的班表才寫入
         const staffSchedule = historySchedule[staff.staff_id];
-        if (!staffSchedule) return staff;
+        if (!staffSchedule) return cleared;
         const newPrevMonthLeave = last7Days.map(day => isLeaveShift(staffSchedule[day]));
-        return { ...staff, prevMonthLeave: newPrevMonthLeave };
+        return { ...cleared, prevMonthLeave: newPrevMonthLeave };
       })
     );
   }, [historySchedule, historyYear, historyMonth]);
