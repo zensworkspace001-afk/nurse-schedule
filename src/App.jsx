@@ -65,6 +65,9 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
     let lastShiftType = null;
     let totalOffDays = 0;
     let totalMonthlyHours = 0;
+    let totalRG = 0; // ★ 新增：統計例假 (不可出勤)
+    let totalRC = 0; // ★ 新增：統計休息日 (可加班)
+    let daysSinceLastRG = 0; // ★ 新增：距離上次例假的天數
 
     // 用來計算每週工時 (以週一為起始)
     let currentWeekHours = 0;
@@ -106,9 +109,27 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
       }
 
       // --- C. 統計休假天數 ---
-      if (['RG', 'RC', 'OFF'].includes(shiftType)) {
-          totalOffDays++;
+      // --- C. 統計休假天數與種類 ---
+      if (['RG', 'RC', 'OFF', '空班'].includes(shiftType)) totalOffDays++;
+      
+      if (shiftType === 'RG') {
+          totalRG++;
+          daysSinceLastRG = 0; // 遇到例假，計數器安全歸零
+      } else {
+          daysSinceLastRG++;
+          // ★ 檢查例假間隔天條 (勞基法第36條)
+          // 標準工時下，例假之間最多只能間隔 6 天。若員工為雙週變形(BiWeekly)則可挪移至最多 12 天。
+          const maxRgInterval = staff.special_status === 'BiWeekly' ? 12 : 6;
+          
+          if (daysSinceLastRG > maxRgInterval) {
+              violations.push({
+                  staffId, staffName: staff?.name, day, type: 'RG_INTERVAL',
+                  message: `⚠️ 違反例假天條：已連續 ${daysSinceLastRG} 天未排例假(RG)！(上限 ${maxRgInterval} 天)`
+              });
+              daysSinceLastRG = 0; // 報錯後重置，避免同一週期重複洗版
+          }
       }
+      if (shiftType === 'RC') totalRC++;
 
       // --- D. 檢查連續工作天數 (連六) ---
       if (dailyHours > 0) { // 有工時代表有上班
@@ -145,11 +166,17 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
       else lastShiftType = null;
     }
 
-    // --- F. 檢查月休總天數 ---
-    if (totalOffDays < 8) {
+// --- F. 檢查例假(RG)與休息日(RC)總量管制 ---
+    if (totalRG < 4) {
+        violations.push({
+            staffId, staffName: staff?.name, day: '整月', type: 'INSUFFICIENT_RG',
+            message: `⚠️ 例假嚴重違規：本月僅 ${totalRG} 天例假(RG)，依法至少需 4 天且絕對禁止出勤！`
+        });
+    }
+    if ((totalRG + totalRC) < 8) {
         violations.push({
             staffId, staffName: staff?.name, day: '整月', type: 'INSUFFICIENT_OFF',
-            message: `⚠️ 休假不足：本月僅排休 ${totalOffDays} 天 (標準 8 天)`
+            message: `⚠️ 總休假不足：本月 RG+RC 僅 ${totalRG + totalRC} 天 (法定標準約 8 天)`
         });
     }
 
