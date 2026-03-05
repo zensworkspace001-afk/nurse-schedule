@@ -461,7 +461,8 @@ try {
 // ============================================================================
 // 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
 // ============================================================================
-const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], setStaffData, priorityConfig }) => {  
+// ★★★ 修正 1：補上 prevMonthSchedule 參數 ★★★
+const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], setStaffData, priorityConfig, prevMonthSchedule }) => {
   
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -1547,6 +1548,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
   staffData={staffData}
   priorityConfig={priorityConfig} // <--- ★★★ 補上這個，用於判斷權限
   setStaffData={setStaffData} // <--- ★★★ 補上這行：讓員工有權限改自己密碼 ★★★
+  prevMonthSchedule={prevMonthSchedule} // <--- ★★★ 補上這行 ★★★
           />
         )}
       </div>
@@ -2387,7 +2389,8 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 // ============================================================================
 // 員工管理面板 (更新：加入「重置密碼」功能)
 // ============================================================================
-const StaffManagementPanel = ({ staffData, setStaffData }) => {
+// ★★★ 修正 3：補上這三個漏掉的參數 ★★★
+const StaffManagementPanel = ({ staffData, setStaffData, prevMonthSchedule, selectedYear, selectedMonth }) => {
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
 // ★ 計算上個月的最後 7 天是幾號
