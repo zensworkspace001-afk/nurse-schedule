@@ -1090,7 +1090,7 @@ const handleLogout = () => {
   };
 
   // ★ 核心功能 2：AI 動態決策下一位優先選班者
-  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth, customInstruction = '') => {
+  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth) => {
       try {
           // 1. 抓取「已經選過」的黑名單 (已完賽標記)
           const progressRef = doc(db, "SelectionProgress", `${currentYear}_${currentMonth}`);
@@ -1107,32 +1107,17 @@ const handleLogout = () => {
               return;
           }
 
-          // 4. 準備完整員工大數據給 AI（含性別、職級、年資等所有欄位）
+          // 4. 準備大數據給 AI (給定尚未選班者的歷史健康度、OT、夜班餘額)
           const scores = statsData.map(stat => stat.score || 100);
           const average = scores.length > 0 ? Math.round(scores.reduce((sum, val) => sum + val, 0) / scores.length) : 100;
 
-          let aiPrompt = `【自動接力選班決策】
-團隊歷史平均健康度: ${average}分
-
-尚未選班之候選人完整資料：
-`;
+          let aiPrompt = `【自動接力選班決策】\n團隊歷史平均健康度: ${average}分\n尚未選班之候選人現況：\n`;
           unassignedStaff.forEach(staff => {
               const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
-              aiPrompt += `- ${staff.staff_id} (${staff.name}): 性別=${staff.gender||'未設定'}, 職級=${staff.level}, 年資=${staff.tenure_years}年, 歷史健康度=${historyScore}分, 積假餘額=${staff.accumulated_ot}, 夜班結餘=${staff.night_shift_balance}, 可夜班=${staff.can_night_shift?'是':'否'}, 工時制=${staff.special_status}\n`;
+              aiPrompt += `- ${staff.staff_id} (${staff.name}): 歷史健康度 ${historyScore}分, 積假餘額 ${staff.accumulated_ot}, 夜班結餘 ${staff.night_shift_balance}\n`;
           });
 
-          // 5. 加入護理長的自訂指令，讓 AI 自動判斷需要分析哪些欄位
-          if (customInstruction && customInstruction.trim()) {
-              aiPrompt += `
-【護理長額外指令】
-「${customInstruction}」
-
-請根據上述指令，自動判斷需要分析哪些資料欄位（性別/年資/健康度/職級/夜班餘額等），
-並在 reason 中說明你如何運用了哪些資料做出這個決策。
-`;
-          }
-
-          aiPrompt += `\n請根據上述數據，選出最適合優先選班的 1 位員工。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由（請說明運用了哪些資料）"}`;
+          aiPrompt += `\n請根據上述數據，選出「分數最低、最疲勞、最需要優先選好班」的 1 位員工。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
 
           // 5. 呼叫 Gemini 進行決策
           const token = await auth.currentUser.getIdToken();
@@ -2332,7 +2317,7 @@ useEffect(() => {
     const newId = `N${String(maxNum + 1).padStart(3, '0')}`;
     
     const newStaff = {
-      staff_id: newId, name: '新員工', email: '', level: 'N0', tenure_years: 0, // 👈 加上 email: ''
+      staff_id: newId, name: '新員工', email: '', gender: '女', level: 'N0', tenure_years: 0, // 👈 加上 email: ''
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       prevMonthLeave: [false, false, false, false, false, false, false]
@@ -2467,6 +2452,7 @@ const handleSave = async () => {
     { key: 'staff_id', label: '工號', type: 'text', width: '60px', readOnly: true },
     { key: 'name', label: '姓名', type: 'text', width: '80px' },
     { key: 'email', label: 'Email信箱', type: 'text', width: '160px' , color:'black'}, // 👈 ★★★ 新增這行 ★★★
+    { key: 'gender', label: '性別', type: 'select', options: ['女', '男', '其他'], width: '60px' },
     { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
     { key: 'prevMonthLeave', label: '上月末休假', type: 'week_picker', width: '220px' },
     { key: 'tenure_years', label: '年資', type: 'number', width: '60px' },
@@ -2581,11 +2567,6 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
   
 // ★★★ 1. 把 AI 決策歷史的邏輯插在這裡 ★★★
   const [decisionLogs, setDecisionLogs] = useState([]);
-  // ★ 接力選班自訂指令對話框
-  const [showRelayModal, setShowRelayModal] = useState(false);
-  const [relayInstruction, setRelayInstruction] = useState('');
-  const [relayMode, setRelayMode] = useState('start'); // 'start' | 'skip'
-  const [skipTargetId, setSkipTargetId] = useState(null);
 
   const fetchDecisionLogs = async () => {
       try {
@@ -2619,44 +2600,37 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       return () => unsub();
   }, []);
 
-  // ⏭️ 強制跳過：先開對話框
+  // ⏭️ 強制跳過目前卡住的員工
   const handleForceSkip = async () => {
       if (!activeTurn?.active_staff_id) return;
-      setSkipTargetId(activeTurn.active_staff_id);
-      setRelayMode('skip');
-      setRelayInstruction('');
-      setShowRelayModal(true);
-  };
+      
+      const targetStaffId = activeTurn.active_staff_id;
+      const targetName = staffData.find(s => s.staff_id === targetStaffId)?.name || targetStaffId;
 
-  // ✅ 對話框確認後的統一執行入口
-  const handleRelayConfirm = async () => {
-      setShowRelayModal(false);
-      const y = Number(localStorage.getItem('selectedYear')) || 2026;
-      const m = Number(localStorage.getItem('selectedMonth')) || 2;
+      if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？\n\n這將剝奪他本回合的優先選班權，並立刻讓 AI 尋找下一位遞補者寄發 Email！`)) return;
 
-      if (relayMode === 'skip') {
-          const targetStaffId = skipTargetId;
-          const targetName = staffData.find(s => s.staff_id === targetStaffId)?.name || targetStaffId;
-          if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？\n\n這將剝奪他本回合的優先選班權，並立刻讓 AI 尋找下一位遞補者寄發 Email！`)) return;
-          try {
-              const progressRef = doc(db, "SelectionProgress", `${y}_${m}`);
-              await setDoc(progressRef, { submitted_staff: arrayUnion(targetStaffId) }, { merge: true });
-              const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
-              await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
-              alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
-              if (typeof calculateAndNotifyNextStaff === 'function') {
-                  calculateAndNotifyNextStaff({}, healthStats, y, m, relayInstruction);
-              }
-          } catch (error) {
-              console.error("強制跳過失敗:", error);
-              alert("❌ 操作失敗，請檢查網路連線。");
-          }
-      } else {
-          // 啟動模式
+      try {
+          const y = Number(localStorage.getItem('selectedYear')) || 2026;
+          const m = Number(localStorage.getItem('selectedMonth')) || 2;
+
+          // 1. 將該名員工打入冷宮 (加入已送出黑名單)
+          const progressRef = doc(db, "SelectionProgress", `${y}_${m}`);
+          await setDoc(progressRef, {
+              submitted_staff: arrayUnion(targetStaffId)
+          }, { merge: true });
+
+          // 2. 清除雷達畫面
+          const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
+          await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
+
+          // 3. 呼叫 AI 找下一個人
+          alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
           if (typeof calculateAndNotifyNextStaff === 'function') {
-              calculateAndNotifyNextStaff({}, healthStats, y, m, relayInstruction);
-              alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+              calculateAndNotifyNextStaff({}, healthStats, y, m);
           }
+      } catch (error) {
+          console.error("強制跳過失敗:", error);
+          alert("❌ 操作失敗，請檢查網路連線。");
       }
   };
   // -- ★ AI 分析專用狀態 --
@@ -2993,9 +2967,14 @@ let combinedData = "";
              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
                  <button 
                     onClick={() => {
-                        setRelayMode('start');
-                        setRelayInstruction('');
-                        setShowRelayModal(true);
+                       if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
+                           const y = Number(localStorage.getItem('selectedYear')) || 2026;
+                           const m = Number(localStorage.getItem('selectedMonth')) || 2;
+                           if (typeof calculateAndNotifyNextStaff === 'function') {
+                               calculateAndNotifyNextStaff({}, healthStats, y, m);
+                               alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+                           }
+                       }
                     }} 
                     style={{ padding:'12px 25px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'bold', background: '#3498db', color:'white', fontSize: '1.1rem', boxShadow: '0 4px 6px rgba(52, 152, 219, 0.3)' }}
                  >
@@ -3005,86 +2984,6 @@ let combinedData = "";
           </div>
       </div>
       {/* 👆👆👆 ★★★ 替換結束 ★★★ 👆👆👆 */}
-
-      {/* ★ 接力選班自訂指令對話框 */}
-      {showRelayModal && (() => {
-        const genderStats = staffData.filter(s => s.is_active).reduce((acc, s) => {
-          const g = s.gender || '未設定'; acc[g] = (acc[g] || 0) + 1; return acc;
-        }, {});
-        const unsubmittedCount = staffData.filter(s => s.is_active).length;
-        return (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-            <div style={{ background: 'white', padding: '2rem', borderRadius: '16px', width: '90%', maxWidth: '540px', boxShadow: '0 10px 40px rgba(0,0,0,0.3)', maxHeight: '90vh', overflowY: 'auto' }}>
-              <h3 style={{ marginTop: 0, color: relayMode === 'skip' ? '#e74c3c' : '#2980b9', fontSize: '1.3rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                {relayMode === 'skip' ? '⏭️ 強制跳過 — 指定下一棒條件' : '🚀 啟動 AI 接力 — 指定選班優先條件'}
-              </h3>
-
-              {/* 目前可分析的資料預覽 */}
-              <div style={{ background: '#f0f7ff', borderRadius: '10px', padding: '12px', marginBottom: '14px', fontSize: '0.85rem' }}>
-                <div style={{ fontWeight: 'bold', color: '#2980b9', marginBottom: '8px' }}>📊 AI 可自動分析的資料</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {[
-                    { label: '👥 待選人數', value: `${unsubmittedCount} 人` },
-                    { label: '♀ 女性', value: `${genderStats['女'] || 0} 人` },
-                    { label: '♂ 男性', value: `${genderStats['男'] || 0} 人` },
-                    { label: '📈 歷史健康度', value: `${healthStats?.length || 0} 筆` },
-                    { label: '🌙 可夜班', value: `${staffData.filter(s=>s.is_active&&s.can_night_shift).length} 人` },
-                    { label: '📋 年資最高', value: `${Math.max(...staffData.filter(s=>s.is_active).map(s=>s.tenure_years||0))} 年` },
-                  ].map(item => (
-                    <span key={item.label} style={{ background: 'white', border: '1px solid #bee3f8', borderRadius: '6px', padding: '3px 9px', color: '#2c3e50' }}>
-                      {item.label}：<strong>{item.value}</strong>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <p style={{ color: '#555', fontSize: '0.9rem', marginBottom: '8px', lineHeight: '1.6' }}>
-                用自然語言告訴 AI 這次要優先考慮什麼，<strong>AI 會自動判斷要抓哪些欄位</strong>：
-              </p>
-              <p style={{ color: '#999', fontSize: '0.8rem', marginBottom: '12px', lineHeight: '1.5' }}>
-                💡 例如：「優先安排女性護士」、「年資最淺的先選」、「夜班餘額最多的先處理」、「健康度低於 70 分的優先」
-              </p>
-
-              <textarea
-                value={relayInstruction}
-                onChange={e => setRelayInstruction(e.target.value)}
-                placeholder="輸入優先條件（留空則依預設：健康度最低者優先）..."
-                style={{ width: '100%', height: '90px', padding: '10px', borderRadius: '8px', border: '1.5px solid #bee3f8', resize: 'vertical', fontSize: '0.95rem', boxSizing: 'border-box', marginBottom: '14px', lineHeight: '1.6' }}
-              />
-
-              {/* 快速範本 */}
-              <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '0.8rem', color: '#999', marginBottom: '6px' }}>⚡ 快速範本：</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                  {[
-                    '健康度最低的優先',
-                    '年資最淺的先選',
-                    '女性護士優先',
-                    '夜班餘額最多的先處理',
-                    '積假最多的優先消化',
-                  ].map(t => (
-                    <button key={t} onClick={() => setRelayInstruction(prev => prev ? prev + '、' + t : t)}
-                      style={{ padding: '4px 10px', background: '#e8f4fd', color: '#2980b9', border: '1px solid #bee3f8', borderRadius: '20px', cursor: 'pointer', fontSize: '0.78rem', fontWeight: 'bold' }}>
-                      + {t}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button onClick={() => setShowRelayModal(false)}
-                  style={{ padding: '10px 20px', background: '#f1f2f6', color: '#555', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>
-                  取消
-                </button>
-                <button onClick={handleRelayConfirm}
-                  style={{ padding: '10px 24px', background: relayMode === 'skip' ? '#e74c3c' : '#2980b9', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: `0 4px 6px ${relayMode === 'skip' ? 'rgba(231,76,60,0.3)' : 'rgba(41,128,185,0.3)'}` }}>
-                  {relayMode === 'skip' ? '⏭️ 確認跳過並通知下一位' : '🚀 確認並啟動 AI'}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
         
         {/* ★★★ 2. 把 AI 決策歷史看板 UI 插在這裡 ★★★ */}
       <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #3498db', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
