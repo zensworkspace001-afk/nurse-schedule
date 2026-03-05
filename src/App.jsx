@@ -132,7 +132,15 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
               });
           }
       }
-      
+      // ★★★ 新增：H. 檢查母性保護條款 (懷孕/哺乳禁止夜班) ★★★
+      const isPregnant = staff.is_pregnant_or_nursing === true || staff.is_pregnant_or_nursing === 'True' || staff.is_pregnant_or_nursing === 'true';
+      if (isPregnant && (shiftType === 'E' || shiftType === 'N')) {
+          violations.push({
+              staffId, staffName: staff?.name, day, type: 'MATERNITY_PROTECTION',
+              message: `⚠️ 違反母性保護：懷孕/哺乳期間禁止夜間出勤 (${shiftType}班)`
+          });
+      }
+      // ★★★ 新增結束 ★★★
       if (dailyHours > 0) lastShiftType = shiftType;
       else lastShiftType = null;
     }
@@ -564,6 +572,17 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   }
 
   const checkCompliance = (pattern) => {
+    // ★★★ 新增：3. 提前攔截！檢查母性保護 (懷孕/哺乳禁止夜班) ★★★
+      const currentStaffInfo = staffData.find(s => s.staff_id === currentUser.id);
+      const isPregnant = currentStaffInfo?.is_pregnant_or_nursing === true || currentStaffInfo?.is_pregnant_or_nursing === 'True' || currentStaffInfo?.is_pregnant_or_nursing === 'true';
+      
+      if (isPregnant) {
+          for (let i = 0; i < pattern.length; i++) {
+              if (pattern[i] === 'E' || pattern[i] === 'N') {
+                  return { valid: false, reason: `違反母性保護 (含有夜間班別)` };
+              }
+          }
+      }
       // 1. 檢查七休一
       let currentStreak = prevStreak;
       for (let i = 0; i < pattern.length; i++) {
@@ -1539,8 +1558,8 @@ useEffect(() => {
     
  const newStaff = {
       staff_id: newId, name: '新員工', gender: '女', email: '', level: 'N0', tenure_years: 0,
-      leave_status: 'None', is_active: true, special_status: 'Standard',
-      can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
+     leave_status: 'None', is_active: true, special_status: 'Standard',
+      is_pregnant_or_nursing: false, can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       prevMonthLeave: [false, false, false, false, false, false, false]
     };
     
@@ -1681,6 +1700,7 @@ const handleSave = async () => {
     { key: 'leave_status', label: '狀態', type: 'select', options: ['None', 'Maternal', 'Student', 'OnLeave'], width: '90px' },
     { key: 'is_active', label: '在職', type: 'checkbox', width: '50px' },
     { key: 'special_status', label: '工時', type: 'select', options: ['Standard', 'BiWeekly'], width: '90px' },
+    { key: 'is_pregnant_or_nursing', label: '孕/哺乳', type: 'checkbox', width: '60px' },
     { key: 'can_night_shift', label: '夜班', type: 'checkbox', width: '50px' },
     { key: 'accumulated_ot', label: '積假', type: 'number', width: '60px' },
     { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '60px' },
@@ -3812,15 +3832,20 @@ const handleLogout = () => {
               const gender = staff.gender || '女'; 
               const level = staff.level || 'N0';
               const isLeader = (staff.is_leader === true || staff.is_leader === 'True') ? '是' : '否';
+              const isPregnant = (staff.is_pregnant_or_nursing === true || staff.is_pregnant_or_nursing === 'True') ? '是' : '否';
               const canNight = (staff.can_night_shift === false || staff.can_night_shift === 'false') ? '否' : '是';
               const workHours = staff.special_status === 'BiWeekly' ? '雙週變形' : '標準';
               const leaveStatus = staff.leave_status === 'None' ? '無' : staff.leave_status;
               
               // 2. 組合成超詳細的 AI 認知字串
-              aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${level} | 組長:${isLeader} | 可上夜班:${canNight} | 工時制:${workHours} | 特殊狀態:${leaveStatus} | 年資:${staff.tenure_years || 0}年 | 歷史健康度(疲勞值):${historyScore}分 | 積假餘額:${staff.accumulated_ot} | 夜班結餘:${staff.night_shift_balance}\n`;
+             // ✅ 替換為這行：
+aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${level} | 孕/哺乳:${isPregnant} | 組長:${isLeader} | 可上夜班:${canNight} | 工時制:${workHours} | 特殊狀態:${leaveStatus} | 年資:${staff.tenure_years || 0}年 | 歷史健康度(疲勞值):${historyScore}分 | 積假餘額:${staff.accumulated_ot} | 夜班結餘:${staff.night_shift_balance}\n`;
           });
 
-          aiPrompt += `\n請根據上述數據與原則，選出「最符合條件、最需要優先選班」的 1 位員工。\n若無特殊指導原則，則預設找最疲勞者。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
+         aiPrompt += `\n請根據上述數據與原則，選出「最符合條件、最需要優先選班」的 1 位員工。
+⚠️ 【最高系統原則】：若名單中有「孕/哺乳:是」的員工，無論其疲勞度為何，【必須】讓她們絕對優先選班，以確保她們能選到合法之日班班表！
+若無孕婦且無特殊指導原則，則預設找最疲勞者。
+請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
           // 5. 呼叫 Gemini 進行決策
           const token = await auth.currentUser.getIdToken();
           const response = await fetch('/api/gemini', {
