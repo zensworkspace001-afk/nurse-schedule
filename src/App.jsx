@@ -2637,17 +2637,22 @@ const handleCellChange = async (staffId, day, newValue) => {
           const overStandardDays = Math.max(0, regularWorkDays - standardWorkDays);
           const totalRestOtDays = overStandardDays + explicitOtDays;
           const restDayOtPayPerDay = Math.round((hourlyWage * 1.34 * 2) + (hourlyWage * 1.67 * 6));
-          const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
+const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
           const totalOtPay = restDayOtPay + nationalHolidayPay;
           const deduction = Math.round((personalLeaveDays * dailyWage) + (sickLeaveDays * dailyWage * 0.5));
-          const finalSalary = currentBaseSalary + totalOtPay - deduction;
+          
+          // ★★★ 新增：大夜班 40% 加給 (日薪 * 40% * 大夜天數) ★★★
+          const nightShiftBonus = Math.round(dailyWage * 0.4 * nightShiftsCount);
+          
+          // ★ 最終薪水把大夜獎金加進去
+          const finalSalary = currentBaseSalary + totalOtPay + nightShiftBonus - deduction;
 
           data.push({
               staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
               workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
-              nightShiftsCount, 
+              nightShiftsCount, nightShiftBonus, // 👈 匯出大夜獎金供畫面顯示
               restDayOtPay, nationalHolidayWorkDays, nationalHolidayPay, totalOtPay, 
-              personalLeaveDays, sickLeaveDays, annualLeaveDays, deduction, totalSalary: finalSalary // ★ 加入 annualLeaveDays
+              personalLeaveDays, sickLeaveDays, deduction, totalSalary: finalSalary
           });
       });
       return data;
@@ -2816,7 +2821,19 @@ return (
                </div>
            </div>
            
-           <div style={{ display:'flex', gap:'10px' }}>
+<div style={{ display:'flex', gap:'10px', alignItems: 'center' }}>
+              {/* ★ 找回底薪設定欄位 ★ */}
+              <div style={{ background: '#f8f9fa', padding: '4px 10px', borderRadius: '8px', border: '1px solid #ddd', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: '#34495e' }}>預設底薪:</span>
+                  <input 
+                      type="number" 
+                      value={baseSalary} 
+                      onChange={(e) => setBaseSalary(Number(e.target.value))}
+                      style={{ width: '80px', padding: '4px', border: '1px solid #ccc', borderRadius: '4px', textAlign: 'center', fontWeight: 'bold' }}
+                      title="此底薪將用於計算加班費與請假扣薪"
+                  />
+              </div>
+
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
@@ -2852,8 +2869,10 @@ return (
                                       <div>總工時: {row.workDays} 天</div>
                                       {row.nationalHolidayWorkDays > 0 && <div style={{fontSize:'0.8rem', color:'#e67e22'}}>含國定: {row.nationalHolidayWorkDays}天</div>}
                                   </td>
-                                  <td style={{ padding: '10px', fontWeight: 'bold', color: '#8e44ad', fontSize: '1.2rem' }}>
-                                      {row.nightShiftsCount}
+                                  <td style={{ padding: '10px', color: '#8e44ad' }}>
+                                      <div style={{ fontSize: '1.2rem', fontWeight: 'bold' }}>{row.nightShiftsCount} 班</div>
+                                      {/* ★ 顯示 40% 換算出來的獎金 */ }
+                                      {row.nightShiftBonus > 0 && <div style={{ fontSize: '0.85rem', marginTop: '4px', fontWeight: 'bold' }}>津貼: +${row.nightShiftBonus.toLocaleString()}</div>}
                                   </td>
                                   <td style={{ padding: '10px', color: row.totalOtPay > 0 ? '#e74c3c' : '#ccc', fontWeight: 'bold' }}>
                                       NT$ {row.totalOtPay.toLocaleString()}
