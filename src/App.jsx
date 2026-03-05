@@ -1707,22 +1707,27 @@ const handleSave = async () => {
                     ) : col.type === 'select' ? (
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}>{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
                     ) : col.type === 'week_picker' ? (
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {['一','二','三','四','五','六','日'].map((day, idx) => (
-                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#555', marginBottom: '2px' }}>{day}</span>
-                            <input 
-                              type="checkbox" 
-                              checked={staff[col.key]?.[idx] || false} 
-                              onChange={(e) => {
-                                const newWeek = [...(staff[col.key] || [false,false,false,false,false,false,false])];
-                                newWeek[idx] = e.target.checked;
-                                handleChange(staff.staff_id, col.key, newWeek);
-                              }}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', margin: 0 }} 
-                            />
-                          </div>
-                        ))}
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {['一','二','三','四','五','六','日'].map((day, idx) => {
+                          const isLeave = staff[col.key]?.[idx] === true;
+                          const isWeekend = idx >= 5; // 六=5, 日=6
+                          return (
+                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: isWeekend ? '#e67e22' : '#888', marginBottom: '3px' }}>{day}</span>
+                              <div style={{
+                                width: '22px', height: '22px', borderRadius: '4px',
+                                background: isLeave ? '#d5f5e3' : (isWeekend ? '#FFD93D' : '#5b9cf6'),
+                                border: `1px solid ${isLeave ? '#a9dfbf' : (isWeekend ? '#f0b429' : '#3a7bd5')}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                fontSize: '0.6rem', fontWeight: 'bold',
+                                color: isLeave ? '#27ae60' : 'white',
+                                title: isLeave ? '休假' : '上班'
+                              }}>
+                                {isLeave ? '休' : '班'}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <input 
@@ -2465,58 +2470,6 @@ const ScheduleReviewPanel = ({
       return data;
   };
 
-  // ★★★ 新增：把結算月最後7天班表自動匯入員工「上月末休假」 ★★★
-  const handleImportLast7Days = () => {
-    if (!historySchedule || Object.keys(historySchedule).length === 0) {
-      alert('⚠️ 目前沒有結算班表資料，請先確認班表已載入。');
-      return;
-    }
-
-    const daysInThisMonth = new Date(historyYear, historyMonth, 0).getDate();
-    // 最後7天：如 30天月份就是 24~30
-    const last7Days = Array.from({ length: 7 }, (_, i) => daysInThisMonth - 6 + i);
-
-    // 判斷是否為休假班別（與 prevMonthLeave 邏輯一致：true=休假 false=上班）
-    const isLeaveShift = (shift) => {
-      if (!shift) return true; // 空白視為休假
-      const s = typeof shift === 'object' ? (shift?.type || 'OFF') : shift;
-      return ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
-    };
-
-    // prevMonthLeave 的 index 0~6 對應「週一~週日」
-    // 我們需要把最後7天依照「那天是星期幾」填入對應位置
-    // getDay()：0=週日,1=週一,...,6=週六 → 轉成 idx：週一=0,...,週六=5,週日=6
-    const dowToIdx = (dow) => (dow === 0 ? 6 : dow - 1);
-
-    let updatedCount = 0;
-
-    if (setStaffData) {
-      setStaffData(prevData =>
-        prevData.map(staff => {
-          const staffSchedule = historySchedule[staff.staff_id];
-          if (!staffSchedule) return staff; // 這位員工該月無班表，略過
-
-          const newPrevMonthLeave = [false, false, false, false, false, false, false];
-
-          last7Days.forEach(day => {
-            const dow = new Date(historyYear, historyMonth - 1, day).getDay();
-            const idx = dowToIdx(dow);
-            const shift = staffSchedule[day];
-            newPrevMonthLeave[idx] = isLeaveShift(shift);
-          });
-
-          updatedCount++;
-          return { ...staff, prevMonthLeave: newPrevMonthLeave };
-        })
-      );
-
-      // 計算下個月份提示
-      const nextMonth = historyMonth === 12 ? 1 : historyMonth + 1;
-      const nextYear  = historyMonth === 12 ? historyYear + 1 : historyYear;
-      alert(`✅ 已將 ${historyYear}年${historyMonth}月 最後7天班表匯入完成！\n共更新 ${updatedCount} 位員工的「上月末休假」。\n\n這份資料將用於 ${nextYear}年${nextMonth}月 排班時的七休一連班計算。\n請記得前往「員工管理」頁面點擊「💾 儲存變更」以同步至雲端。`);
-    }
-  };
-
   // ★★★ 核心新增：差額帳本寫入引擎 ★★★
   const handleConfirmSettlement = () => {
       if (!window.confirm(`⚠️ 確定要將 ${historyYear}年${historyMonth}月 的數據正式寫入員工帳戶嗎？\n\n系統將自動派發「積假 (OT)」與「夜班結餘」，\n並具備防呆機制，若本月重複結算不會導致無限累加，也不會覆蓋您在員工頁面手動微調的基準值。`)) return;
@@ -2681,7 +2634,6 @@ return (
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
-              <button onClick={handleImportLast7Days} style={{ padding: '0.5rem 1rem', background: '#2980b9', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }} title={`將 ${historyYear}年${historyMonth}月 最後7天班表匯入員工「上月末休假」欄位`}>📅 匯入末7日→員工資料</button>
               <button onClick={handleTestAutoSettle} style={{ padding: '0.5rem 1rem', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px dashed #ccc' }} title="開發者測試專用">⚙️ 測試 API</button>
            </div>
       </div>
@@ -3858,6 +3810,18 @@ const handleLogout = () => {
 // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
         await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         
+        // 🌟 ★★★ 關鍵修復：把該員工加入黑名單，並觸發 AI 找下一個人 ★★★
+        try {
+            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
+            await setDoc(progressRef, {
+                submitted_staff: arrayUnion(result.staffId)
+            }, { merge: true });
+            
+            // 背景呼叫 AI，不卡住畫面
+            await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+        } catch (e) {
+            console.error("交棒失敗:", e);
+        }
         // =========================================================
         // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
         // =========================================================
