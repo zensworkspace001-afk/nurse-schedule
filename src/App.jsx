@@ -1650,7 +1650,7 @@ const handleSave = async () => {
     { key: 'name', label: '姓名', type: 'text', width: '80px' },
     { key: 'email', label: 'Email信箱', type: 'text', width: '160px' , color:'black'}, // 👈 ★★★ 新增這行 ★★★
     { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
-    { key: 'prevMonthLeave', label: '上月末休假', type: 'week_picker', width: '220px' },
+    { key: 'prevMonthLeave', label: '上月連班天數', type: 'streak_display', width: '80px' },
     { key: 'tenure_years', label: '年資', type: 'number', width: '60px' },
     { key: 'is_leader', label: '組長', type: 'checkbox', width: '50px' },
     { key: 'leave_status', label: '狀態', type: 'select', options: ['None', 'Maternal', 'Student', 'OnLeave'], width: '90px' },
@@ -1706,29 +1706,34 @@ const handleSave = async () => {
                       <input type="checkbox" checked={staff[col.key] === true || staff[col.key] === 'True'} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
                     ) : col.type === 'select' ? (
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}>{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
-                    ) : col.type === 'week_picker' ? (
-                      <div style={{ display: 'flex', gap: '4px' }}>
-                        {['一','二','三','四','五','六','日'].map((day, idx) => {
-                          const isLeave = staff[col.key]?.[idx] === true;
-                          const isWeekend = idx >= 5; // 六=5, 日=6
-                          return (
-                            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: isWeekend ? '#e67e22' : '#888', marginBottom: '3px' }}>{day}</span>
-                              <div style={{
-                                width: '22px', height: '22px', borderRadius: '4px',
-                                background: isLeave ? '#d5f5e3' : (isWeekend ? '#FFD93D' : '#5b9cf6'),
-                                border: `1px solid ${isLeave ? '#a9dfbf' : (isWeekend ? '#f0b429' : '#3a7bd5')}`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                fontSize: '0.6rem', fontWeight: 'bold',
-                                color: isLeave ? '#27ae60' : 'white',
-                                title: isLeave ? '休假' : '上班'
-                              }}>
-                                {isLeave ? '休' : '班'}
-                              </div>
+                    ) : col.type === 'streak_display' ? (
+                      (() => {
+                        const leaves = staff[col.key] || [];
+                        let streak = 0;
+                        for (let i = 6; i >= 0; i--) {
+                          if (leaves[i] === true) break;
+                          streak++;
+                        }
+                        const isWarning = streak >= 6;
+                        const isAlert = streak >= 5;
+                        return (
+                          <div style={{ textAlign: 'center' }}>
+                            <div style={{
+                              display: 'inline-block',
+                              padding: '4px 12px',
+                              borderRadius: '20px',
+                              fontWeight: 'bold',
+                              fontSize: '1.1rem',
+                              background: isWarning ? '#fdecea' : (isAlert ? '#fff3e0' : '#e8f8f5'),
+                              color: isWarning ? '#c0392b' : (isAlert ? '#e67e22' : '#27ae60'),
+                              border: `1px solid ${isWarning ? '#f5c6cb' : (isAlert ? '#ffd8a8' : '#a9dfbf')}`
+                            }}>
+                              {streak}天
                             </div>
-                          );
-                        })}
-                      </div>
+                            {isWarning && <div style={{ fontSize: '0.7rem', color: '#e74c3c', marginTop: '2px' }}>⚠️ 達上限</div>}
+                          </div>
+                        );
+                      })()
                     ) : (
                       <input 
                         type={col.type} 
