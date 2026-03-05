@@ -1853,8 +1853,8 @@ const handleSave = async () => {
                         style={{ 
                           padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%', 
                           background: col.key === 'name' ? '#fff' : 'transparent',
-                          color: ['name', 'tenure_years', 'accumulated_ot', 'night_shift_balance','email'].includes(col.key) ? 'black' : 'inherit',
-                          fontWeight: ['name', 'tenure_years', 'accumulated_ot', 'night_shift_balance'].includes(col.key) ? 'bold' : 'normal'
+                          color: ['name', 'tenure_years', 'accumulated_ot', 'night_shift_balance','email','annual_leave_used'].includes(col.key) ? 'black' : 'inherit',
+                          fontWeight: ['name', 'tenure_years', 'accumulated_ot', 'night_shift_balance','annual_leave_used'].includes(col.key) ? 'bold' : 'normal'
                         }} 
                       />
                     )}
