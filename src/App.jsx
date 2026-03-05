@@ -3641,7 +3641,7 @@ return (
               <button onClick={() => setShowAddOption(!showAddOption)} style={{ padding: '0.5rem 1rem', background: '#6c757d', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer' }}>➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} style={{ padding: '0.5rem 1rem', background: '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} style={{ padding: '0.5rem 1rem', background: '#27ae60', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>📥 匯出 Excel</button>
-              <button onClick={handleTestAutoSettle} style={{ padding: '0.5rem 1rem', background: '#34495e', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px dashed #ccc' }} title="開發者測試專用">⚙️ 測試 API</button>
+              <button onClick={handleTestAutoSettle} style={{ padding: '0.5rem 1rem', background: '#34495e', color: 'white', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', border: '1px dashed #ccc' }} title="開發者測試專用">⚙️ 測試 API</button>
            </div>
       </div>
       {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
