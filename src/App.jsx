@@ -1537,6 +1537,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
             onManualRefresh={handleManualRefresh}  
             calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+            prevMonthSchedule={prevMonthSchedule} 
           />
         ) : (
           <StaffDashboard
