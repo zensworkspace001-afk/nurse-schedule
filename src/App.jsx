@@ -1511,8 +1511,8 @@ useEffect(() => {
     // 生成新的不重複工號
     const newId = `N${String(maxNum + 1).padStart(3, '0')}`;
     
-    const newStaff = {
-      staff_id: newId, name: '新員工', email: '', level: 'N0', tenure_years: 0, // 👈 加上 email: ''
+ const newStaff = {
+      staff_id: newId, name: '新員工', gender: '女', email: '', level: 'N0', tenure_years: 0,
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       prevMonthLeave: [false, false, false, false, false, false, false]
@@ -1646,6 +1646,7 @@ const handleSave = async () => {
   const columns = [
     { key: 'staff_id', label: '工號', type: 'text', width: '60px', readOnly: true },
     { key: 'name', label: '姓名', type: 'text', width: '80px' },
+    { key: 'gender', label: '性別', type: 'select', options: ['女', '男'], width: '60px' }, // 👈 新增這行
     { key: 'email', label: 'Email信箱', type: 'text', width: '160px' , color:'black'}, // 👈 ★★★ 新增這行 ★★★
     { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
     { key: 'prevMonthLeave', label: '上月連班天數', type: 'streak_display', width: '80px' },
@@ -2164,13 +2165,26 @@ let combinedData = "";
                              <div style={{ fontSize: '1.1rem', color: '#95a5a6', fontWeight: 'bold' }}>⏸️ 引擎待機中 / 或已全數選完</div>
                          )}
                      </div>
-                     
-                     {/* ⏭️ 強制跳過按鈕 (只有當雷達有人時才顯示) */}
+{/* ⏭️ 強制跳過按鈕 (只有當雷達有人時才顯示) */}
                      {activeTurn?.active_staff_id && (
                          <button onClick={handleForceSkip} style={{ padding: '8px 15px', background: '#fff', color: '#e74c3c', border: '2px solid #e74c3c', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(231,76,60,0.1)' }}>
                              ⏭️ 逾時強制跳過
                          </button>
                      )}
+                 </div>
+
+                 {/* 🧠 新增：給 AI 的客製化指令 */}
+                 <div style={{ marginTop: '15px' }}>
+                     <label style={{ fontSize: '0.9rem', color: '#2c3e50', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                         🧠 給 AI 的選班優先條件 (選填)
+                     </label>
+                     <input 
+                         type="text" 
+                         value={priorityConfig?.relayInstruction || ''} 
+                         onChange={(e) => setPriorityConfig({...priorityConfig, relayInstruction: e.target.value})}
+                         placeholder="例如：女性優先、年資高優先... (若留空則預設找最疲勞者)"
+                         style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
+                     />
                  </div>
              </div>
              
@@ -3758,14 +3772,29 @@ const handleLogout = () => {
           const scores = statsData.map(stat => stat.score || 100);
           const average = scores.length > 0 ? Math.round(scores.reduce((sum, val) => sum + val, 0) / scores.length) : 100;
 
-          let aiPrompt = `【自動接力選班決策】\n團隊歷史平均健康度: ${average}分\n尚未選班之候選人現況：\n`;
+          let aiPrompt = `【自動接力選班決策】\n團隊歷史平均健康度: ${average}分\n`;
+          
+          // ★ 新增：如果護理長有設定條件，強制寫入最高指導原則
+          if (priorityConfig && priorityConfig.relayInstruction) {
+              aiPrompt += `[管理員最高指導原則]：${priorityConfig.relayInstruction}\n\n`;
+          }
+
+ aiPrompt += `尚未選班之候選人現況：\n`;
           unassignedStaff.forEach(staff => {
+              // 1. 提取所有員工管理面板的特徵
               const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
-              aiPrompt += `- ${staff.staff_id} (${staff.name}): 歷史健康度 ${historyScore}分, 積假餘額 ${staff.accumulated_ot}, 夜班結餘 ${staff.night_shift_balance}\n`;
+              const gender = staff.gender || '女'; 
+              const level = staff.level || 'N0';
+              const isLeader = (staff.is_leader === true || staff.is_leader === 'True') ? '是' : '否';
+              const canNight = (staff.can_night_shift === false || staff.can_night_shift === 'false') ? '否' : '是';
+              const workHours = staff.special_status === 'BiWeekly' ? '雙週變形' : '標準';
+              const leaveStatus = staff.leave_status === 'None' ? '無' : staff.leave_status;
+              
+              // 2. 組合成超詳細的 AI 認知字串
+              aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${level} | 組長:${isLeader} | 可上夜班:${canNight} | 工時制:${workHours} | 特殊狀態:${leaveStatus} | 年資:${staff.tenure_years || 0}年 | 歷史健康度(疲勞值):${historyScore}分 | 積假餘額:${staff.accumulated_ot} | 夜班結餘:${staff.night_shift_balance}\n`;
           });
 
-          aiPrompt += `\n請根據上述數據，選出「分數最低、最疲勞、最需要優先選好班」的 1 位員工。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
-
+          aiPrompt += `\n請根據上述數據與原則，選出「最符合條件、最需要優先選班」的 1 位員工。\n若無特殊指導原則，則預設找最疲勞者。\n請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
           // 5. 呼叫 Gemini 進行決策
           const token = await auth.currentUser.getIdToken();
           const response = await fetch('/api/gemini', {
