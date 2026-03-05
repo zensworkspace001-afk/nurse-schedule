@@ -1708,6 +1708,8 @@ const handleSave = async () => {
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}>{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
                     ) : col.type === 'streak_display' ? (
                       (() => {
+                        // prevMonthLeave 按日期順序儲存：idx0=倒數第7天, idx6=最後一天
+                        // 從尾端(最後一天)往前數，遇到休假停止
                         const leaves = staff[col.key] || [];
                         let streak = 0;
                         for (let i = 6; i >= 0; i--) {
@@ -2333,6 +2335,33 @@ const ScheduleReviewPanel = ({
   });
 
   useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
+
+  // ★★★ 自動同步：當結算班表或月份變更時，靜默計算最後7天並寫入員工 prevMonthLeave ★★★
+  // 儲存格式：按「日期順序」存，idx0=倒數第7天, idx6=最後一天（月底）
+  useEffect(() => {
+    if (!historySchedule || Object.keys(historySchedule).length === 0) return;
+    if (!setStaffData) return;
+
+    const daysInThisMonth = new Date(historyYear, historyMonth, 0).getDate();
+    // 最後7天，依日期從小到大：[月底-6, 月底-5, ..., 月底]
+    const last7Days = Array.from({ length: 7 }, (_, i) => daysInThisMonth - 6 + i);
+
+    const isLeaveShift = (shift) => {
+      if (!shift) return true;
+      const s = typeof shift === 'object' ? (shift?.type || 'OFF') : shift;
+      return ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
+    };
+
+    setStaffData(prevData =>
+      prevData.map(staff => {
+        const staffSchedule = historySchedule[staff.staff_id];
+        if (!staffSchedule) return staff;
+        // idx 0 = 倒數第7天, idx 6 = 最後一天（月底）
+        const newPrevMonthLeave = last7Days.map(day => isLeaveShift(staffSchedule[day]));
+        return { ...staff, prevMonthLeave: newPrevMonthLeave };
+      })
+    );
+  }, [historySchedule, historyYear, historyMonth]);
 
   // -- 健康度評分引擎 --
   const calculateHealthScore = (staffSchedule) => {
