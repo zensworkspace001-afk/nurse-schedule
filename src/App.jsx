@@ -1279,7 +1279,17 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
       } finally { setProcessing(false); setLoadingStatus(''); }
   };
 
-  const handleCellChange = (staffId, day, newValue) => {
+const handleCellChange = (staffId, day, newValue) => {
+    // === RG 絕對防護罩 ===
+    const currentCell = schedule[staffId]?.[day];
+    const currentValue = (typeof currentCell === 'object') ? currentCell?.type : currentCell;
+    const workShifts = ['D', 'E', 'N', '支援', 'OT']; 
+    if (currentValue === 'RG' && workShifts.some(shift => newValue.includes(shift))) {
+        alert('🚨 勞基法天條攔截：\n「例假 (RG)」絕對禁止出勤！\n\n系統已強制阻擋您將 RG 變更為上班班別。');
+        return; 
+    }
+    // ===================
+
     const newSchedule = JSON.parse(JSON.stringify(schedule));
     if (!newSchedule[staffId]) newSchedule[staffId] = {};
     const oldCell = newSchedule[staffId][day];
@@ -2564,12 +2574,22 @@ const ScheduleReviewPanel = ({
       if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code)); 
   };
   
-  const handleCellChange = (staffId, day, newValue) => {
-    const newSchedule = JSON.parse(JSON.stringify(historySchedule));
-    if (!newSchedule[staffId]) newSchedule[staffId] = {};
-    newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
-    setHistorySchedule(newSchedule);
-  };
+const handleCellChange = (staffId, day, newValue) => {
+        // === RG 絕對防護罩 ===
+        const currentCell = finalizedSchedule[staffId]?.[day];
+        const currentValue = (typeof currentCell === 'object') ? currentCell?.type : currentCell;
+        const workShifts = ['D', 'E', 'N', '支援', 'OT']; 
+        if (currentValue === 'RG' && workShifts.some(shift => newValue.includes(shift))) {
+            alert('🚨 勞基法天條攔截：\n「例假 (RG)」絕對禁止出勤！\n\n系統已強制阻擋您將 RG 變更為上班班別。');
+            return; 
+        }
+        // ===================
+
+        const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
+        if (!newSchedule[staffId]) newSchedule[staffId] = {};
+        newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+        setFinalizedSchedule(newSchedule);
+    };
 
   // --- 抓取結算數據 ---
   const getSettlementData = () => {
