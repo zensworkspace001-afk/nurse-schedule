@@ -402,6 +402,19 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const [isProcessing, setIsProcessing] = useState(false);
   // ★ 新增：嚴格判定該名員工是否已經存在於本月班表中
   const hasClaimed = currentSchedule && Object.keys(currentSchedule).includes(currentUser.id);
+  // ★★★ 新增：即時監聽 AI 接力選班雷達狀態 ★★★
+  const [activeTurn, setActiveTurn] = useState(null);
+  useEffect(() => {
+      const turnRef = doc(db, "SelectionTurn", `${targetYear}_${targetMonth}`);
+      const unsub = onSnapshot(turnRef, (docSnap) => {
+          if (docSnap.exists()) {
+              setActiveTurn(docSnap.data());
+          } else {
+              setActiveTurn(null);
+          }
+      });
+      return () => unsub();
+  }, [targetYear, targetMonth]);
 
   // ★★★ 修正 2：useEffect 也必須置頂 ★★★
   useEffect(() => {
@@ -503,38 +516,51 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   // ★★★ 修正 3：現在才開始放「條件 Return (防呆)」 ★★★
   // ============================================================================
 
-  // 防呆 1: 基本未載入檢查
+// 防呆 1: 基本未載入檢查
   if (!currentUser) return <div style={{ padding: '40px', textAlign: 'center', color: '#666' }}>🔄 正在載入使用者資料...</div>;
 
-  // 防呆 2: 優先選班權限檢查
-  if (priorityConfig && !priorityConfig.isOpenToAll) {
-      const allowedIds = new Set();
-      if (priorityConfig.types.includes('accumulated_ot')) {
-          const sortedOT = [...staffData].map(s => ({id: s.staff_id, val: Number(s.accumulated_ot)||0})).sort((a,b)=>b.val-a.val);
-          sortedOT.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
-      }
-      if (priorityConfig.types.includes('night_shift_balance')) {
-          const sortedNight = [...staffData].map(s => ({id: s.staff_id, val: Number(s.night_shift_balance)||0})).sort((a,b)=>b.val-a.val);
-          sortedNight.slice(0, priorityConfig.count).forEach(s => allowedIds.add(s.id));
-      }
+  const currentStaffInfo = staffData.find(s => s.staff_id === currentUser.id);
 
-      if (!allowedIds.has(currentUser.id)) {
-          return (
-            <div style={{ padding: '2rem', maxWidth: '600px', margin: '4rem auto', background: 'white', borderRadius: '16px', boxShadow: '0 4px 20px rgba(0,0,0,0.1)', textAlign: 'center' }}>
-                <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔒</div>
-                <h2 style={{ color: '#2c3e50', fontWeight: 'bold' }}>班表選填暫未開放</h2>
-                <p style={{ color: '#7f8c8d', fontSize: '1.1rem', margin: '1.5rem 0' }}>目前為<strong>「優先選班時段」</strong>，僅開放符合以下條件的前 {priorityConfig.count} 位同仁優先選填：</p>
-                <div style={{textAlign:'left', background:'#f8f9fa', padding:'15px 30px', borderRadius:'10px', display:'inline-block'}}>
-                    {priorityConfig.types.includes('accumulated_ot') && <div style={{color:'#e67e22', fontWeight:'bold'}}>🔥 積借休時數 (OT) 較多者</div>}
-                    {priorityConfig.types.includes('night_shift_balance') && <div style={{color:'#8e44ad', fontWeight:'bold', marginTop:'5px'}}>🌙 夜班結餘較多者</div>}
-                </div>
-                <div style={{ marginTop:'20px', fontSize:'0.9rem', color:'#666' }}>
-                    您的數據：OT: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.accumulated_ot || 0}</strong> / Night: <strong>{staffData.find(s=>s.staff_id===currentUser.id)?.night_shift_balance || 0}</strong><br/>(未達優先門檻)
-                </div>
-                <button onClick={() => window.location.reload()} style={{ marginTop: '20px', padding: '10px 30px', background: '#667eea', color: 'white', border: 'none', borderRadius: '50px', cursor: 'pointer' }}>重新整理</button>
-            </div>
-          );
-      }
+  // 防呆 2: 離職或停權檢查
+  if (currentStaffInfo && (currentStaffInfo.is_active === false || currentStaffInfo.is_active === 'false')) {
+      return (
+          <div style={{ padding: '3rem', textAlign: 'center', background: 'white', borderRadius: '16px', maxWidth: '500px', margin: '3rem auto', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🚫</div>
+              <h2 style={{ color: '#c0392b', marginBottom: '1rem' }}>帳號無效 / 已離職</h2>
+              <p style={{ color: '#7f8c8d', fontSize: '1.1rem', lineHeight: '1.6' }}>您的帳號目前為「非在職狀態」，無法登入選班。<br/>如有疑問請洽詢護理長。</p>
+          </div>
+      );
+  }
+
+  // 防呆 3: 長假/特殊狀態檢查
+  if (currentStaffInfo && currentStaffInfo.leave_status && currentStaffInfo.leave_status !== 'None') {
+      const statusMap = { Maternal: '產假/育嬰假', Student: '進修留職', OnLeave: '長假' };
+      const statusName = statusMap[currentStaffInfo.leave_status] || '特殊休假';
+      return (
+          <div style={{ padding: '3rem', textAlign: 'center', background: 'white', borderRadius: '16px', maxWidth: '500px', margin: '3rem auto', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+              <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🏖️</div>
+              <h2 style={{ color: '#f39c12', marginBottom: '1rem' }}>暫停排班</h2>
+              <p style={{ color: '#7f8c8d', fontSize: '1.1rem', lineHeight: '1.6' }}>您目前的狀態為<strong>「{statusName}」</strong>，本月不需參與系統排班作業。<br/>祝您休假愉快！</p>
+          </div>
+      );
+  }
+
+  // 防呆 4: AI 接力選班引擎鎖定 (最核心！)
+  // 若引擎有指定人 (active_staff_id 有值)，且那個人不是我，我就不能選！
+  if (activeTurn && activeTurn.active_staff_id && activeTurn.active_staff_id !== currentUser.id) {
+      const activeStaffName = staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id;
+      return (
+          <div style={{ padding: '3rem', textAlign: 'center', background: 'white', borderRadius: '16px', maxWidth: '500px', margin: '3rem auto', boxShadow: '0 4px 15px rgba(0,0,0,0.1)' }}>
+              <style>{`@keyframes pulseLock { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.1); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }`}</style>
+              <div style={{ fontSize: '4rem', marginBottom: '1rem', animation: 'pulseLock 2s infinite' }}>⏳</div>
+              <h2 style={{ color: '#2980b9', marginBottom: '1rem', fontWeight: 'bold' }}>尚未輪到您選班</h2>
+              <div style={{ color: '#34495e', fontSize: '1.1rem', lineHeight: '1.6', marginBottom: '1.5rem', background: '#f8f9fa', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #3498db', textAlign: 'left' }}>
+                  目前的 <strong>優先發球權</strong> 在 <span style={{color: '#e74c3c', fontWeight: 'bold', fontSize: '1.2rem'}}>{activeStaffName}</span> 手上。<br/><br/>
+                  為確保最需要的人能優先挑選好班，請等待 AI 引擎發送您的專屬換棒 Email 通知！
+              </div>
+              <button onClick={() => window.location.reload()} style={{ padding: '12px 30px', background: '#667eea', color: 'white', border: 'none', borderRadius: '50px', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem', boxShadow: '0 4px 10px rgba(102, 126, 234, 0.4)' }}>🔄 重新整理確認狀態</button>
+          </div>
+      );
   }
 
   const checkCompliance = (pattern) => {
