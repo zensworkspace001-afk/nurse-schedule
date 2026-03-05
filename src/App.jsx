@@ -1118,7 +1118,7 @@ const handleLogout = () => {
 `;
           unassignedStaff.forEach(staff => {
               const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
-              aiPrompt += `- ${staff.staff_id} (${staff.name}): 性別=${staff.gender||'未設定'}, 職級=${staff.level}, 年資=${staff.tenure_years}年, 歷史健康度=${historyScore}分, 積假餘額=${staff.accumulated_ot}, 夜班結餘=${staff.night_shift_balance}, 可夜班=${staff.can_night_shift?'是':'否'}\n`;
+              aiPrompt += `- ${staff.staff_id} (${staff.name}): 性別=${staff.gender||'女'}, 職級=${staff.level}, 年資=${staff.tenure_years}年, 歷史健康度=${historyScore}分, 積假餘額=${staff.accumulated_ot}, 夜班結餘=${staff.night_shift_balance}, 可夜班=${staff.can_night_shift?'是':'否'}\n`;
           });
 
           if (customInstruction && customInstruction.trim()) {
@@ -2054,7 +2054,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 {/* ★★★ 新增的：AI 需求詢問視窗 (Modal) ★★★ */}
       {showInstructionModal && (() => {
         const genderStats = staffData.filter(s => s.is_active).reduce((acc, s) => {
-          const g = s.gender || '未設定'; acc[g] = (acc[g] || 0) + 1; return acc;
+          const g = s.gender || '女'; acc[g] = (acc[g] || 0) + 1; return acc;
         }, {});
         return (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 1100, borderRadius: '16px', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
@@ -3033,7 +3033,7 @@ let combinedData = "";
       {/* ★ 接力選班自訂指令對話框 */}
       {showRelayModal && (() => {
         const genderStats = staffData.filter(s => s.is_active).reduce((acc, s) => {
-          const g = s.gender || '未設定'; acc[g] = (acc[g] || 0) + 1; return acc;
+          const g = s.gender || '女'; acc[g] = (acc[g] || 0) + 1; return acc;
         }, {});
         return (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
