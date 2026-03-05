@@ -1761,7 +1761,7 @@ const handleSave = async () => {
     { key: 'special_status', label: '工時', type: 'select', options: ['Standard', 'BiWeekly'], width: '90px' },
     { key: 'is_pregnant_or_nursing', label: '孕/哺乳', type: 'checkbox', width: '60px' },
     { key: 'can_night_shift', label: '夜班', type: 'checkbox', width: '50px' },
-    { key: 'annual_leave_used', label: '已休特休', type: 'number', width: '70px' },
+    { key: 'annual_leave_used', label: '已休特休', type: 'number', width: '70px',color:'black'},
     { key: 'accumulated_ot', label: '積假', type: 'number', width: '60px' },
     { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '60px' },
   ];
