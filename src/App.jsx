@@ -517,27 +517,30 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
     setAiSlots(formattedSlots);
   }, [currentSchedule, targetYear, targetMonth, staffData]);
 
-// 計算上個月底的「連續上班天數」，用來銜接本月 1 號的七休一防呆
+// ★ 改為直接從雲端上個月的班表計算連續上班天數 (不再受限於 7 天)
   const getPrevMonthStreak = () => {
     if (!currentUser || !currentUser.id) return 0;
-    if (!staffData || staffData.length === 0) return 0;
     
-    const staff = staffData.find(s => s.staff_id === currentUser.id);
-    if (!staff || !staff.prevMonthLeave) return 0;
-    
-    // prevMonthLeave 陣列紀錄上個月最後 7 天的「休假狀態」
-    // 💡 狀態對應：true = 有休假 (UI打勾)，false = 有上班 (UI未打勾)
-    const leaves = staff.prevMonthLeave; 
+    let prevM = targetMonth - 1;
+    let prevY = targetYear;
+    if (prevM === 0) { prevM = 12; prevY--; }
+    const daysInPrevMonth = new Date(prevY, prevM, 0).getDate();
+
+    const staffSchedule = prevMonthSchedule?.[currentUser.id];
+    if (!staffSchedule) return 0; // 若無歷史資料則為 0
+
     let streak = 0;
-    
-    // 從陣列尾端 (i=6，代表上個月最後一天) 往前倒推檢查
-    for (let i = 6; i >= 0; i--) { 
-      if (leaves[i] === true) {
-          break; // 遇到休假，代表連續上班的狀態被切斷了，停止計算
-      }
-      streak++;  // 遇到 false (代表那天有上班)，連續上班天數 +1
+    // 從上個月最後一天往前倒推
+    for (let day = daysInPrevMonth; day >= 1; day--) {
+        const cell = staffSchedule[day];
+        const type = (typeof cell === 'object') ? cell?.type : cell;
+        const isOff = ['OFF', 'RG', 'RC', '事假', '病假', '特休', '空班'].includes(type || 'OFF');
+        
+        if (isOff) {
+            break; // 遇到休假，代表連續上班被切斷了
+        }
+        streak++;  
     }
-    
     return streak;
   };
   const prevStreak = getPrevMonthStreak();
@@ -873,7 +876,22 @@ const NurseSchedulingSystem = () => {
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
   // ★★★ 新增 1：儲存健康度歷史數據的狀態 ★★★
   const [healthStats, setHealthStats] = useState([]); 
+// ★★★ 新增：專門用來儲存「上個月班表」的狀態 ★★★
+  const [prevMonthSchedule, setPrevMonthSchedule] = useState({});
 
+  // ★★★ 新增：自動監聽上個月的真實班表，只要有變更就更新 ★★★
+  useEffect(() => {
+      if (!currentUser) return;
+      
+      let prevM = selectedMonth - 1;
+      let prevY = selectedYear;
+      if (prevM === 0) { prevM = 12; prevY--; }
+
+      const unsubPrev = subscribeToSchedule(prevY, prevM, (data) => {
+          setPrevMonthSchedule(data?.finalizedSchedule || {});
+      });
+      return () => unsubPrev();
+  }, [selectedYear, selectedMonth, currentUser]);
   // ★★★ 新增 2：計算並更新當月健康度的函式 ★★★
   const handleUpdateHealthStats = (year, month, avg, median) => {
       setHealthStats(prev => {
@@ -1547,7 +1565,7 @@ const ManagerInterface = ({
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
-  finalizedSchedule, 
+  finalizedSchedule, prevMonthSchedule,
   setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff, // 👈 ★ 這裡要接住 // 👈 補上這兩個變數！ // 👈 補上這行
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
@@ -1589,7 +1607,11 @@ const ManagerInterface = ({
       )}
       
       {activeTab === 'staff' && (
-        <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
+        <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} 
+        prevMonthSchedule={prevMonthSchedule} // 👈 補上這行
+            selectedYear={selectedYear}           // 👈 補上這行
+            selectedMonth={selectedMonth}         // 👈 補上這行
+        />
       )}
       
       {activeTab === 'schedule' && (
@@ -2069,14 +2091,19 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
       } finally { setProcessing(false); setLoadingStatus(''); }
   };
 
-  const handleCellChange = (staffId, day, newValue) => {
-    const newSchedule = JSON.parse(JSON.stringify(schedule));
+// 🌟 加上 async
+  const handleCellChange = async (staffId, day, newValue) => {
+    const newSchedule = JSON.parse(JSON.stringify(historySchedule));
     if (!newSchedule[staffId]) newSchedule[staffId] = {};
-    const oldCell = newSchedule[staffId][day];
-    const opt = shiftOptions.find(o => o.code === newValue);
-    const defaultTime = opt ? opt.time : '';
-    newSchedule[staffId][day] = { ...(typeof oldCell === 'object' ? oldCell : {}), type: newValue, time: defaultTime };
-    setSchedule(newSchedule);
+    newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+    setHistorySchedule(newSchedule);
+
+    // ★ 關鍵修復：立即同步到 Firebase！這樣一改，員工管理面板與防呆邏輯就會瞬間跟著變動！
+    try {
+        await updateStaffSchedule(historyYear, historyMonth, newSchedule);
+    } catch (e) {
+        console.error("同步歷史班表失敗", e);
+    }
   };
 
   const handleAddOption = () => {
@@ -2363,7 +2390,12 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 const StaffManagementPanel = ({ staffData, setStaffData }) => {
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
-
+// ★ 計算上個月的最後 7 天是幾號
+  let prevM = selectedMonth - 1;
+  let prevY = selectedYear;
+  if (prevM === 0) { prevM = 12; prevY--; }
+  const daysInPrevMonth = new Date(prevY, prevM, 0).getDate();
+  const last7Days = Array.from({length: 7}, (_, i) => daysInPrevMonth - 6 + i);
 useEffect(() => {
   // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
   setIsDirty(prev => {
@@ -2400,6 +2432,7 @@ useEffect(() => {
       leave_status: 'None', is_active: true, special_status: 'Standard',
       can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       prevMonthLeave: [false, false, false, false, false, false, false]
+      
     };
     
     setLocalStaff([...localStaff, newStaff]);
@@ -2588,23 +2621,20 @@ const handleSave = async () => {
                       <input type="checkbox" checked={staff[col.key] === true || staff[col.key] === 'True'} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.checked)} style={{ width: '20px', height: '20px', cursor: 'pointer' }} />
                     ) : col.type === 'select' ? (
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} style={{ padding: '6px', borderRadius: '4px', border: '1px solid #ddd', width: '100%' }}>{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
-                    ) : col.type === 'week_picker' ? (
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        {['一','二','三','四','五','六','日'].map((day, idx) => (
-                          <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#555', marginBottom: '2px' }}>{day}</span>
-                            <input 
-                              type="checkbox" 
-                              checked={staff[col.key]?.[idx] || false} 
-                              onChange={(e) => {
-                                const newWeek = [...(staff[col.key] || [false,false,false,false,false,false,false])];
-                                newWeek[idx] = e.target.checked;
-                                handleChange(staff.staff_id, col.key, newWeek);
-                              }}
-                              style={{ width: '18px', height: '18px', cursor: 'pointer', margin: 0 }} 
-                            />
-                          </div>
-                        ))}
+) : col.type === 'auto_shifts' ? (
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {last7Days.map((day) => {
+                          const cell = prevMonthSchedule?.[staff.staff_id]?.[day];
+                          const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
+                          const isWork = ['D', 'E', 'N', '支援'].includes(type) || (type && type.includes('OT'));
+                          
+                          return (
+                            <div key={day} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', background: isWork ? '#ffebee' : '#e8f8f5', padding: '2px 4px', borderRadius: '4px', minWidth: '24px' }}>
+                              <span style={{ fontSize: '0.65rem', color: '#666' }}>{day}日</span>
+                              <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: isWork ? '#c0392b' : '#27ae60' }}>{type}</span>
+                            </div>
+                          );
+                        })}
                       </div>
                     ) : (
                       <input 
