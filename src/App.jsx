@@ -33,8 +33,19 @@ const LABOR_LAW_RULES = {
   REQUIRED_REGULAR_DAYS: 4,
   REQUIRED_REST_DAYS: 4
 };
-
-
+// ============================================================================
+// 勞基法特休假計算公式 (依據年資)
+// ============================================================================
+const calculateAnnualLeave = (tenureYears) => {
+    if (tenureYears < 0.5) return 0;
+    if (tenureYears >= 0.5 && tenureYears < 1) return 3;
+    if (tenureYears >= 1 && tenureYears < 2) return 7;
+    if (tenureYears >= 2 && tenureYears < 3) return 10;
+    if (tenureYears >= 3 && tenureYears < 5) return 14;
+    if (tenureYears >= 5 && tenureYears < 10) return 15;
+    if (tenureYears >= 10) return Math.min(30, 15 + Math.floor(tenureYears - 9));
+    return 0;
+};
 
 // ============================================================================
 // 法遵檢查邏輯 (全功能版：含工時、間隔、休假、加班)
@@ -68,7 +79,7 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
     let totalRG = 0; // ★ 新增：統計例假 (不可出勤)
     let totalRC = 0; // ★ 新增：統計休息日 (可加班)
     let daysSinceLastRG = 0; // ★ 新增：距離上次例假的天數
-
+    let scheduledAnnualLeave = 0; // ★ 新增：統計本月排了幾天特休
     // 用來計算每週工時 (以週一為起始)
     let currentWeekHours = 0;
     let isWeeklyViolationReported = false; // ★ 新增這行
@@ -111,7 +122,7 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
       // --- C. 統計休假天數 ---
       // --- C. 統計休假天數與種類 ---
       if (['RG', 'RC', 'OFF', '空班'].includes(shiftType)) totalOffDays++;
-      
+      if (shiftType === '特休') scheduledAnnualLeave++; // ★ 算特休天數
       if (shiftType === 'RG') {
           totalRG++;
           daysSinceLastRG = 0; // 遇到例假，計數器安全歸零
@@ -165,7 +176,18 @@ const checkLaborLawCompliance = (schedule, staffData, historyData, year, month) 
       if (dailyHours > 0) lastShiftType = shiftType;
       else lastShiftType = null;
     }
+    // ✅ 在它【上面】插入特休餘額檢查：
+    // --- ★ 檢查特休餘額 ---
+    const totalAnnualLeave = calculateAnnualLeave(staff.tenure_years || 0);
+    const usedAnnualLeave = staff.annual_leave_used || 0;
+    const remainingLeave = totalAnnualLeave - usedAnnualLeave;
 
+    if (scheduledAnnualLeave > remainingLeave) {
+        violations.push({
+            staffId, staffName: staff?.name, day: '整月', type: 'ANNUAL_LEAVE_EXCEEDED',
+            message: `⚠️ 特休超休：本月排 ${scheduledAnnualLeave} 天特休 (剩餘額度僅 ${remainingLeave} 天，全年總額度 ${totalAnnualLeave} 天)`
+        });
+    }
 // --- F. 檢查例假(RG)與休息日(RC)總量管制 ---
     if (totalRG < 4) {
         violations.push({
@@ -1586,8 +1608,8 @@ useEffect(() => {
  const newStaff = {
       staff_id: newId, name: '新員工', gender: '女', email: '', level: 'N0', tenure_years: 0,
      leave_status: 'None', is_active: true, special_status: 'Standard',
-      is_pregnant_or_nursing: false, can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
-      prevMonthLeave: [false, false, false, false, false, false, false]
+     is_pregnant_or_nursing: false, can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
+      annual_leave_used: 0, prevMonthLeave: [false, false, false, false, false, false, false]
     };
     
     setLocalStaff([...localStaff, newStaff]);
@@ -1729,6 +1751,7 @@ const handleSave = async () => {
     { key: 'special_status', label: '工時', type: 'select', options: ['Standard', 'BiWeekly'], width: '90px' },
     { key: 'is_pregnant_or_nursing', label: '孕/哺乳', type: 'checkbox', width: '60px' },
     { key: 'can_night_shift', label: '夜班', type: 'checkbox', width: '50px' },
+    { key: 'annual_leave_used', label: '已休特休', type: 'number', width: '70px' },
     { key: 'accumulated_ot', label: '積假', type: 'number', width: '60px' },
     { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '60px' },
   ];
@@ -2561,8 +2584,8 @@ const ScheduleReviewPanel = ({
           const name = (staff && staff.name && staff.name.trim() !== '') ? staff.name : '未知姓名'; 
           
           let workDays = 0, nationalHolidayWorkDays = 0, explicitOtDays = 0; 
-          let personalLeaveDays = 0, sickLeaveDays = 0;     
-          let nightShiftsCount = 0; 
+          let personalLeaveDays = 0, sickLeaveDays = 0, annualLeaveDays = 0; // ★ 加入 annualLeaveDays
+          let nightShiftsCount = 0;
 
           for (let d = 1; d <= daysInMonth; d++) {
               const cell = historySchedule[rowId]?.[d];
@@ -2578,6 +2601,7 @@ const ScheduleReviewPanel = ({
               else if (type.includes('(OT)')) explicitOtDays++;
               else if (type === '事假') personalLeaveDays++;
               else if (type === '病假') sickLeaveDays++;
+              else if (type === '特休') annualLeaveDays++; // ★ 結算特休天數
           }
 
           const nationalHolidayPay = nationalHolidayWorkDays * (hourlyWage * 8);
@@ -2596,7 +2620,7 @@ const ScheduleReviewPanel = ({
               workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
               nightShiftsCount, 
               restDayOtPay, nationalHolidayWorkDays, nationalHolidayPay, totalOtPay, 
-              personalLeaveDays, sickLeaveDays, deduction, totalSalary: finalSalary
+              personalLeaveDays, sickLeaveDays, annualLeaveDays, deduction, totalSalary: finalSalary // ★ 加入 annualLeaveDays
           });
       });
       return data;
@@ -2615,22 +2639,25 @@ const ScheduleReviewPanel = ({
                   const sData = currentSettlement.find(s => s.staff_id === staff.staff_id);
                   if (!sData) return staff; 
 
-                  const newHistory = { ...(staff.settlement_history || {}) };
-                  const oldRecord = newHistory[monthKey] || { ot: 0, night: 0 };
+            const newHistory = { ...(staff.settlement_history || {}) };
+                  const oldRecord = newHistory[monthKey] || { ot: 0, night: 0, annual: 0 };
 
                   const otDiff = sData.otDays - oldRecord.ot;
                   const nightDiff = sData.nightShiftsCount - oldRecord.night;
+                  const annualDiff = (sData.annualLeaveDays || 0) - (oldRecord.annual || 0); // ★ 算出本次結算多請了幾天特休
 
                   newHistory[monthKey] = {
                       ot: sData.otDays,
-                      night: sData.nightShiftsCount
+                      night: sData.nightShiftsCount,
+                      annual: sData.annualLeaveDays || 0 // ★ 紀錄本月扣了幾天
                   };
 
                   return {
                       ...staff,
                       settlement_history: newHistory,
                       accumulated_ot: (Number(staff.accumulated_ot) || 0) + otDiff,
-                      night_shift_balance: (Number(staff.night_shift_balance) || 0) + nightDiff
+                      night_shift_balance: (Number(staff.night_shift_balance) || 0) + nightDiff,
+                      annual_leave_used: (Number(staff.annual_leave_used) || 0) + annualDiff // ★ 正式扣除特休額度
                   };
               });
           });
