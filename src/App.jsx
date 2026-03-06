@@ -2751,6 +2751,7 @@ const ScheduleReviewPanel = ({
   shiftOptions, setShiftOptions, 
   publicHolidays = [],
   onUpdateHealthStats,
+  baseSalary, setBaseSalary, // ★★★ 這裡接收
   // ★ 接收專屬的歷史狀態
   setHistorySchedule,
   historyYear, historyMonth, setHistoryYear, setHistoryMonth,
@@ -2765,16 +2766,6 @@ const ScheduleReviewPanel = ({
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
  const [showSettlement, setShowSettlement] = useState(false);
-
-
-
-  
-  const [baseSalary, setBaseSalary] = useState(() => {
-      const saved = localStorage.getItem('globalBaseSalary');
-      return saved ? Number(saved) : 40000;
-  });
-
-  useEffect(() => { localStorage.setItem('globalBaseSalary', baseSalary); }, [baseSalary]);
 
   // ★★★ 自動同步：結算月份變更且班表載入後，靜默更新員工 prevMonthLeave ★★★
   // 用 ref 記錄「上次已同步的月份」，避免重複覆蓋
@@ -3811,7 +3802,8 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule, 
   finalizedSchedule, 
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff, // 👈 ★ 這裡要接住 // 👈 補上這兩個變數！ // 👈 補上這行
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff,
+  baseSalary, setBaseSalary, // ★ 這裡接住 
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
 
@@ -3819,7 +3811,7 @@ const ManagerInterface = ({
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       
       <div style={{ background: 'rgba(255,255,255,0.95)', borderRadius: '16px', padding: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-        {['requirements', 'staff', 'schedule', 'publish','review', 'statistics', 'simulation'].map(tab => (
+        {['requirements', 'staff', 'schedule', 'publish','review', 'statistics'].map(tab => (
           <button 
             key={tab} 
             onClick={() => setActiveTab(tab)} 
@@ -3903,6 +3895,7 @@ const ManagerInterface = ({
            historyYear={historyYear} historyMonth={historyMonth}
            setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
            historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
+           baseSalary={baseSalary} setBaseSalary={setBaseSalary} // ★ 傳給歷史面板
         />
       )}
       
@@ -3993,6 +3986,7 @@ const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
 const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   // ★ 新增這行：把病床與護病比的狀態提升到最高層
   const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 });
+  const [baseSalary, setBaseSalary] = useState(40000);
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
   const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
@@ -4092,6 +4086,7 @@ const [historyYear, setHistoryYear] = useState(() => {
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         if (data.requirements) setRequirements(data.requirements);
         if (data.bedConfig) setBedConfig(data.bedConfig);
+        if (data.baseSalary) setBaseSalary(data.baseSalary); // ★ 加入讀取底薪
         if (data.publishedDate) {
           setPublishedDate(prev => {
             if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
@@ -4474,6 +4469,7 @@ const handleSaveAndPublish = async () => {
             priorityConfig: priorityConfig || {},
             requirements: requirements || { D: 15, E: 12, N: 8 },
             bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
+            baseSalary: baseSalary || 40000, // ★ 加入寫入底薪
             publishedDate: newPubDate
         });
         await saveMonthlySchedule(selectedYear, selectedMonth, {
@@ -4621,6 +4617,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
             setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
             onManualRefresh={handleManualRefresh}  
             calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+            baseSalary={baseSalary} setBaseSalary={setBaseSalary} // ★ 傳遞給管理介面
           />
         ) : (
           <StaffDashboard
