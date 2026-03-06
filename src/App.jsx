@@ -2495,191 +2495,192 @@ let combinedData = "";
           )}
       </div>
       {/* ========================================================= */}
+{/* ========================================================= */}
       
-{/* 👇👇👇 ★★★ 2. 替換這整個區塊 ★★★ 👇👇👇 */}
-      {/* 🚀 AI 接力選班監控中心 (含雷達與棄權) */}
-      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft:'5px solid #2980b9', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-          <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'20px'}}>
-             <div style={{ flex: 1, minWidth: '300px' }}>
-                 <h2 style={{ margin: '0 0 10px 0', color: '#2c3e50', fontSize:'1.4rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                     🚀 AI 接力選班引擎與監控雷達
-                 </h2>
-                 <p style={{ margin: '0 0 15px 0', color: '#7f8c8d', fontSize:'0.9rem' }}>
-                     一鍵啟動自動化接力，AI 將依據大數據自動判斷順位並寄發 Email。<br/>
-                     若遇同仁遲遲未認領卡住流程，可使用強制跳過功能。
-                 </p>
-
-                 {/* 📡 雷達顯示器 */}
-                 <div style={{ background: activeTurn?.active_staff_id ? '#e8f8f5' : '#f8f9fa', border: `1px solid ${activeTurn?.active_staff_id ? '#2ecc71' : '#ddd'}`, padding: '15px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                     <div>
-                         <div style={{ fontSize: '0.85rem', color: '#7f8c8d', fontWeight: 'bold', marginBottom: '5px' }}>目前發球權 (Waiting for...)</div>
-                         {activeTurn?.active_staff_id ? (
-                             <div style={{ fontSize: '1.2rem', color: '#27ae60', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                 <span style={{ animation: 'pulse 2s infinite' }}>⏳</span>
-                                 等待 {staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id} 認領中...
-                             </div>
-                         ) : (
-                             <div style={{ fontSize: '1.1rem', color: '#95a5a6', fontWeight: 'bold' }}>⏸️ 引擎待機中 / 或已全數選完</div>
-                         )}
-                     </div>
-{/* ⏭️ 強制跳過按鈕 (只有當雷達有人時才顯示) */}
-                     {activeTurn?.active_staff_id && (
-                         <button onClick={handleForceSkip} style={{ padding: '8px 15px', background: '#fff', color: '#e74c3c', border: '2px solid #e74c3c', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.2s', boxShadow: '0 2px 4px rgba(231,76,60,0.1)' }}>
-                             ⏭️ 逾時強制跳過
-                         </button>
-                     )}
-                 </div>
-
-                 {/* 🧠 新增：給 AI 的客製化指令 */}
-                 <div style={{ marginTop: '15px' }}>
-                     <label style={{ fontSize: '0.9rem', color: '#2c3e50', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                         🧠 給 AI 的選班優先條件 (選填)
-                     </label>
-                     <input 
-                         type="text" 
-                         value={priorityConfig?.relayInstruction || ''} 
-                         onChange={(e) => setPriorityConfig({...priorityConfig, relayInstruction: e.target.value})}
-                         placeholder="例如：女性優先、年資高優先... (若留空則預設找最疲勞者)"
-                         style={{ width: '100%', padding: '10px', marginTop: '5px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box' }}
-                     />
-                 </div>
-             </div>
-             
-             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                 <button 
-                    onClick={() => {
-                       if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
-                           const y = Number(localStorage.getItem('selectedYear')) || 2026;
-                           const m = Number(localStorage.getItem('selectedMonth')) || 2;
-                           if (typeof calculateAndNotifyNextStaff === 'function') {
-                               calculateAndNotifyNextStaff({}, healthStats, y, m);
-                               alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
-                           }
-                       }
-                    }} 
-                    style={{ padding:'12px 25px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'bold', background: '#3498db', color:'white', fontSize: '1.1rem', boxShadow: '0 4px 6px rgba(52, 152, 219, 0.3)' }}
-                 >
-                    ▶️ 啟動 / 重啟自動接力
-                 </button>
-             </div>
-          </div>
-      </div>
-      {/* 👆👆👆 ★★★ 替換結束 ★★★ 👆👆👆 */}
-        
-        {/* ★★★ 2. 把 AI 決策歷史看板 UI 插在這裡 ★★★ */}
-      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #3498db', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
-          <h3 style={{ marginTop: 0, color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem' }}>
-              <FileText size={20} color="#3498db" /> AI 決策歷史看板 (最近 5 筆)
-          </h3>
-          <div style={{ display: 'grid', gap: '15px', marginTop: '15px' }}>
-              {decisionLogs.length === 0 ? (
-                  <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6', background: '#f8f9fa', borderRadius: '12px' }}>
-                      暫無 AI 決策數據
-                  </div>
-              ) : decisionLogs.map(log => (
-                  <div key={log.id} style={{ background: '#fff', border: '1px solid #ecf0f1', padding: '15px', borderRadius: '12px', boxShadow: '0 2px 5px rgba(0,0,0,0.02)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                          <strong style={{ color: '#e67e22' }}>🎯 優先選班者：{log.selected_staff}</strong>
-                          <span style={{ fontSize: '0.8rem', color: '#95a5a6' }}>
-                              {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : '時間載入中...'}
-                          </span>
-                      </div>
-                      <div style={{ fontSize: '0.9rem', color: '#34495e', lineHeight: '1.5', background: '#f1f2f6', padding: '10px', borderRadius: '8px' }}>
-                          <strong>🤖 AI 判斷邏輯：</strong><br/>
-                          {log.ai_logic}
-                      </div>
-                  </div>
-              ))}
-          </div>
-      </div>
-     {/* ★★★ 插入結束 ★★★ */}
-
-
-      {/* 2. 健康度趨勢圖 */}
+      {/* 📈 過去 12 個月動態趨勢圖 (緊貼在護病比面板下方) */}
       <div style={{ background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e0e0e0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
-          <h3 style={{ marginTop: 0, color: '#34495e', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📈 過去 12 個月班表健康度趨勢</h3>
+          <h3 style={{ marginTop: 0, color: '#34495e', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📈 過去 12 個月班表健康度與護病比趨勢</h3>
           {renderLineChart()}
       </div>
 
-      {/* 3. ★★★ 全新 AI 跨月報表分析區塊 ★★★ */}
-      <div style={{ background: 'white', borderRadius: '16px', padding: '2rem', borderTop: '6px solid #8e44ad', boxShadow: '0 10px 20px rgba(142,68,173,0.1)' }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: '#8e44ad', marginTop: 0, marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>🤖 AI 跨月數據分析精靈</div>
-          {hasData && (
-              <button onClick={handleClearMemory} style={{ fontSize:'0.85rem', padding: '6px 15px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '20px', cursor: 'pointer', fontWeight: 'bold' }}>
-                  🧹 清空雲端記憶體
-              </button>
-          )}
-        </h2>
+      {/* ========================================================= */}
+      {/* 🧠 全新整合：智能 AI 決策與分析中心 */}
+      <div style={{ background: 'linear-gradient(135deg, #f8f9fa 0%, #eef2f3 100%)', borderRadius: '16px', padding: '2rem', border: '1px solid #dcdde1', boxShadow: '0 10px 20px rgba(0,0,0,0.05)' }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#2c3e50', marginTop: 0, marginBottom: '20px', fontSize: '1.6rem' }}>
+              🧠 智能 AI 決策與分析中心
+          </h2>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '20px' }}>
+              
+              {/* === 左欄：接力排班雷達與決策歷史 (行動層) === */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  
+                  {/* 1. 雷達與引擎 */}
+                  <div style={{ background: 'white', borderRadius: '12px', padding: '1.5rem', borderLeft:'5px solid #3498db', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
+                      <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:'15px'}}>
+                         <div style={{ flex: 1, minWidth: '200px' }}>
+                             <h3 style={{ margin: '0 0 10px 0', color: '#2c3e50', fontSize:'1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                 🚀 AI 選班雷達與接力引擎
+                             </h3>
+                             <p style={{ margin: '0 0 15px 0', color: '#7f8c8d', fontSize:'0.85rem' }}>
+                                 自動判斷順位並發通知，遇卡關可強制跳過。
+                             </p>
 
-        {/* 多月連線狀態燈號 */}
-        <div style={{ background: '#f8f9fa', padding: '15px', borderRadius: '12px', border: '2px dashed #dcdde1', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-            {hasData ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '15px', width: '100%' }}>
-                    <span style={{ fontSize: '2rem', animation: 'pulse 2s infinite' }}>🟢</span>
-                    <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 'bold', color: '#27ae60', fontSize: '1.1rem', marginBottom: '5px' }}>雲端已載入 {loadedMonths.length} 個月份的大數據</div>
-                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                            {loadedMonths.map(m => <span key={m} style={{ background: '#e8f8f5', color: '#16a085', padding: '4px 12px', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 'bold', border: '1px solid #1abc9c' }}>{m}</span>)}
-                        </div>
-                    </div>
-                </div>
-            ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ fontSize: '1.8rem' }}>🔴</span>
-                    <div>
-                        <div style={{ fontWeight: 'bold', color: '#e74c3c', fontSize: '1.1rem' }}>雲端尚未取得任何報表</div>
-                        <div style={{ fontSize: '0.85rem', color: '#666' }}>請先至「✅ 結算與歷史」面板，切換您要的月份並點擊【📥 匯出 Excel】上傳至雲端。</div>
-                    </div>
-                </div>
-            )}
-        </div>
+                             {/* 雷達顯示器 */}
+                             <div style={{ background: activeTurn?.active_staff_id ? '#e8f8f5' : '#f8f9fa', border: `1px solid ${activeTurn?.active_staff_id ? '#2ecc71' : '#ddd'}`, padding: '12px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                 <div>
+                                     <div style={{ fontSize: '0.8rem', color: '#7f8c8d', fontWeight: 'bold', marginBottom: '3px' }}>目前發球權 (Waiting for)</div>
+                                     {activeTurn?.active_staff_id ? (
+                                         <div style={{ fontSize: '1.1rem', color: '#27ae60', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                             <span style={{ animation: 'pulse 2s infinite' }}>⏳</span>
+                                             等待 {staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id}
+                                         </div>
+                                     ) : (
+                                         <div style={{ fontSize: '1rem', color: '#95a5a6', fontWeight: 'bold' }}>⏸️ 引擎待機中</div>
+                                     )}
+                                 </div>
+                                 {activeTurn?.active_staff_id && (
+                                     <button onClick={handleForceSkip} style={{ padding: '6px 12px', background: '#fff', color: '#e74c3c', border: '2px solid #e74c3c', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.85rem' }}>
+                                         ⏭️ 強制跳過
+                                     </button>
+                                 )}
+                             </div>
 
-        {/* 對話區 */}
-        <div style={{ background: '#f1f2f6', borderRadius: '12px', padding: '15px', border: '1px solid #e1e2e6' }}>
-            <div style={{ height: '300px', overflowY: 'auto', marginBottom: '15px', paddingRight: '10px' }}>
-                {aiMessages.map((m, i) => (
-                    <div key={i} style={{ marginBottom: '1rem', textAlign: m.role === 'user' ? 'right' : 'left' }}>
-                        <div style={{ display: 'inline-block', padding: '12px 18px', borderRadius: '12px', background: m.role === 'user' ? '#8e44ad' : 'white', color: m.role === 'user' ? 'white' : '#2c3e50', border: m.role === 'assistant' ? '1px solid #dcdde1' : 'none', maxWidth: '85%', whiteSpace: 'pre-wrap', textAlign: 'left', fontSize: '0.95rem', lineHeight: '1.5', boxShadow: '0 2px 5px rgba(0,0,0,0.05)' }}>
-                            {m.content}
-                        </div>
-                    </div>
-                ))}
-                {isAnalyzing && (
-                    <div style={{ textAlign: 'left', marginBottom: '1rem' }}>
-                        <div style={{ display: 'inline-block', padding: '12px 18px', borderRadius: '12px', background: 'white', border: '1px solid #dcdde1', color: '#888', fontStyle: 'italic' }}>
-                            ⏳ AI 正在雲端交叉比對這 {loadedMonths.length} 個月的數據...
-                        </div>
-                    </div>
-                )}
-                <div ref={chatEndRef} />
-            </div>
+                             {/* 客製化指令 */}
+                             <div style={{ marginTop: '15px' }}>
+                                 <label style={{ fontSize: '0.85rem', color: '#2c3e50', fontWeight: 'bold' }}>🧠 優先條件指令 (選填)</label>
+                                 <input 
+                                     type="text" 
+                                     value={priorityConfig?.relayInstruction || ''} 
+                                     onChange={(e) => setPriorityConfig({...priorityConfig, relayInstruction: e.target.value})}
+                                     placeholder="例：女性優先... (預設找最疲勞者)"
+                                     style={{ width: '100%', padding: '8px', marginTop: '5px', borderRadius: '8px', border: '1px solid #ddd', boxSizing: 'border-box', fontSize: '0.9rem' }}
+                                 />
+                             </div>
+                         </div>
+                         
+                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', justifyContent: 'center' }}>
+                             <button 
+                                onClick={() => {
+                                   if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
+                                       const y = Number(localStorage.getItem('selectedYear')) || 2026;
+                                       const m = Number(localStorage.getItem('selectedMonth')) || 2;
+                                       if (typeof calculateAndNotifyNextStaff === 'function') {
+                                           calculateAndNotifyNextStaff({}, healthStats, y, m);
+                                           alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+                                       }
+                                   }
+                                }} 
+                                style={{ padding:'12px 20px', borderRadius:'8px', border:'none', cursor:'pointer', fontWeight:'bold', background: '#3498db', color:'white', fontSize: '1rem', boxShadow: '0 4px 6px rgba(52, 152, 219, 0.3)', whiteSpace: 'nowrap' }}
+                             >
+                                ▶️ 啟動自動接力
+                             </button>
+                         </div>
+                      </div>
+                  </div>
 
-            {/* 輸入區 */}
-            <div style={{ display: 'flex', gap: '10px' }}>
-                <input 
-                    value={aiInput} 
-                    onChange={(e) => setAiInput(e.target.value)} 
-                    onKeyPress={(e) => e.key === 'Enter' && handleAskAI()} 
-                    placeholder={hasData ? `可以問：「比較 ${loadedMonths[0]} 和另外幾個月的請假狀況」...` : "等待雲端載入資料..."} 
-                    disabled={!hasData || isAnalyzing}
-                    style={{ flex: 1, padding: '14px', borderRadius: '8px', border: '1px solid #dcdde1', color: 'white', fontSize: '1rem', boxShadow: 'inset 0 1px 3px rgba(253, 247, 247, 0.05)' }} 
-                />
-                <button 
-                    onClick={handleAskAI} 
-                    disabled={!hasData || isAnalyzing} 
-                    style={{ padding: '0 30px', background: (!hasData || isAnalyzing) ? '#bdc3c7' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: (!hasData || isAnalyzing) ? 'not-allowed' : 'pointer', fontWeight: 'bold', fontSize: '1.05rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}
-                >
-                    送出分析
-                </button>
-            </div>
-        </div>
+                  {/* 2. AI 決策歷史看板 */}
+                  <div style={{ background: 'white', borderRadius: '12px', padding: '1.5rem', borderLeft: '5px solid #2980b9', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', flex: 1, display: 'flex', flexDirection: 'column' }}>
+                      <h3 style={{ marginTop: 0, color: '#2c3e50', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.2rem', marginBottom: '15px' }}>
+                          <FileText size={18} color="#2980b9" /> 決策歷史 (最近 5 筆)
+                      </h3>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', overflowY: 'auto', maxHeight: '200px', paddingRight: '5px' }}>
+                          {decisionLogs.length === 0 ? (
+                              <div style={{ padding: '20px', textAlign: 'center', color: '#95a5a6', background: '#f8f9fa', borderRadius: '12px' }}>
+                                  暫無 AI 決策數據
+                              </div>
+                          ) : decisionLogs.map(log => (
+                              <div key={log.id} style={{ background: '#fff', border: '1px solid #ecf0f1', padding: '10px', borderRadius: '10px' }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                      <strong style={{ color: '#e67e22', fontSize: '0.9rem' }}>🎯 {log.selected_staff}</strong>
+                                      <span style={{ fontSize: '0.75rem', color: '#95a5a6' }}>
+                                          {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : '...'}
+                                      </span>
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', color: '#34495e', lineHeight: '1.4', background: '#f8f9fa', padding: '8px', borderRadius: '6px' }}>
+                                      {log.ai_logic}
+                                  </div>
+                              </div>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+
+              {/* === 右欄：跨月分析精靈 (洞察層) === */}
+              <div style={{ background: 'white', borderRadius: '12px', padding: '1.5rem', borderTop: '5px solid #8e44ad', boxShadow: '0 4px 6px rgba(0,0,0,0.02)', display: 'flex', flexDirection: 'column' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '15px' }}>
+                      <h3 style={{ color: '#8e44ad', margin: 0, fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          🤖 跨月數據分析精靈
+                      </h3>
+                      {hasData && (
+                          <button onClick={handleClearMemory} style={{ fontSize:'0.75rem', padding: '4px 10px', background: '#fff', color: '#e74c3c', border: '1px solid #e74c3c', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold' }}>
+                              🧹 清空記憶
+                          </button>
+                      )}
+                  </div>
+
+                  {/* 狀態燈號縮小版 */}
+                  <div style={{ background: '#f8f9fa', padding: '10px', borderRadius: '8px', border: '1px dashed #dcdde1', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      {hasData ? (
+                          <>
+                              <span style={{ fontSize: '1.2rem', animation: 'pulse 2s infinite' }}>🟢</span>
+                              <div style={{ fontSize: '0.85rem', color: '#27ae60', fontWeight: 'bold' }}>已載入 {loadedMonths.length} 個月大數據</div>
+                          </>
+                      ) : (
+                          <>
+                              <span style={{ fontSize: '1.2rem' }}>🔴</span>
+                              <div style={{ fontSize: '0.85rem', color: '#e74c3c', fontWeight: 'bold' }}>尚未載入報表</div>
+                          </>
+                      )}
+                  </div>
+
+                  {/* 對話區 */}
+                  <div style={{ flex: 1, background: '#f8f9fa', borderRadius: '10px', padding: '12px', border: '1px solid #e1e2e6', display: 'flex', flexDirection: 'column', minHeight: '350px' }}>
+                      <div style={{ flex: 1, overflowY: 'auto', marginBottom: '12px', paddingRight: '5px' }}>
+                          {aiMessages.map((m, i) => (
+                              <div key={i} style={{ marginBottom: '10px', textAlign: m.role === 'user' ? 'right' : 'left' }}>
+                                  <div style={{ display: 'inline-block', padding: '10px 14px', borderRadius: '12px', background: m.role === 'user' ? '#8e44ad' : 'white', color: m.role === 'user' ? 'white' : '#2c3e50', border: m.role === 'assistant' ? '1px solid #dcdde1' : 'none', maxWidth: '90%', whiteSpace: 'pre-wrap', textAlign: 'left', fontSize: '0.9rem', lineHeight: '1.4', boxShadow: '0 2px 4px rgba(0,0,0,0.02)' }}>
+                                      {m.content}
+                                  </div>
+                              </div>
+                          ))}
+                          {isAnalyzing && (
+                              <div style={{ textAlign: 'left', marginBottom: '10px' }}>
+                                  <div style={{ display: 'inline-block', padding: '10px 14px', borderRadius: '12px', background: 'white', border: '1px solid #dcdde1', color: '#888', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                      ⏳ 正在交叉比對數據...
+                                  </div>
+                              </div>
+                          )}
+                          <div ref={chatEndRef} />
+                      </div>
+
+                      {/* 輸入區 */}
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                          <input 
+                              value={aiInput} 
+                              onChange={(e) => setAiInput(e.target.value)} 
+                              onKeyPress={(e) => e.key === 'Enter' && handleAskAI()} 
+                              placeholder={hasData ? "問我請假趨勢..." : "等待資料..."} 
+                              disabled={!hasData || isAnalyzing}
+                              style={{ flex: 1, padding: '10px', borderRadius: '8px', border: '1px solid #dcdde1', fontSize: '0.95rem' }} 
+                          />
+                          <button 
+                              onClick={handleAskAI} 
+                              disabled={!hasData || isAnalyzing} 
+                              style={{ padding: '0 15px', background: (!hasData || isAnalyzing) ? '#bdc3c7' : '#8e44ad', color: 'white', border: 'none', borderRadius: '8px', cursor: (!hasData || isAnalyzing) ? 'not-allowed' : 'pointer', fontWeight: 'bold' }}
+                          >
+                              送出
+                          </button>
+                      </div>
+                  </div>
+              </div>
+
+          </div>
       </div>
-      
+      {/* ========================================================= */}
     </div>
   );
 };
-
 // ============================================================================
 // ✅ 結算與歷史大帳本面板 (ScheduleReviewPanel)
 // ============================================================================
