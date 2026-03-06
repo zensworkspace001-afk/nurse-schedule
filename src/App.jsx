@@ -3515,7 +3515,7 @@ const ManagerInterface = ({
             {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
             {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
             {tab === 'statistics' && '📊 統計報表'}
-            {/* {tab === 'simulation' && '🔮 制度模擬'}*/}
+            {tab === 'simulation' && '🔮 制度模擬'}
           </button>
         ))}
       </div>
@@ -3592,7 +3592,7 @@ const ManagerInterface = ({
         />
       )}
 
-      {activeTab === 'simulation' && (
+     {/* {activeTab === 'simulation' && (
         <SimulationPanel 
             staffData={staffData} requirements={requirements}
             baseSalary={localStorage.getItem('globalBaseSalary') || 40000}
@@ -3600,6 +3600,7 @@ const ManagerInterface = ({
             selectedMonth={selectedMonth} shiftOptions={shiftOptions}
         />
       )}
+        */}
     </div>
   );
 };
