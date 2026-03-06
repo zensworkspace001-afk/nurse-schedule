@@ -1884,9 +1884,23 @@ const handleSave = async () => {
 // ============================================================================
 const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff,bedConfig }) => {
 // =========================================================
-  // ★★★ 新增：衛福部三班護病比大數據監控引擎 ★★★
-  const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
+const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
   const unitBedCount = bedConfig?.bedCount || 50;
+  
+ // ★★★ 新增：控制圖表折線顯示與隱藏的狀態 ★★★
+  const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, ratioE: false, ratioN: false });
+  // ★★★ 新增：選擇要檢視哪一個月份的護病比 ★★★
+  const [selectedReportMonth, setSelectedReportMonth] = useState('');
+
+  // 當雲端資料載入時，預設自動選擇「最新的一個月」
+  useEffect(() => {
+      if (accumulatedReports) {
+          const months = Object.keys(accumulatedReports).sort();
+          if (months.length > 0 && !selectedReportMonth) {
+              setSelectedReportMonth(months[months.length - 1]);
+          }
+      }
+  }, [accumulatedReports, selectedReportMonth]);
 
   const RATIO_STANDARDS = {
       MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
@@ -1894,15 +1908,15 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
       District: { name: '地區醫院', D: 10, E: 13, N: 15 }
   };
 
-  const calculateLatestRatio = () => {
-      if (!accumulatedReports) return null;
-      const months = Object.keys(accumulatedReports).sort();
-      if (months.length === 0) return null;
+ const calculateSelectedRatio = () => {
+      if (!accumulatedReports || !selectedReportMonth) return null;
 
-      // 抓取最後一個月（最新結算）的大數據
-      const latestMonthKey = months[months.length - 1];
-      const latestData = accumulatedReports[latestMonthKey];
-      if (!latestData) return null;
+      // ★ 改為抓取「使用者選擇」的那個月份
+      const targetData = accumulatedReports[selectedReportMonth];
+      if (!targetData) return null;
+      
+      const latestMonthKey = selectedReportMonth; // 為了相容下面的變數名稱
+      const latestData = targetData;
 
       let totalD = 0, totalE = 0, totalN = 0;
       let daysInMonth = 30;
@@ -1956,7 +1970,7 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
           avgN: avgN.toFixed(1)
       };
   };
-  const ratioResult = calculateLatestRatio();
+const ratioResult = calculateSelectedRatio();
   // =========================================================
   
 // ★★★ 1. 把 AI 決策歷史的邏輯插在這裡 ★★★
@@ -2156,13 +2170,12 @@ let combinedData = "";
       }
   };
 
-// -- (2) 從 accumulatedReports (雲端大數據 CSV/JSON) 動態解析健康度 --
+// -- (2) 從 accumulatedReports 動態解析健康度與三班護病比 --
   const getDynamicHealthStats = () => {
       const stats = [];
       Object.entries(accumulatedReports || {}).forEach(([fileName, fileData]) => {
           if (!fileData) return;
 
-          // 1. 解析年月 (優先使用資料庫自帶的 year/month 欄位，沒有才解析檔名)
           let year = fileData.year;
           let month = fileData.month;
           if (!year || !month) {
@@ -2173,82 +2186,69 @@ let combinedData = "";
               else return;
           }
 
-          const daysInMonth = new Date(year, month, 0).getDate();
+          const daysInMonth = new Date(year, month, 0).getDate() || 30;
           const scores = [];
+          let totalD = 0, totalE = 0, totalN = 0;
 
-          // 狀況 A：這份檔案有 CSV 報表 (手動結算匯出的)
           if (fileData.csv && typeof fileData.csv === 'string') {
               const lines = fileData.csv.split(/\r\n|\n/);
               let headerIdx = -1, healthColIdx = -1;
               for (let i = 0; i < lines.length; i++) {
                   if (lines[i].includes('工號') && lines[i].includes('姓名')) {
-                      headerIdx = i;
-                      healthColIdx = lines[i].split(',').findIndex(c => c.includes('健康度評分'));
-                      break;
+                      headerIdx = i; healthColIdx = lines[i].split(',').findIndex(c => c.includes('健康度評分')); break;
                   }
               }
               if (headerIdx !== -1 && healthColIdx !== -1) {
                   for (let i = headerIdx + 1; i < lines.length; i++) {
                       const cols = lines[i].split(',');
-                      if (cols.length > healthColIdx && cols[0] && !cols[0].startsWith('D')) {
-                          const score = Number(cols[healthColIdx]);
-                          if (!isNaN(score)) scores.push(score);
+                      if (cols.length > healthColIdx) {
+                          if (cols[0] && !cols[0].startsWith('D')) {
+                              const score = Number(cols[healthColIdx]);
+                              if (!isNaN(score)) scores.push(score);
+                          }
+                          // 統計護病比：所有人都要算 (含 Dxxx 空缺)
+                          if (cols.length >= 2 + daysInMonth) {
+                              for(let j = 2; j < 2 + daysInMonth; j++) {
+                                  if (cols[j] === 'D') totalD++;
+                                  if (cols[j] === 'E') totalE++;
+                                  if (cols[j] === 'N') totalN++;
+                              }
+                          }
                       }
                   }
               }
           }
 
-          // 狀況 B：沒有 CSV，但有 schedule_backup (系統自動備份的排班表)
           if (scores.length === 0 && fileData.schedule_backup) {
               Object.keys(fileData.schedule_backup).forEach(staffId => {
-                  if (staffId.startsWith('D')) return; // 略過待認領
                   const staffSchedule = fileData.schedule_backup[staffId];
-                  let score = 100;
-                  const shifts = [];
+                  // 統計護病比：所有人都要算
                   for (let d = 1; d <= daysInMonth; d++) {
-                      shifts.push((typeof staffSchedule[d] === 'object') ? (staffSchedule[d]?.type || 'OFF') : (staffSchedule[d] || 'OFF'));
+                      const cell = staffSchedule[d];
+                      const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
+                      if (type === 'D') totalD++;
+                      if (type === 'E') totalE++;
+                      if (type === 'N') totalN++;
                   }
+                  // 健康度只算真實員工
+                  if (!staffId.startsWith('D')) {
+                      let score = 100; const shifts = [];
+                      for (let d = 1; d <= daysInMonth; d++) shifts.push((typeof staffSchedule[d] === 'object') ? (staffSchedule[d]?.type || 'OFF') : (staffSchedule[d] || 'OFF'));
+                      const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
+                      const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
 
-                  // 執行核心扣分邏輯
-                  const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
-                  const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
-
-                  for (let i = 0; i < shifts.length - 1; i++) {
-                      if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) score -= 20;
+                      for (let i = 0; i < shifts.length - 1; i++) { if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) score -= 20; }
+                      let lastWork = null;
+                      for (let i = 0; i < shifts.length; i++) { if (isWork(shifts[i])) { if (lastWork === 'N' && shifts[i] === 'E') score -= 10; if (lastWork === 'E' && shifts[i] === 'D') score -= 10; lastWork = shifts[i]; } }
+                      for (let i = 0; i <= shifts.length - 7; i++) { const window = shifts.slice(i, i + 7); const workTypes = new Set(window.filter(s => ['D', 'E', 'N'].includes(s))); if (workTypes.size === 3) { score -= 15; i += 6; } }
+                      let consecutiveN = 0, consecutiveWork = 0;
+                      for (let i = 0; i <= shifts.length; i++) { const s = shifts[i]; if (s === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; } if (s && isWork(s)) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; } }
+                      for (let i = 1; i < shifts.length - 1; i++) { if (isWork(shifts[i-1]) && isOff(shifts[i]) && isWork(shifts[i+1])) { score -= 5; if (shifts[i-1] === 'N') score -= 15; } }
+                      let hasFullWeekendOff = false;
+                      for (let d = 1; d <= daysInMonth - 1; d++) { const date = new Date(year, month - 1, d); if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } } }
+                      if (!hasFullWeekendOff) score -= 5;
+                      scores.push(score);
                   }
-                  let lastWork = null;
-                  for (let i = 0; i < shifts.length; i++) {
-                      if (isWork(shifts[i])) {
-                          if (lastWork === 'N' && shifts[i] === 'E') score -= 10;
-                          if (lastWork === 'E' && shifts[i] === 'D') score -= 10;
-                          lastWork = shifts[i];
-                      }
-                  }
-                  for (let i = 0; i <= shifts.length - 7; i++) {
-                      const window = shifts.slice(i, i + 7);
-                      const workTypes = new Set(window.filter(s => ['D', 'E', 'N'].includes(s)));
-                      if (workTypes.size === 3) { score -= 15; i += 6; }
-                  }
-                  let consecutiveN = 0, consecutiveWork = 0;
-                  for (let i = 0; i <= shifts.length; i++) {
-                      const s = shifts[i];
-                      if (s === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; }
-                      if (s && isWork(s)) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; }
-                  }
-                  for (let i = 1; i < shifts.length - 1; i++) {
-                      if (isWork(shifts[i-1]) && isOff(shifts[i]) && isWork(shifts[i+1])) {
-                          score -= 5;
-                          if (shifts[i-1] === 'N') score -= 15;
-                      }
-                  }
-                  let hasFullWeekendOff = false;
-                  for (let d = 1; d <= daysInMonth - 1; d++) {
-                      const date = new Date(year, month - 1, d);
-                      if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } }
-                  }
-                  if (!hasFullWeekendOff) score -= 5;
-
-                  scores.push(score);
               });
           }
 
@@ -2257,7 +2257,17 @@ let combinedData = "";
               scores.sort((a, b) => a - b);
               const mid = Math.floor(scores.length / 2);
               const median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
-              stats.push({ year, month, avg, median });
+              
+              const avgD = totalD / daysInMonth;
+              const avgE = totalE / daysInMonth;
+              const avgN = totalN / daysInMonth;
+              
+              stats.push({ 
+                  year, month, avg, median,
+                  ratioD: avgD > 0 ? (unitBedCount / avgD).toFixed(1) : 0,
+                  ratioE: avgE > 0 ? (unitBedCount / avgE).toFixed(1) : 0,
+                  ratioN: avgN > 0 ? (unitBedCount / avgN).toFixed(1) : 0
+              });
           }
       });
 
@@ -2268,54 +2278,131 @@ let combinedData = "";
       return finalStats.slice(-12);
   };
 
-  // -- (3) 繪製健康度折線圖 --
+// -- (3) 繪製健康度與護病比動態折線圖 --
   const renderLineChart = () => {
-      // ★ 改由呼叫動態解析器獲取資料
       const dynamicHealthStats = getDynamicHealthStats();
 
       if (!dynamicHealthStats || dynamicHealthStats.length === 0) {
-          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無健康度結算紀錄。<br/>只要「✅ 結算與歷史」中有封存班表，系統就會自動繪製！</div>;
+          return <div style={{ textAlign: 'center', padding: '3rem', color: '#888', background: '#f8f9fa', borderRadius: '12px', border: '2px dashed #ddd' }}>尚無結算紀錄。<br/>只要「✅ 結算與歷史」中有封存班表，系統就會自動繪製！</div>;
       }
-      const svgWidth = 800; const svgHeight = 350; const padding = 50;
-      const chartWidth = svgWidth - padding * 2; const chartHeight = svgHeight - padding * 2;
+      
+      const svgWidth = 850; const svgHeight = 400; const padding = 50; const paddingRight = 60;
+      const chartWidth = svgWidth - padding - paddingRight; const chartHeight = svgHeight - padding * 2;
+      
       const allScores = dynamicHealthStats.flatMap(d => [d.avg, d.median]);
       const minScore = Math.max(0, Math.floor(Math.min(...allScores) / 5) * 5 - 5); 
       const maxScore = 100;
-      const getX = (index) => padding + (index * (chartWidth / Math.max(1, dynamicHealthStats.length - 1)));
-      const getY = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
+      
+      const minRatio = 0; const maxRatio = 20; // 護病比的右側 Y 軸範圍 (0 到 1:20)
 
-      const avgPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getY(d.avg)}`).join(' ');
-      const medianPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getY(d.median)}`).join(' ');
+      const getX = (index) => padding + (index * (chartWidth / Math.max(1, dynamicHealthStats.length - 1)));
+      const getYHealth = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
+      const getYRatio = (value) => padding + chartHeight - ((value - minRatio) / (maxRatio - minRatio)) * chartHeight;
+
+      const avgPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYHealth(d.avg)}`).join(' ');
+      const medianPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYHealth(d.median)}`).join(' ');
+      const ratioDPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioD))}`).join(' ');
+      const ratioEPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioE))}`).join(' ');
+      const ratioNPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioN))}`).join(' ');
+
+      // SVG 動畫設定：淡入淡出與位移
+      const animStyle = { transition: 'opacity 0.4s ease, transform 0.4s ease' };
 
       return (
-          <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', background: 'white', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-              {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
-                  const y = padding + chartHeight - (chartHeight * ratio);
-                  const val = Math.round(minScore + (maxScore - minScore) * ratio);
-                  return (
-                      <g key={ratio}>
-                          <line x1={padding} y1={y} x2={svgWidth - padding} y2={y} stroke="#ecf0f1" strokeDasharray="5 5" strokeWidth="1.5" />
-                          <text x={padding - 10} y={y + 4} fontSize="12" fill="#7f8c8d" textAnchor="end">{val}</text>
-                      </g>
-                  );
-              })}
-              <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-              <polyline points={medianPoints} fill="none" stroke="#e74c3c" strokeWidth="3" strokeLinejoin="round" strokeLinecap="round" />
-              {dynamicHealthStats.map((d, i) => {
-                  const x = getX(i); const yAvg = getY(d.avg); const yMed = getY(d.median);
-                  const isAvgHigher = d.avg >= d.median;
-                  return (
-                      <g key={i}>
-                          <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
-                          <circle cx={x} cy={yMed} r="5" fill="#e74c3c" stroke="white" strokeWidth="2" />
-                          <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
-                          {/* ★ 修正重疊問題：如果平均跟中位數一樣，就把紅藍數字上下錯開 */}
-                          <text x={x} y={d.avg === d.median ? yAvg - 12 : (isAvgHigher ? yAvg - 12 : yAvg + 20)} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
-                          <text x={x} y={d.avg === d.median ? yMed + 16 : (isAvgHigher ? yMed + 20 : yMed - 12)} fontSize="12" fill="#c0392b" textAnchor="middle" fontWeight="bold">{d.median}</text>
-                      </g>
-                  );
-              })}
-          </svg>
+          <div style={{ position: 'relative' }}>
+              {/* 控制面板 (勾選框) */}
+              <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', marginBottom: '20px', flexWrap: 'wrap' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', background: trendToggles.health ? '#e8f4f8' : '#f0f0f0', padding: '8px 16px', borderRadius: '20px', border: `2px solid ${trendToggles.health ? '#3498db' : '#ddd'}`, transition: 'all 0.3s' }}>
+                      <input type="checkbox" checked={trendToggles.health} onChange={(e) => setTrendToggles({...trendToggles, health: e.target.checked})} style={{cursor:'pointer'}} />
+                      <span style={{ color: trendToggles.health ? '#2980b9' : '#888', fontWeight: 'bold' }}>❤️ 健康度 (左軸)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', background: trendToggles.ratioD ? '#fff9e6' : '#f0f0f0', padding: '8px 16px', borderRadius: '20px', border: `2px solid ${trendToggles.ratioD ? '#f1c40f' : '#ddd'}`, transition: 'all 0.3s' }}>
+                      <input type="checkbox" checked={trendToggles.ratioD} onChange={(e) => setTrendToggles({...trendToggles, ratioD: e.target.checked})} style={{cursor:'pointer'}} />
+                      <span style={{ color: trendToggles.ratioD ? '#d4ac0d' : '#888', fontWeight: 'bold' }}>☀️ 白班比 1:N (右軸)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', background: trendToggles.ratioE ? '#fbeef3' : '#f0f0f0', padding: '8px 16px', borderRadius: '20px', border: `2px solid ${trendToggles.ratioE ? '#e84393' : '#ddd'}`, transition: 'all 0.3s' }}>
+                      <input type="checkbox" checked={trendToggles.ratioE} onChange={(e) => setTrendToggles({...trendToggles, ratioE: e.target.checked})} style={{cursor:'pointer'}} />
+                      <span style={{ color: trendToggles.ratioE ? '#d81b60' : '#888', fontWeight: 'bold' }}>🌇 小夜比 1:N (右軸)</span>
+                  </label>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', cursor: 'pointer', background: trendToggles.ratioN ? '#eaf2f8' : '#f0f0f0', padding: '8px 16px', borderRadius: '20px', border: `2px solid ${trendToggles.ratioN ? '#34495e' : '#ddd'}`, transition: 'all 0.3s' }}>
+                      <input type="checkbox" checked={trendToggles.ratioN} onChange={(e) => setTrendToggles({...trendToggles, ratioN: e.target.checked})} style={{cursor:'pointer'}} />
+                      <span style={{ color: trendToggles.ratioN ? '#2c3e50' : '#888', fontWeight: 'bold' }}>🌙 大夜比 1:N (右軸)</span>
+                  </label>
+              </div>
+
+              <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ width: '100%', height: 'auto', background: 'white', borderRadius: '12px', border: '1px solid #eee', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                  
+                  {/* 背景格線與雙 Y 軸數字 */}
+                  {[0, 0.25, 0.5, 0.75, 1].map(ratio => {
+                      const y = padding + chartHeight - (chartHeight * ratio);
+                      const valHealth = Math.round(minScore + (maxScore - minScore) * ratio);
+                      const valRatio = Math.round(minRatio + (maxRatio - minRatio) * ratio);
+                      return (
+                          <g key={ratio}>
+                              <line x1={padding} y1={y} x2={svgWidth - paddingRight} y2={y} stroke="#ecf0f1" strokeDasharray="5 5" strokeWidth="1.5" />
+                              <text x={padding - 10} y={y + 4} fontSize="12" fill="#3498db" textAnchor="end" style={{opacity: trendToggles.health ? 1 : 0.3, transition: 'opacity 0.3s', fontWeight:'bold'}}>{valHealth} 分</text>
+                              <text x={svgWidth - paddingRight + 10} y={y + 4} fontSize="12" fill="#7f8c8d" textAnchor="start" style={{opacity: (trendToggles.ratioD || trendToggles.ratioE || trendToggles.ratioN) ? 1 : 0.3, transition: 'opacity 0.3s', fontWeight:'bold'}}>1 : {valRatio}</text>
+                          </g>
+                      );
+                  })}
+                  
+                  {/* 1. 健康度曲線 (平均與中位數) */}
+                  <g style={{ ...animStyle, opacity: trendToggles.health ? 1 : 0, transform: trendToggles.health ? 'translateY(0)' : 'translateY(-15px)' }}>
+                      <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" />
+                      <polyline points={medianPoints} fill="none" stroke="#e74c3c" strokeWidth="3" strokeLinejoin="round" strokeDasharray="6 6" />
+                  </g>
+
+                  {/* 2. 白班護病比曲線 */}
+                  <g style={{ ...animStyle, opacity: trendToggles.ratioD ? 1 : 0, transform: trendToggles.ratioD ? 'translateY(0)' : 'translateY(15px)' }}>
+                      <polyline points={ratioDPoints} fill="none" stroke="#f1c40f" strokeWidth="4" strokeLinejoin="round" />
+                  </g>
+
+                  {/* 3. 小夜護病比曲線 */}
+                  <g style={{ ...animStyle, opacity: trendToggles.ratioE ? 1 : 0, transform: trendToggles.ratioE ? 'translateY(0)' : 'translateY(15px)' }}>
+                      <polyline points={ratioEPoints} fill="none" stroke="#e84393" strokeWidth="4" strokeLinejoin="round" />
+                  </g>
+
+                  {/* 4. 大夜護病比曲線 */}
+                  <g style={{ ...animStyle, opacity: trendToggles.ratioN ? 1 : 0, transform: trendToggles.ratioN ? 'translateY(0)' : 'translateY(15px)' }}>
+                      <polyline points={ratioNPoints} fill="none" stroke="#34495e" strokeWidth="4" strokeLinejoin="round" />
+                  </g>
+
+                  {/* X軸標籤與各點數值 (Hover 或常駐顯示) */}
+                  {dynamicHealthStats.map((d, i) => {
+                      const x = getX(i); 
+                      const yAvg = getYHealth(d.avg); 
+                      const yRD = getYRatio(Number(d.ratioD));
+                      const yRE = getYRatio(Number(d.ratioE));
+                      const yRN = getYRatio(Number(d.ratioN));
+
+                      return (
+                          <g key={i}>
+                              <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
+                              
+                              <g style={{ ...animStyle, opacity: trendToggles.health ? 1 : 0 }}>
+                                  <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
+                                  <text x={x} y={yAvg - 12} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
+                              </g>
+                              
+                              <g style={{ ...animStyle, opacity: trendToggles.ratioD ? 1 : 0 }}>
+                                  <circle cx={x} cy={yRD} r="6" fill="#f1c40f" stroke="white" strokeWidth="2" />
+                                  <text x={x} y={yRD + 18} fontSize="11" fill="#d4ac0d" textAnchor="middle" fontWeight="bold">{d.ratioD}</text>
+                              </g>
+
+                              <g style={{ ...animStyle, opacity: trendToggles.ratioE ? 1 : 0 }}>
+                                  <circle cx={x} cy={yRE} r="6" fill="#e84393" stroke="white" strokeWidth="2" />
+                                  <text x={x} y={yRE + 18} fontSize="11" fill="#d81b60" textAnchor="middle" fontWeight="bold">{d.ratioE}</text>
+                              </g>
+
+                              <g style={{ ...animStyle, opacity: trendToggles.ratioN ? 1 : 0 }}>
+                                  <circle cx={x} cy={yRN} r="6" fill="#34495e" stroke="white" strokeWidth="2" />
+                                  <text x={x} y={yRN + 18} fontSize="11" fill="#2c3e50" textAnchor="middle" fontWeight="bold">{d.ratioN}</text>
+                              </g>
+                          </g>
+                      );
+                  })}
+              </svg>
+          </div>
       );
   };
 
@@ -2360,8 +2447,17 @@ let combinedData = "";
               </div>
           ) : (
               <div>
-                  <div style={{ marginBottom: '15px', fontSize: '1.1rem', color: '#2980b9', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      📊 分析樣本：最新雲端報表 ({ratioResult.monthKey.replace('_', '年')}月) 
+<div style={{ marginBottom: '15px', fontSize: '1.1rem', color: '#2980b9', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      📊 分析樣本：
+                      <select 
+                          value={selectedReportMonth} 
+                          onChange={(e) => setSelectedReportMonth(e.target.value)}
+                          style={{ padding: '6px 15px', borderRadius: '20px', border: '2px solid #3498db', color: '#2980b9', fontWeight: 'bold', background: '#eaf2f8', cursor: 'pointer', fontSize: '1rem', outline: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
+                      >
+                          {Object.keys(accumulatedReports).sort().reverse().map(m => (
+                              <option key={m} value={m}>{m.replace('_', ' 年 ')} 月 歷史報表</option>
+                          ))}
+                      </select>
                   </div>
                   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                       {['D', 'E', 'N'].map(shift => {
