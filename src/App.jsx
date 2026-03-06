@@ -1912,25 +1912,19 @@ const handleSave = async () => {
 // ============================================================================
 // 統計報表面板 (包含優先選班、健康度折線圖，與全新 AI 跨月報表分析)
 // ============================================================================
-const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff,bedConfig }) => {
-// =========================================================
-const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
+// ★★★ 在這裡接收即時班表的 4 個新參數 ★★★
+const StatisticsPanel = ({ 
+    staffData, priorityConfig, setPriorityConfig, healthStats = [], 
+    accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff, bedConfig,
+    schedule, finalizedSchedule, selectedYear, selectedMonth 
+}) => {
+  // =========================================================
+  // ★★★ 新增：衛福部三班護病比大數據監控引擎 ★★★
+  const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
   const unitBedCount = bedConfig?.bedCount || 50;
-  
- // ★★★ 新增：控制圖表折線顯示與隱藏的狀態 ★★★
-  const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, ratioE: false, ratioN: false });
-  // ★★★ 新增：選擇要檢視哪一個月份的護病比 ★★★
-  const [selectedReportMonth, setSelectedReportMonth] = useState('');
 
-  // 當雲端資料載入時，預設自動選擇「最新的一個月」
-  useEffect(() => {
-      if (accumulatedReports) {
-          const months = Object.keys(accumulatedReports).sort();
-          if (months.length > 0 && !selectedReportMonth) {
-              setSelectedReportMonth(months[months.length - 1]);
-          }
-      }
-  }, [accumulatedReports, selectedReportMonth]);
+  // ★★★ 新增：下拉選單狀態 (預設看即時草稿) ★★★
+  const [selectedReportMonth, setSelectedReportMonth] = useState('current_draft');
 
   const RATIO_STANDARDS = {
       MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
@@ -1938,41 +1932,69 @@ const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
       District: { name: '地區醫院', D: 10, E: 13, N: 15 }
   };
 
- const calculateSelectedRatio = () => {
-      if (!accumulatedReports || !selectedReportMonth) return null;
+  const calculateSelectedRatio = () => {
+      // --- 模式 A：看即時工作桌草稿 ---
+      if (selectedReportMonth === 'current_draft') {
+          const targetSchedule = finalizedSchedule || schedule;
+          if (!targetSchedule || Object.keys(targetSchedule).length === 0) return null;
 
-      // ★ 改為抓取「使用者選擇」的那個月份
-      const targetData = accumulatedReports[selectedReportMonth];
-      if (!targetData) return null;
-      
-      const latestMonthKey = selectedReportMonth; // 為了相容下面的變數名稱
-      const latestData = targetData;
+          let totalD = 0, totalE = 0, totalN = 0;
+          const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate() || 30;
 
-      let totalD = 0, totalE = 0, totalN = 0;
-      let daysInMonth = 30;
-      let parsedYear = new Date().getFullYear();
-      let parsedMonth = new Date().getMonth() + 1;
-
-      // 解析年月與天數
-      const matchEN = latestMonthKey.match(/(\d{4})_(\d{1,2})/);
-      if (matchEN) { parsedYear = Number(matchEN[1]); parsedMonth = Number(matchEN[2]); }
-      daysInMonth = new Date(parsedYear, parsedMonth, 0).getDate() || 30;
-
-      // ★ 修正版：從歷史班表 JSON 精算 (絕對不跳過 Dxxx 待認領的班)
-      if (latestData.schedule_backup) {
-          const schedule = latestData.schedule_backup;
-          Object.keys(schedule).forEach(staffId => {
+          Object.keys(targetSchedule).forEach(staffId => {
+              // 工作桌包含 Dxxx 待認領空缺，全部都要算進單位戰力
               for (let d = 1; d <= daysInMonth; d++) {
-                  const cell = schedule[staffId]?.[d];
+                  const cell = targetSchedule[staffId]?.[d];
                   const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
                   if (type === 'D') totalD++;
                   if (type === 'E') totalE++;
                   if (type === 'N') totalN++;
               }
           });
-      // ★ 備用方案：從 Excel CSV 精算
-      } else if (latestData.csv) {
-          const lines = latestData.csv.split(/\r\n|\n/);
+
+          const avgD = totalD / daysInMonth;
+          const avgE = totalE / daysInMonth;
+          const avgN = totalN / daysInMonth;
+
+          return {
+              monthKey: `${selectedYear} 年 ${selectedMonth} 月 (工作桌即時排班)`,
+              daysInMonth,
+              ratioD: avgD > 0 ? (unitBedCount / avgD).toFixed(1) : '∞',
+              ratioE: avgE > 0 ? (unitBedCount / avgE).toFixed(1) : '∞',
+              ratioN: avgN > 0 ? (unitBedCount / avgN).toFixed(1) : '∞',
+              avgD: avgD.toFixed(1),
+              avgE: avgE.toFixed(1),
+              avgN: avgN.toFixed(1)
+          };
+      }
+
+      // --- 模式 B：看過去的雲端歷史報表 ---
+      if (!accumulatedReports) return null;
+      const targetData = accumulatedReports[selectedReportMonth];
+      if (!targetData) return null;
+
+      let totalD = 0, totalE = 0, totalN = 0;
+      let daysInMonth = 30;
+      let parsedYear = new Date().getFullYear();
+      let parsedMonth = new Date().getMonth() + 1;
+
+      const matchEN = selectedReportMonth.match(/(\d{4})_(\d{1,2})/);
+      if (matchEN) { parsedYear = Number(matchEN[1]); parsedMonth = Number(matchEN[2]); }
+      daysInMonth = new Date(parsedYear, parsedMonth, 0).getDate() || 30;
+
+      if (targetData.schedule_backup) {
+          const sched = targetData.schedule_backup;
+          Object.keys(sched).forEach(staffId => {
+              for (let d = 1; d <= daysInMonth; d++) {
+                  const cell = sched[staffId]?.[d];
+                  const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
+                  if (type === 'D') totalD++;
+                  if (type === 'E') totalE++;
+                  if (type === 'N') totalN++;
+              }
+          });
+      } else if (targetData.csv) {
+          const lines = targetData.csv.split(/\r\n|\n/);
           for (let i = 1; i < lines.length; i++) {
               const cols = lines[i].split(',');
               if (cols.length >= 2 + daysInMonth) {
@@ -1990,7 +2012,7 @@ const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
       const avgN = totalN / daysInMonth;
 
       return {
-          monthKey: latestMonthKey,
+          monthKey: `${parsedYear} 年 ${parsedMonth} 月 (已結算歷史)`,
           daysInMonth,
           ratioD: avgD > 0 ? (unitBedCount / avgD).toFixed(1) : '∞',
           ratioE: avgE > 0 ? (unitBedCount / avgE).toFixed(1) : '∞',
@@ -2000,7 +2022,7 @@ const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
           avgN: avgN.toFixed(1)
       };
   };
-const ratioResult = calculateSelectedRatio();
+  const ratioResult = calculateSelectedRatio(); // ★ 改呼叫新的函式
   // =========================================================
   
 // ★★★ 1. 把 AI 決策歷史的邏輯插在這裡 ★★★
@@ -2470,24 +2492,41 @@ let combinedData = "";
               </div>
           </div>
 
-          {/* 檢測結果區塊 */}
+{/* 檢測結果區塊 */}
           {!ratioResult ? (
               <div style={{ textAlign: 'center', padding: '30px', color: '#95a5a6', background: '#f1f2f6', borderRadius: '12px', border: '2px dashed #ddd', fontSize: '1.1rem' }}>
-                  尚無大數據資料，請先至「✅ 結算與歷史」面板封存至少一個月的班表。
+                  <div style={{ marginBottom: '15px', fontSize: '1.1rem', color: '#2980b9', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                      📊 選擇分析樣本：
+                      <select 
+                          value={selectedReportMonth} 
+                          onChange={(e) => setSelectedReportMonth(e.target.value)}
+                          style={{ padding: '6px 15px', borderRadius: '20px', border: '2px solid #3498db', color: '#2980b9', fontWeight: 'bold', background: '#eaf2f8', cursor: 'pointer', fontSize: '1rem', outline: 'none' }}
+                      >
+                          <option value="current_draft">✨ 目前工作桌即時草稿 ({selectedYear}年{selectedMonth}月)</option>
+                          {Object.keys(accumulatedReports || {}).sort().reverse().map(m => (
+                              <option key={m} value={m}>📂 {m.replace('_', ' 年 ')} 月 (已結算歷史)</option>
+                          ))}
+                      </select>
+                  </div>
+                  尚無此月份班表資料，請先至「🛠️ 排班工作桌」生成，或至「✅ 結算與歷史」封存。
               </div>
           ) : (
               <div>
-<div style={{ marginBottom: '15px', fontSize: '1.1rem', color: '#2980b9', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      📊 分析樣本：
+                  <div style={{ marginBottom: '15px', fontSize: '1.1rem', color: '#2980b9', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      📊 選擇分析樣本：
                       <select 
                           value={selectedReportMonth} 
                           onChange={(e) => setSelectedReportMonth(e.target.value)}
                           style={{ padding: '6px 15px', borderRadius: '20px', border: '2px solid #3498db', color: '#2980b9', fontWeight: 'bold', background: '#eaf2f8', cursor: 'pointer', fontSize: '1rem', outline: 'none', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}
                       >
-                          {Object.keys(accumulatedReports).sort().reverse().map(m => (
-                              <option key={m} value={m}>{m.replace('_', ' 年 ')} 月 歷史報表</option>
+                          <option value="current_draft">✨ 目前工作桌即時草稿 ({selectedYear}年{selectedMonth}月)</option>
+                          {Object.keys(accumulatedReports || {}).sort().reverse().map(m => (
+                              <option key={m} value={m}>📂 {m.replace('_', ' 年 ')} 月 (已結算歷史)</option>
                           ))}
                       </select>
+                      <span style={{ fontSize: '0.9rem', color: '#7f8c8d', marginLeft: '10px' }}>
+                          目前顯示：{ratioResult.monthKey}
+                      </span>
                   </div>
                   <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
                       {['D', 'E', 'N'].map(shift => {
@@ -2496,24 +2535,19 @@ let combinedData = "";
                           const ratioVal = Number(ratioResult[`ratio${shift}`]);
                           const limit = RATIO_STANDARDS[hospitalLevel][shift];
                           
-                          // 若超過衛福部規範，或是排班人數為 0，都判定為違規
                           const isViolated = ratioVal > limit || isNaN(ratioVal);
 
                           return (
                               <div key={shift} style={{ flex: 1, minWidth: '280px', background: isViolated ? '#fff5f5' : '#f0fdf4', border: `2px solid ${isViolated ? '#fc8181' : '#68d391'}`, padding: '20px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', transition: 'all 0.3s' }}>
-                                  
                                   <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: isViolated ? '#c53030' : '#276749', marginBottom: '10px' }}>
                                       {shiftName} 護病比
                                   </div>
-                                  
                                   <div style={{ fontSize: '3rem', fontWeight: '900', color: isViolated ? '#e53e3e' : '#38a169', marginBottom: '15px', textShadow: '1px 1px 2px rgba(0,0,0,0.1)' }}>
                                       1 : {ratioResult[`ratio${shift}`]}
                                   </div>
-                                  
                                   <div style={{ fontSize: '1rem', color: '#4a5568', marginBottom: '15px', background: 'white', padding: '5px 15px', borderRadius: '20px', border: '1px solid #cbd5e0' }}>
                                       平均每日 <strong>{avgNurses}</strong> 人上班
                                   </div>
-                                  
                                   <div style={{ width: '100%', textAlign: 'center', background: isViolated ? '#fed7d7' : '#c6f6d5', color: isViolated ? '#c53030' : '#276749', padding: '12px', borderRadius: '10px', fontSize: '1rem', fontWeight: 'bold' }}>
                                       {isViolated ? `⚠️ 違反新制 (上限 1:${limit})` : `✅ 符合新制 (上限 1:${limit})`}
                                   </div>
@@ -2524,9 +2558,7 @@ let combinedData = "";
               </div>
           )}
       </div>
-      {/* ========================================================= */}
-{/* ========================================================= */}
-      
+      {/* ========================================================= */}     
       {/* 📈 過去 12 個月動態趨勢圖 (緊貼在護病比面板下方) */}
       <div style={{ background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e0e0e0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
           <h3 style={{ marginTop: 0, color: '#34495e', marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '8px' }}>📈 過去 12 個月班表健康度與護病比趨勢</h3>
@@ -3882,6 +3914,10 @@ const ManagerInterface = ({
             // 🌟 ★★★ 這裡再往下傳給 StatisticsPanel ★★★
             calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
             bedConfig={bedConfig} // ★★★ 新增這行：把病床設定傳進來
+            schedule={schedule}
+            finalizedSchedule={finalizedSchedule}
+            selectedYear={selectedYear}
+            selectedMonth={selectedMonth}
         />
       )}
 
