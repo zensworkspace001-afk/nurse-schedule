@@ -1164,6 +1164,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 
 [硬性約束 (Hard Constraints) - 必須完全遵守，違反即失敗]
 高優先級別-**每個護理人員班表僅能出現一種班別，也就是說第一天出現白班，接下來的排班除休假日外也僅可以出現白班。**
+- **🚨 護病比天條**: 任何一天的 D、E、N 班人數，【絕對不可】低於上述的每日人力需求！
 1. **法規底線**: 
    - 任何員工不得連續工作超過 6 天 (勞基法「七休一」)。
    - 輪班間隔必須 >= 11 小時 (例如: 今天 E 班 24:00 下班，明天最早只能接 E 班，不能接 D 班)。
@@ -1194,7 +1195,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
   "summary": "已生成符合勞基法的高效排班陣列。" 
 }
 `;
-    let attempts = 0; const MAX_RETRIES = 3; let isSuccess = false;
+    let attempts = 0; const MAX_RETRIES = 5; let isSuccess = false;
 
     while (attempts < MAX_RETRIES && !isSuccess) {
         try {
@@ -1236,11 +1237,40 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                         }
                     });
                 });
+                // =========================================================
+                // ★★★ 新增：護病比 (每日人力需求) 嚴格把關攔截網 ★★★
+                let isRatioValid = true;
+                let errorMsg = "";
+                
+                for (let d = 1; d <= daysInMonth; d++) {
+                    let countD = 0, countE = 0, countN = 0;
+                    Object.values(virtualSchedule).forEach(staff => {
+                        const type = staff[d]?.type;
+                        if (type === 'D') countD++;
+                        if (type === 'E') countE++;
+                        if (type === 'N') countN++;
+                    });
+                    
+                    // 只要有一天的人數小於首頁設定的需求，立刻判定為「不合格廢品」
+                    if (countD < (requirements.D || 0) || countE < (requirements.E || 0) || countN < (requirements.N || 0)) {
+                        isRatioValid = false;
+                        errorMsg = `第 ${d} 天人力不足 (法定需 D${requirements.D} E${requirements.E} N${requirements.N} / AI卻只排了 D${countD} E${countE} N${countN})`;
+                        break; // 抓到一天違規就不用看了，直接跳出迴圈
+                    }
+                }
+
+                if (!isRatioValid) {
+                    // 故意丟出錯誤，這會讓系統直接跳到 catch 區塊，並自動啟動下一次 attempt 重試！
+                    throw new Error(`護病比未達標 (${errorMsg})，正強制 AI 重新洗牌運算...`);
+                }
+                // =========================================================
 
                 setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (全新產生)**\n\n已為您配置 ${Object.keys(virtualSchedule).length} 位人力！` }]);
                 isSuccess = true;
                 
                 onGenerateSchedule(virtualSchedule);
+
+                
             } else {
                 throw new Error("AI 未回傳正確的 patterns 陣列");
             }
