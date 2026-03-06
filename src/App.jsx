@@ -1882,11 +1882,11 @@ const handleSave = async () => {
 // ============================================================================
 // 統計報表面板 (包含優先選班、健康度折線圖，與全新 AI 跨月報表分析)
 // ============================================================================
-const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff }) => {
+const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthStats = [], accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff,bedConfig }) => {
 // =========================================================
   // ★★★ 新增：衛福部三班護病比大數據監控引擎 ★★★
   const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
-  const [unitBedCount, setUnitBedCount] = useState(50);
+  const unitBedCount = bedConfig?.bedCount || 50;
 
   const RATIO_STANDARDS = {
       MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
@@ -2345,13 +2345,11 @@ let combinedData = "";
                           <option value="District">地區醫院</option>
                       </select>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <label style={{ fontWeight: 'bold', color: '#d35400' }}>單位總床數：</label>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <input type="number" value={unitBedCount} onChange={(e) => setUnitBedCount(Number(e.target.value))} style={{ width: '70px', padding: '6px', borderRadius: '6px', border: '1px solid #e67e22', textAlign: 'center', fontWeight: 'bold' }} />
-                          <span style={{ color: '#d35400', fontWeight: 'bold' }}>床</span>
-                      </div>
-                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', fontSize:'0.9rem' }}>
+    <label style={{ color: '#555', fontWeight: 'bold' }}>單位總床數：</label>
+    <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: '#8e44ad' }}>{unitBedCount} 床</span>
+    <span style={{ fontSize: '0.8rem', color: '#999' }}>(由人力需求面板統一設定)</span>
+</div>
               </div>
           </div>
 
@@ -2674,7 +2672,7 @@ const ScheduleReviewPanel = ({
   // ★ 接收專屬的歷史狀態
   setHistorySchedule,
   historyYear, historyMonth, setHistoryYear, setHistoryMonth,
-    historySchedule = {}, 
+    historySchedule = {}, bedConfig // ★★★ 新增這行接收
 }) => {
     // ★ 加這兩行防呆，避免 undefined 傳進來導致 NaN crash
   const safeYear  = historyYear  || new Date().getFullYear();
@@ -3841,7 +3839,7 @@ const ManagerInterface = ({
            shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
            publicHolidays={publicHolidays}
            onUpdateHealthStats={onUpdateHealthStats}
-           
+           bedConfig={bedConfig}
            // 改吃專屬的歷史狀態
            historyYear={historyYear} historyMonth={historyMonth}
            setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
@@ -3856,6 +3854,7 @@ const ManagerInterface = ({
             setAccumulatedReports={setAccumulatedReports} // 👈 補上：讓面板可以清空記憶
             // 🌟 ★★★ 這裡再往下傳給 StatisticsPanel ★★★
             calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+            bedConfig={bedConfig} // ★★★ 新增這行：把病床設定傳進來
         />
       )}
 
