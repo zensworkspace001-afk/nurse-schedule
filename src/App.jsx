@@ -1950,10 +1950,71 @@ const StatisticsPanel = ({ staffData, priorityConfig, setPriorityConfig, healthS
           alert("❌ 操作失敗，請檢查網路連線。");
       }
   };
+  // =========================================================
+  // ★★★ 新增：衛福部三班護病比法遵監控狀態與計算邏輯 ★★★
+  const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
+  const [unitBedCount, setUnitBedCount] = useState(50);
+
+  const RATIO_STANDARDS = {
+      MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
+      Regional: { name: '區域醫院', D: 7, E: 11, N: 13 },
+      District: { name: '地區醫院', D: 10, E: 13, N: 15 }
+  };
+
+  const calculateLatestRatio = () => {
+      if (!accumulatedReports) return null;
+      const months = Object.keys(accumulatedReports).sort(); 
+      if (months.length === 0) return null;
+      
+      // 抓取最後一個月（最新結算）的資料
+      const latestMonthKey = months[months.length - 1];
+      const latestData = accumulatedReports[latestMonthKey];
+      if (!latestData || !latestData.schedule_backup) return null;
+
+      const schedule = latestData.schedule_backup;
+      let totalD = 0, totalE = 0, totalN = 0;
+      
+      let year = latestData.year;
+      let month = latestData.month;
+      if (!year || !month) {
+          const matchEN = latestMonthKey.match(/(\d{4})_(\d{1,2})/);
+          if (matchEN) { year = Number(matchEN[1]); month = Number(matchEN[2]); }
+          else { year = new Date().getFullYear(); month = new Date().getMonth() + 1; }
+      }
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      Object.keys(schedule).forEach(staffId => {
+          if (staffId.startsWith('D')) return; // 不算幽靈空缺，只算真人
+          for (let d = 1; d <= daysInMonth; d++) {
+              const cell = schedule[staffId]?.[d];
+              const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
+              if (type === 'D') totalD++;
+              if (type === 'E') totalE++;
+              if (type === 'N') totalN++;
+          }
+      });
+
+      const avgD = totalD / daysInMonth;
+      const avgE = totalE / daysInMonth;
+      const avgN = totalN / daysInMonth;
+
+      return {
+          monthKey: latestMonthKey,
+          daysInMonth,
+          ratioD: avgD > 0 ? (unitBedCount / avgD).toFixed(1) : '∞',
+          ratioE: avgE > 0 ? (unitBedCount / avgE).toFixed(1) : '∞',
+          ratioN: avgN > 0 ? (unitBedCount / avgN).toFixed(1) : '∞',
+          avgD: avgD.toFixed(1),
+          avgE: avgE.toFixed(1),
+          avgN: avgN.toFixed(1)
+      };
+  };
+  const ratioResult = calculateLatestRatio();
+  // ★★★ 新增結束 ★★★
+  // =========================================================
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
   const hasData = loadedMonths.length > 0;
-
   const [aiMessages, setAiMessages] = useState([{ role: 'assistant', content: '📊 【跨月大數據分析精靈】已就緒！\n只要您曾在「✅ 結算與歷史」面板匯出過 Excel，雲端就會自動記憶。\n您可以直接問我：「比較 2 月和 3 月的加班費差異」或「找出這幾個月請假最多的人」。' }]);
   const [aiInput, setAiInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -2341,7 +2402,85 @@ let combinedData = "";
               ))}
           </div>
       </div>
-      {/* ★★★ 插入結束 ★★★ */}
+     {/* ★★★ 插入結束 ★★★ */}
+
+      {/* ========================================================= */}
+      {/* ★★★ 新增：衛福部三班護病比法遵監控面板 ★★★ */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '1.5rem', borderLeft: '5px solid #e67e22', boxShadow: '0 4px 10px rgba(0,0,0,0.05)' }}>
+          <h3 style={{ marginTop: 0, color: '#d35400', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.3rem' }}>
+              ⚖️ 衛福部三班護病比法遵監控 
+              <span style={{ fontSize: '0.8rem', background: '#fdf2e9', color: '#e67e22', padding: '4px 8px', borderRadius: '8px', border: '1px solid #fae5d3' }}>113年3月1日新制</span>
+          </h3>
+          <p style={{ margin: '0 0 15px 0', color: '#7f8c8d', fontSize: '0.9rem', lineHeight: '1.5' }}>
+              為解決護理人力荒並留任人員，衛福部以「獎勵先行」、「逐步推動」及「引領標竿」三原則推動新制。此面板將依據本單位<strong>「最近一次結算封存之歷史真實班表」</strong>，自動精算每日平均人力，檢測是否合規，協助應對護理全聯會之實施現況調查。
+          </p>
+
+          {/* 參數設定區 */}
+          <div style={{ display: 'flex', gap: '15px', marginBottom: '20px', background: '#f8f9fa', padding: '15px', borderRadius: '8px', border: '1px solid #ddd' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <label style={{ fontWeight: 'bold', color: '#2c3e50' }}>醫院層級：</label>
+                  <select value={hospitalLevel} onChange={(e) => setHospitalLevel(e.target.value)} style={{ padding: '8px', borderRadius: '6px', border: '1px solid #ccc' }}>
+                      <option value="MedicalCenter">醫學中心 (D 1:6 | E 1:9 | N 1:11)</option>
+                      <option value="Regional">區域醫院 (D 1:7 | E 1:11 | N 1:13)</option>
+                      <option value="District">地區醫院 (D 1:10 | E 1:13 | N 1:15)</option>
+                  </select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <label style={{ fontWeight: 'bold', color: '#2c3e50' }}>單位總床數：</label>
+                  <input type="number" value={unitBedCount} onChange={(e) => setUnitBedCount(Number(e.target.value))} style={{ width: '80px', padding: '8px', borderRadius: '6px', border: '1px solid #ccc', textAlign: 'center', fontWeight: 'bold' }} />
+                  <span style={{ color: '#7f8c8d' }}>床</span>
+              </div>
+          </div>
+
+          {/* 檢測結果區 */}
+          {!ratioResult ? (
+              <div style={{ textAlign: 'center', padding: '20px', color: '#95a5a6', background: '#f1f2f6', borderRadius: '8px' }}>
+                  尚無結算資料，請先至「✅ 結算與歷史」面板封存至少一個月的班表。
+              </div>
+          ) : (
+              <div>
+                  <div style={{ marginBottom: '10px', fontSize: '0.95rem', color: '#2980b9', fontWeight: 'bold' }}>
+                      📊 數據來源：最新結算真實報表 ({ratioResult.monthKey.replace('_', '年')}月) 
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px' }}>
+                      {['D', 'E', 'N'].map(shift => {
+                          const shiftName = shift === 'D' ? '白班' : shift === 'E' ? '小夜' : '大夜';
+                          const avgNurses = ratioResult[`avg${shift}`];
+                          const ratioVal = Number(ratioResult[`ratio${shift}`]);
+                          const limit = RATIO_STANDARDS[hospitalLevel][shift];
+                          
+                          // 若超過衛福部規範，或是排班人數為 0 (導致比例為 NaN/Infinity)，都判定為違規
+                          const isViolated = ratioVal > limit || isNaN(ratioVal);
+
+                          return (
+                              <div key={shift} style={{ background: isViolated ? '#fff5f5' : '#f0fdf4', border: `2px solid ${isViolated ? '#fc8181' : '#68d391'}`, padding: '15px', borderRadius: '12px', position: 'relative' }}>
+                                  <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: isViolated ? '#c53030' : '#276749', marginBottom: '5px' }}>
+                                      {shiftName} 護病比
+                                  </div>
+                                  <div style={{ fontSize: '2rem', fontWeight: '900', color: isViolated ? '#e53e3e' : '#38a169', marginBottom: '10px' }}>
+                                      1 : {ratioResult[`ratio${shift}`]}
+                                  </div>
+                                  <div style={{ fontSize: '0.85rem', color: '#4a5568', marginBottom: '10px' }}>
+                                      (平均每日 {avgNurses} 人上班)
+                                  </div>
+                                  
+                                  {isViolated ? (
+                                      <div style={{ background: '#fed7d7', color: '#c53030', padding: '8px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                          ⚠️ 違反衛福部新制<br/>({RATIO_STANDARDS[hospitalLevel].name} 上限 1:{limit})
+                                      </div>
+                                  ) : (
+                                      <div style={{ background: '#c6f6d5', color: '#276749', padding: '8px', borderRadius: '6px', fontSize: '0.85rem', fontWeight: 'bold' }}>
+                                          ✅ 符合衛福部新制<br/>(安全上限 1:{limit})
+                                      </div>
+                                  )}
+                              </div>
+                          );
+                      })}
+                  </div>
+              </div>
+          )}
+      </div>
+      {/* ========================================================= */}
 
       {/* 2. 健康度趨勢圖 */}
       <div style={{ background: '#fdfdfd', padding: '1.5rem', borderRadius: '16px', border: '1px solid #e0e0e0', boxShadow: '0 4px 6px rgba(0,0,0,0.02)' }}>
