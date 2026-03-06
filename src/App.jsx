@@ -1925,7 +1925,7 @@ const StatisticsPanel = ({
 
   // ★★★ 新增：下拉選單狀態 (預設看即時草稿) ★★★
   const [selectedReportMonth, setSelectedReportMonth] = useState('current_draft');
-
+const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, ratioE: false, ratioN: false });
   const RATIO_STANDARDS = {
       MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
       Regional: { name: '區域醫院', D: 7, E: 11, N: 13 },
