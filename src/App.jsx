@@ -2588,8 +2588,49 @@ const ScheduleReviewPanel = ({
 
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
-  const [showSettlement, setShowSettlement] = useState(false);
+ const [showSettlement, setShowSettlement] = useState(false);
 
+  // =========================================================
+  // ★★★ 新增：衛福部三班護病比即時監控引擎 ★★★
+  const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
+  const [unitBedCount, setUnitBedCount] = useState(50);
+
+  const RATIO_STANDARDS = {
+      MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
+      Regional: { name: '區域醫院', D: 7, E: 11, N: 13 },
+      District: { name: '地區醫院', D: 10, E: 13, N: 15 }
+  };
+
+  const calculateCurrentRatio = () => {
+      if (!historySchedule || Object.keys(historySchedule).length === 0) return null;
+      let totalD = 0, totalE = 0, totalN = 0;
+      
+      Object.keys(historySchedule).forEach(staffId => {
+          if (staffId.startsWith('D')) return; // 略過待認領的空缺
+          for (let d = 1; d <= daysInMonth; d++) {
+              const cell = historySchedule[staffId]?.[d];
+              const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
+              if (type === 'D') totalD++;
+              if (type === 'E') totalE++;
+              if (type === 'N') totalN++;
+          }
+      });
+      
+      const avgD = totalD / daysInMonth;
+      const avgE = totalE / daysInMonth;
+      const avgN = totalN / daysInMonth;
+
+      return {
+          ratioD: avgD > 0 ? (unitBedCount / avgD).toFixed(1) : '∞',
+          ratioE: avgE > 0 ? (unitBedCount / avgE).toFixed(1) : '∞',
+          ratioN: avgN > 0 ? (unitBedCount / avgN).toFixed(1) : '∞',
+          avgD: avgD.toFixed(1),
+          avgE: avgE.toFixed(1),
+          avgN: avgN.toFixed(1)
+      };
+  };
+  const ratioResult = calculateCurrentRatio();
+  // =========================================================
   const [baseSalary, setBaseSalary] = useState(() => {
       const saved = localStorage.getItem('globalBaseSalary');
       return saved ? Number(saved) : 40000;
@@ -3127,6 +3168,42 @@ return (
 
           {/* ★★★ 新增右側：法遵與壓力風險監控面板 ★★★ */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
+            {/* ========================================================= */}
+             {/* 🏥 衛福部護病比儀表板 (即時運算) */}
+             <div style={{ background: 'white', borderRadius: '16px', padding: '1.2rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #8e44ad', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
+                <h2 style={{ margin: '0 0 10px 0', fontSize: '1.1rem', color: '#8e44ad', display:'flex', justifyContent:'space-between', alignItems: 'center' }}>
+                    <span>⚖️ 三班護病比監控 <span style={{fontSize:'0.75rem', color:'#fff', background:'#8e44ad', padding:'2px 6px', borderRadius:'10px'}}>113年新制</span></span>
+                    <select value={hospitalLevel} onChange={(e) => setHospitalLevel(e.target.value)} style={{fontSize:'0.85rem', padding:'4px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'}}>
+                        <option value="MedicalCenter">醫學中心</option>
+                        <option value="Regional">區域醫院</option>
+                        <option value="District">地區醫院</option>
+                    </select>
+                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', fontSize:'0.9rem' }}>
+                    <label style={{ color: '#555', fontWeight: 'bold' }}>單位總床數：</label>
+                    <input type="number" value={unitBedCount} onChange={(e) => setUnitBedCount(Number(e.target.value))} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center', fontWeight: 'bold' }} />
+                </div>
+
+                {ratioResult ? (
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
+                        {['D', 'E', 'N'].map(shift => {
+                            const shiftName = shift === 'D' ? '白班' : shift === 'E' ? '小夜' : '大夜';
+                            const ratioVal = Number(ratioResult[`ratio${shift}`]);
+                            const limit = RATIO_STANDARDS[hospitalLevel][shift];
+                            const isViolated = ratioVal > limit || isNaN(ratioVal);
+
+                            return (
+                                <div key={shift} style={{ background: isViolated ? '#fff5f5' : '#f0fdf4', border: `1px solid ${isViolated ? '#fc8181' : '#68d391'}`, padding: '10px 5px', borderRadius: '8px', textAlign: 'center' }}>
+                                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: isViolated ? '#c53030' : '#276749' }}>{shiftName}</div>
+                                    <div style={{ fontSize: '1.2rem', fontWeight: '900', color: isViolated ? '#e53e3e' : '#38a169', margin: '4px 0' }}>1:{ratioResult[`ratio${shift}`]}</div>
+                                    <div style={{ fontSize: '0.7rem', color: isViolated ? '#e53e3e' : '#276749', fontWeight: 'bold' }}>法定 1:{limit}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ) : <div style={{ fontSize:'0.85rem', color:'#888', textAlign:'center' }}>尚無班表資料</div>}
+             </div>
+             {/* ========================================================= */}
              <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
                 <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b' }}>⚖️ 法遵檢查結果</h2>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
