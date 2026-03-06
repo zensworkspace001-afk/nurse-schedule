@@ -3020,6 +3020,7 @@ return (
 // ============================================================================
 // 制度模擬工作桌 (What-if Simulation Sandbox)
 // ============================================================================
+{/*
 const SimulationPanel = ({ 
     staffData, requirements, baseSalary, publicHolidays, 
     selectedYear, selectedMonth, shiftOptions 
@@ -3217,7 +3218,7 @@ const SimulationPanel = ({
         </div>
     );
 };
-
+*/}
 // ============================================================================
 // 📢 發布與認領面板 (PublishPanel) - 專供監控本月員工認領進度與單點拔除
 // ============================================================================
@@ -3515,7 +3516,7 @@ const ManagerInterface = ({
             {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
             {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
             {tab === 'statistics' && '📊 統計報表'}
-            {tab === 'simulation' && '🔮 制度模擬'}
+            {/*{tab === 'simulation' && '🔮 制度模擬'}*/}
           </button>
         ))}
       </div>
