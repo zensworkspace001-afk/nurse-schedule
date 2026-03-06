@@ -2684,47 +2684,9 @@ const ScheduleReviewPanel = ({
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
  const [showSettlement, setShowSettlement] = useState(false);
 
-  // =========================================================
-  // ★★★ 新增：衛福部三班護病比即時監控引擎 ★★★
-  const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
-  const [unitBedCount, setUnitBedCount] = useState(50);
 
-  const RATIO_STANDARDS = {
-      MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
-      Regional: { name: '區域醫院', D: 7, E: 11, N: 13 },
-      District: { name: '地區醫院', D: 10, E: 13, N: 15 }
-  };
 
-  const calculateCurrentRatio = () => {
-      if (!historySchedule || Object.keys(historySchedule).length === 0) return null;
-      let totalD = 0, totalE = 0, totalN = 0;
-      
-      Object.keys(historySchedule).forEach(staffId => {
-          if (staffId.startsWith('D')) return; // 略過待認領的空缺
-          for (let d = 1; d <= daysInMonth; d++) {
-              const cell = historySchedule[staffId]?.[d];
-              const type = (typeof cell === 'object' ? cell.type : cell) || 'OFF';
-              if (type === 'D') totalD++;
-              if (type === 'E') totalE++;
-              if (type === 'N') totalN++;
-          }
-      });
-      
-      const avgD = totalD / daysInMonth;
-      const avgE = totalE / daysInMonth;
-      const avgN = totalN / daysInMonth;
-
-      return {
-          ratioD: avgD > 0 ? (unitBedCount / avgD).toFixed(1) : '∞',
-          ratioE: avgE > 0 ? (unitBedCount / avgE).toFixed(1) : '∞',
-          ratioN: avgN > 0 ? (unitBedCount / avgN).toFixed(1) : '∞',
-          avgD: avgD.toFixed(1),
-          avgE: avgE.toFixed(1),
-          avgN: avgN.toFixed(1)
-      };
-  };
-  const ratioResult = calculateCurrentRatio();
-  // =========================================================
+  
   const [baseSalary, setBaseSalary] = useState(() => {
       const saved = localStorage.getItem('globalBaseSalary');
       return saved ? Number(saved) : 40000;
@@ -3265,14 +3227,6 @@ return (
             {/* ========================================================= */}
              {/* 🏥 衛福部護病比儀表板 (即時運算) */}
              <div style={{ background: 'white', borderRadius: '16px', padding: '1.2rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #8e44ad', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                <h2 style={{ margin: '0 0 10px 0', fontSize: '1.1rem', color: '#8e44ad', display:'flex', justifyContent:'space-between', alignItems: 'center' }}>
-                    <span>⚖️ 三班護病比監控 <span style={{fontSize:'0.75rem', color:'#fff', background:'#8e44ad', padding:'2px 6px', borderRadius:'10px'}}>113年新制</span></span>
-                    <select value={hospitalLevel} onChange={(e) => setHospitalLevel(e.target.value)} style={{fontSize:'0.85rem', padding:'4px', borderRadius:'4px', border:'1px solid #ccc', cursor:'pointer'}}>
-                        <option value="MedicalCenter">醫學中心</option>
-                        <option value="Regional">區域醫院</option>
-                        <option value="District">地區醫院</option>
-                    </select>
-                </h2>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', fontSize:'0.9rem' }}>
                     <label style={{ color: '#555', fontWeight: 'bold' }}>單位總床數：</label>
                     <input type="number" value={unitBedCount} onChange={(e) => setUnitBedCount(Number(e.target.value))} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center', fontWeight: 'bold' }} />
