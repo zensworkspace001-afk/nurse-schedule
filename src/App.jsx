@@ -878,33 +878,35 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
 // ============================================================================
 const RequirementsPanel = ({ 
   requirements, setRequirements, 
+  bedConfig, setBedConfig, // ★ 接收從雲端與最高層傳來的狀態
   selectedYear, setSelectedYear, selectedMonth, setSelectedMonth,
   onSaveSchedule 
 }) => {
  
-  const [bedCount, setBedCount] = useState(50);
-  const [ratioD, setRatioD] = useState(10);
-  const [ratioE, setRatioE] = useState(12);
-  const [ratioN, setRatioN] = useState(15);
+  // ★ 解構目前的設定值 (若無則給預設值防呆)
+  const { bedCount, ratioD, ratioE, ratioN } = bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 };
 
   const dailyD = Math.ceil(bedCount / ratioD);
   const dailyE = Math.ceil(bedCount / ratioE);
   const dailyN = Math.ceil(bedCount / ratioN);
 
+  // ★ 當病床與護病比變更時，即時更新「人力需求結果」，並準備觸發雲端自動存檔
   useEffect(() => {
-    setRequirements(prev =>({
-      ...prev,
+    setRequirements({
        D: dailyD, E: dailyE, N: dailyN,
-      optimalD: Math.ceil(dailyD * 1.4), optimalE: Math.ceil(dailyE * 1.4), optimalN: Math.ceil(dailyN * 1.4)
-    }));
-  }, [bedCount, ratioD, ratioE, ratioN]);
+       optimalD: Math.ceil(dailyD * 1.4), optimalE: Math.ceil(dailyE * 1.4), optimalN: Math.ceil(dailyN * 1.4)
+    });
+  }, [bedCount, ratioD, ratioE, ratioN, setRequirements]);
 
+  // ★ 統一更新 Config 的小幫手
+  const updateBedConfig = (field, value) => {
+      setBedConfig(prev => ({ ...prev, [field]: value }));
+  };
 
   return (
     <div style={{ background: 'white', borderRadius: '16px', padding: '2rem' }}>
       <h2 style={{ color: 'black', marginBottom: '1.5rem' }}>人力需求與排班設定</h2>
       
-
       <div style={{ background: '#f8f9fa', padding: '1.5rem', borderRadius: '12px', marginBottom: '2rem' }}>
         <div style={{ marginBottom: '1.5rem' }}>
             <label style={{ fontWeight: 'bold', display: 'block', marginBottom: '0.5rem', color: 'black', fontSize: '1.1rem' }}>
@@ -912,7 +914,7 @@ const RequirementsPanel = ({
             </label>
             <input 
               type="range" min="0" max="100" value={bedCount} 
-              onChange={e=>setBedCount(Number(e.target.value))} 
+              onChange={e => updateBedConfig('bedCount', Number(e.target.value))} // ★ 改用新函式
               style={{ width:'100%', cursor: 'pointer' }}
             />
         </div>
@@ -923,7 +925,7 @@ const RequirementsPanel = ({
                 <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyD} 人</div>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
                    <span>早班 1 :</span>
-                   <input type="number" value={ratioD} onChange={e => setRatioD(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                   <input type="number" value={ratioD} onChange={e => updateBedConfig('ratioD', Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
                 </div>
             </div>
 
@@ -932,7 +934,7 @@ const RequirementsPanel = ({
                 <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyE} 人</div>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
                    <span>小夜 1 :</span>
-                   <input type="number" value={ratioE} onChange={e => setRatioE(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                   <input type="number" value={ratioE} onChange={e => updateBedConfig('ratioE', Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
                 </div>
             </div>
 
@@ -941,7 +943,7 @@ const RequirementsPanel = ({
                 <div style={{ fontWeight: 'bold', fontSize: '1.5rem', marginBottom:'0.5rem' }}>{dailyN} 人</div>
                 <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:'5px', fontSize: '1rem', fontWeight:'bold' }}>
                    <span>大夜 1 :</span>
-                   <input type="number" value={ratioN} onChange={e => setRatioN(Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
+                   <input type="number" value={ratioN} onChange={e => updateBedConfig('ratioN', Number(e.target.value))} style={{ width: '60px', padding: '4px', textAlign: 'center', borderRadius: '6px', border: '1px solid #ccc', color: 'black', background: 'white', fontWeight: 'bold', fontSize:'1rem' }} />
                 </div>
             </div>
         </div>
@@ -3748,7 +3750,7 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
 const ManagerInterface = ({
   staffData, setStaffData, historyData, requirements, setRequirements,
   preferences, setPreferences, schedule, violations,
-  scheduleRisks,
+  scheduleRisks,bedConfig, setBedConfig,
   shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
   selectedYear, setSelectedYear, 
   selectedMonth, setSelectedMonth,
@@ -3787,6 +3789,7 @@ const ManagerInterface = ({
       {activeTab === 'requirements' && (
         <RequirementsPanel
           requirements={requirements} setRequirements={setRequirements}
+          bedConfig={bedConfig} setBedConfig={setBedConfig}
           onGenerateSchedule={onGenerateSchedule} 
           onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
           selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
@@ -3925,7 +3928,9 @@ const NurseSchedulingSystem = () => {
 const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
   // --- 2. 本機暫存狀態 (不需上雲端) ---
   const [historyData, setHistoryData] = useState([]);
-  const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
+const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
+  // ★ 新增這行：把病床與護病比的狀態提升到最高層
+  const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 });
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
   const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
@@ -4023,6 +4028,8 @@ const [historyYear, setHistoryYear] = useState(() => {
       if (data) {
         if (data.shiftOptions) setShiftOptions(data.shiftOptions);
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
+        if (data.requirements) setRequirements(data.requirements);
+        if (data.bedConfig) setBedConfig(data.bedConfig);
         if (data.publishedDate) {
           setPublishedDate(prev => {
             if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
@@ -4081,7 +4088,9 @@ const [historyYear, setHistoryYear] = useState(() => {
 
         saveGlobalSettings({
           shiftOptions: shiftOptions || [],
-          priorityConfig: priorityConfig || {}
+          priorityConfig: priorityConfig || {},
+          requirements: requirements || { D: 15, E: 12, N: 8 },
+          bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 }
           // ★ 警告：絕對不能在這裡寫入 publishedDate，只能由發布按鈕寫入！
         });
 
@@ -4401,6 +4410,8 @@ const handleSaveAndPublish = async () => {
         await saveGlobalSettings({
             shiftOptions: shiftOptions || [],
             priorityConfig: priorityConfig || {},
+            requirements: requirements || { D: 15, E: 12, N: 8 },
+            bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
             publishedDate: newPubDate
         });
         await saveMonthlySchedule(selectedYear, selectedMonth, {
@@ -4520,6 +4531,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
           <ManagerInterface
             staffData={staffData} setStaffData={setStaffData} historyData={historyData}
             requirements={requirements} setRequirements={setRequirements}
+            bedConfig={bedConfig} setBedConfig={setBedConfig} // ★ 新增這行傳遞
             preferences={preferences} setPreferences={setPreferences}
             schedule={schedule} violations={violations}
             selectedYear={selectedYear} 
