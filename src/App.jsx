@@ -3224,34 +3224,7 @@ return (
 
           {/* ★★★ 新增右側：法遵與壓力風險監控面板 ★★★ */}
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '15px', overflow: 'hidden' }}>
-            {/* ========================================================= */}
-             {/* 🏥 衛福部護病比儀表板 (即時運算) */}
-             <div style={{ background: 'white', borderRadius: '16px', padding: '1.2rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #8e44ad', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '15px', fontSize:'0.9rem' }}>
-                    <label style={{ color: '#555', fontWeight: 'bold' }}>單位總床數：</label>
-                    <input type="number" value={unitBedCount} onChange={(e) => setUnitBedCount(Number(e.target.value))} style={{ width: '60px', padding: '4px', borderRadius: '4px', border: '1px solid #ccc', textAlign: 'center', fontWeight: 'bold' }} />
-                </div>
 
-                {ratioResult ? (
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px' }}>
-                        {['D', 'E', 'N'].map(shift => {
-                            const shiftName = shift === 'D' ? '白班' : shift === 'E' ? '小夜' : '大夜';
-                            const ratioVal = Number(ratioResult[`ratio${shift}`]);
-                            const limit = RATIO_STANDARDS[hospitalLevel][shift];
-                            const isViolated = ratioVal > limit || isNaN(ratioVal);
-
-                            return (
-                                <div key={shift} style={{ background: isViolated ? '#fff5f5' : '#f0fdf4', border: `1px solid ${isViolated ? '#fc8181' : '#68d391'}`, padding: '10px 5px', borderRadius: '8px', textAlign: 'center' }}>
-                                    <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: isViolated ? '#c53030' : '#276749' }}>{shiftName}</div>
-                                    <div style={{ fontSize: '1.2rem', fontWeight: '900', color: isViolated ? '#e53e3e' : '#38a169', margin: '4px 0' }}>1:{ratioResult[`ratio${shift}`]}</div>
-                                    <div style={{ fontSize: '0.7rem', color: isViolated ? '#e53e3e' : '#276749', fontWeight: 'bold' }}>法定 1:{limit}</div>
-                                </div>
-                            );
-                        })}
-                    </div>
-                ) : <div style={{ fontSize:'0.85rem', color:'#888', textAlign:'center' }}>尚無班表資料</div>}
-             </div>
-             {/* ========================================================= */}
              <div style={{ flex: 1, background: 'white', borderRadius: '16px', padding: '1.5rem', display:'flex', flexDirection:'column', borderLeft:'4px solid #e74c3c', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
                 <h2 style={{ margin: '0 0 1rem 0', fontSize: '1.1rem', color: '#c0392b' }}>⚖️ 法遵檢查結果</h2>
                 <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -3815,6 +3788,8 @@ const ManagerInterface = ({
           historyMonth={historyMonth}
           historySchedule={historySchedule}
           onManualRefresh={onManualRefresh} 
+          publicHolidays={publicHolidays}        
+          setFinalizedSchedule={setFinalizedSchedule} 
         />
       )}
       
