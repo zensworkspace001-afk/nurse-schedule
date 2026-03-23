@@ -12,6 +12,7 @@
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   position: relative;
   padding: 20px;
+  box-sizing: border-box; /* 確保 padding 不會撐破版面 */
 }
 
 /* --- Card --- */
@@ -19,12 +20,20 @@
   background: white;
   padding: 3rem;
   border-radius: 20px;
+  
+  /* 🌟 響應式寬度：最小 320px，理想是螢幕寬度的 90%，最大不超過 450px (電腦螢幕上的最適大小) */
   width: 100%;
-  max-width: 400px;
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  max-width: clamp(320px, 90vw, 450px);
+  min-height: 400px; /* 給予面板一個固定的最低高度，看起來更大器 */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
   text-align: center;
   margin-bottom: 30px;
   z-index: 10;
+  box-sizing: border-box;
 }
 
 /* --- Title --- */
@@ -85,9 +94,30 @@
 .login-panel__button--active {
   background: #667eea;
   cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.login-panel__button--active:hover {
+  background: #5a6ed1; /* 增加 Hover 效果 */
 }
 
 .login-panel__button--disabled {
   background: #ccc;
   cursor: not-allowed;
+}
+
+/* ==========================================================================
+   響應式設計 (Responsive Design) - 判斷終端設備
+   ========================================================================== */
+@media screen and (max-width: 480px) {
+  /* 針對手機等小螢幕設備的優化 */
+  .login-panel {
+    padding: 15px; /* 減少外部留白，讓面板盡量佔滿螢幕 */
+  }
+
+  .login-panel__card {
+    padding: 2rem 1.5rem; /* 縮小面板內部的留白 */
+    border-radius: 16px;  /* 圓角稍微縮小，視覺上更適合手機 */
+    min-height: auto;     /* 允許高度隨著內容自動縮放，避免過度拉長 */
+  }
 }
