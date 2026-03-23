@@ -1,0 +1,93 @@
+/* ==========================================================================
+   LoginPanel Styles
+   ========================================================================== */
+
+/* --- Background / Page Container --- */
+.login-panel {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  padding: 20px;
+}
+
+/* --- Card --- */
+.login-panel__card {
+  background: white;
+  padding: 3rem;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  margin-bottom: 30px;
+  z-index: 10;
+}
+
+/* --- Title --- */
+.login-panel__title {
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.login-panel__badge {
+  font-size: 0.9rem;
+  background: #e8f8f5;
+  color: #27ae60;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* --- Form --- */
+.login-panel__form {
+  margin-top: 20px;
+}
+
+/* --- Inputs --- */
+.login-panel__input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+.login-panel__input--password {
+  margin-bottom: 1.5rem;
+}
+
+/* --- Error Message --- */
+.login-panel__error {
+  color: #e74c3c;
+  background: #fdecea;
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  text-align: left;
+}
+
+/* --- Submit Button --- */
+.login-panel__button {
+  width: 100%;
+  padding: 14px;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.login-panel__button--active {
+  background: #667eea;
+  cursor: pointer;
+}
+
+.login-panel__button--disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}

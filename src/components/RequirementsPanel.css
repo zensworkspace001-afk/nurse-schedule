@@ -1,0 +1,105 @@
+/* ==========================================================================
+   RequirementsPanel Styles
+   ========================================================================== */
+
+/* --- Container --- */
+.requirements-panel {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+}
+
+/* --- Title --- */
+.requirements-panel__title {
+  color: black;
+  margin-bottom: 1.5rem;
+}
+
+/* --- Settings Section --- */
+.requirements-panel__settings {
+  background: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 12px;
+  margin-bottom: 2rem;
+}
+
+/* --- Bed Count Slider Group --- */
+.requirements-panel__bed-group {
+  margin-bottom: 1.5rem;
+}
+
+.requirements-panel__bed-label {
+  font-weight: bold;
+  display: block;
+  margin-bottom: 0.5rem;
+  color: black;
+  font-size: 1.1rem;
+}
+
+.requirements-panel__bed-count {
+  font-size: 1.3rem;
+}
+
+.requirements-panel__slider {
+  width: 100%;
+  cursor: pointer;
+}
+
+/* --- Shift Cards Row --- */
+.requirements-panel__shifts {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* --- Individual Shift Card (shared base) --- */
+.requirements-panel__shift-card {
+  flex: 1;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+  color: black;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* Shift card color variants */
+.requirements-panel__shift-card--day {
+  background: #FFD93D;
+}
+
+.requirements-panel__shift-card--evening {
+  background: #FF6B9D;
+}
+
+.requirements-panel__shift-card--night {
+  background: #4D96FF;
+}
+
+/* --- Shift Card Content --- */
+.requirements-panel__shift-count {
+  font-weight: bold;
+  font-size: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.requirements-panel__shift-ratio {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+/* --- Ratio Number Input --- */
+.requirements-panel__ratio-input {
+  width: 60px;
+  padding: 4px;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  color: black;
+  background: white;
+  font-weight: bold;
+  font-size: 1rem;
+}

@@ -1,0 +1,442 @@
+/* ==========================================================================
+   PublishPanel — BEM Stylesheet
+   ========================================================================== */
+
+/* --- Root Container --- */
+.publish {
+  display: flex;
+  gap: 20px;
+  height: 80vh;
+  flex-direction: column;
+}
+
+/* --- Header Bar --- */
+.publish__header {
+  background: white;
+  border-radius: 16px;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 5px solid #27ae60;
+}
+
+.publish__header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.publish__header-title {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #27ae60;
+}
+
+.publish__header-badge {
+  background: #e8f8f5;
+  padding: 5px 10px;
+  border-radius: 8px;
+  color: #27ae60;
+  font-weight: bold;
+}
+
+.publish__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* --- Header Buttons --- */
+.publish__btn {
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: white;
+}
+
+.publish__btn--manage {
+  padding: 0.5rem 1rem;
+  background: #6c757d;
+}
+
+.publish__btn--unassign-all {
+  padding: 0.5rem 1rem;
+  background: #e74c3c;
+  font-weight: bold;
+}
+
+.publish__btn--archive {
+  padding: 10px 20px;
+  background: #34495e;
+  font-weight: bold;
+  font-size: 1rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* --- Option Management Panel --- */
+.publish__option-panel {
+  padding: 1rem;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #ddd;
+  margin-bottom: 15px;
+}
+
+.publish__option-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.publish__option-input {
+  padding: 5px;
+  color: black;
+}
+
+.publish__option-input--code {
+  width: 80px;
+}
+
+.publish__option-input--name {
+  width: 120px;
+}
+
+.publish__option-color-picker {
+  border: none;
+  width: 40px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.publish__option-add-btn {
+  padding: 5px 15px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.publish__option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.publish__option-tag {
+  background: #f8f9fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+}
+
+.publish__option-dot {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.publish__option-code {
+  color: #000000;
+}
+
+.publish__option-delete-btn {
+  border: none;
+  background: transparent;
+  color: red;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 0 2px;
+}
+
+/* --- Main Content Area --- */
+.publish__content {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- Left: Schedule Table --- */
+.publish__table-wrapper {
+  flex: 3;
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.publish__table-scroll {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.publish__empty {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+}
+
+.publish__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+/* --- Table Head --- */
+.publish__thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.publish__thead-row {
+  background: #27ae60;
+  color: white;
+}
+
+.publish__th-staff {
+  padding: 8px;
+  min-width: 150px;
+  position: sticky;
+  left: 0;
+  background: #27ae60;
+  z-index: 11;
+}
+
+.publish__th-health {
+  padding: 8px;
+  min-width: 50px;
+  background: #2ecc71;
+  z-index: 10;
+  border-right: 2px solid #fff;
+}
+
+.publish__th-day {
+  padding: 4px;
+  min-width: 35px;
+  text-align: center;
+}
+
+.publish__th-day-label {
+  font-size: 0.9rem;
+}
+
+/* --- Table Body Rows --- */
+.publish__row {
+  border-bottom: 1px solid #eee;
+  background: white;
+}
+
+.publish__row--virtual {
+  background: #fafafa;
+}
+
+/* --- Staff Name Cell --- */
+.publish__td-staff {
+  padding: 8px;
+  border-right: 1px solid #eee;
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.publish__td-staff--virtual {
+  background: #f9f9f9;
+}
+
+.publish__staff-name {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.publish__staff-name--virtual {
+  color: #888;
+}
+
+.publish__staff-id {
+  font-size: 0.75rem;
+  color: #999;
+}
+
+.publish__btn--unassign {
+  padding: 4px 8px;
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ffcdd2;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+
+/* --- Health Score Cell --- */
+.publish__td-health {
+  padding: 4px;
+  text-align: center;
+  font-weight: bold;
+  border-right: 2px solid #ddd;
+  cursor: help;
+}
+
+.publish__score--good {
+  color: #27ae60;
+}
+
+.publish__score--warn {
+  color: #f39c12;
+}
+
+.publish__score--bad {
+  color: #c0392b;
+}
+
+/* --- Schedule Day Cells --- */
+.publish__td-day {
+  padding: 0;
+  border-right: 1px solid #f0f0f0;
+  height: 40px;
+}
+
+.publish__day-select {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  color: black;
+  font-weight: bold;
+  text-align-last: center;
+  cursor: pointer;
+  appearance: none;
+  border-radius: 0;
+}
+
+.publish__day-option {
+  background: white;
+  color: black;
+}
+
+/* --- Right Sidebar --- */
+.publish__sidebar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  overflow: hidden;
+}
+
+/* --- Violations Panel --- */
+.publish__violations {
+  flex: 1;
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  border-left: 4px solid #e74c3c;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.publish__violations-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #c0392b;
+}
+
+.publish__violations-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.publish__violations-ok {
+  color: #27ae60;
+  text-align: center;
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.publish__violation-item {
+  padding: 8px;
+  background: #fff5f5;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border-left: 3px solid #e74c3c;
+  font-size: 0.85rem;
+}
+
+.publish__violation-name {
+  font-weight: bold;
+  color: #c0392b;
+}
+
+.publish__violation-msg {
+  color: #444;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* --- Risks Panel --- */
+.publish__risks {
+  flex: 1;
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  border-left: 4px solid #f39c12;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.publish__risks-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #d35400;
+}
+
+.publish__risks-list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.publish__risks-ok {
+  color: #f39c12;
+  text-align: center;
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.publish__risk-item {
+  padding: 8px;
+  background: #fdf8e3;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.publish__risk-name {
+  font-weight: bold;
+  color: #8a6d3b;
+}
+
+.publish__risk-tag {
+  color: #666;
+}

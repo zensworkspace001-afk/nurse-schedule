@@ -33,3 +33,7 @@ backup.js
 gooo.py
 .env.*.local
 coppy.py
+.vercel
+.env*.local
+.claude/
+*.bak

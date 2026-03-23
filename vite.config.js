@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'nurse-schedule-bachelor.vercel.app', // 替換為您的 Vercel 網址
+        target: 'https://nurse-schedule-bachelor.vercel.app', // 替換為您的 Vercel 網址
         changeOrigin: true,
         secure: false,
       },

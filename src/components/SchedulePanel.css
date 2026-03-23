@@ -1,0 +1,684 @@
+/* ============================================================================
+   SchedulePanel.css — AI Scheduling Workbench
+   BEM naming convention: .schedule-panel, .schedule-panel__*, .schedule-panel--*
+   ============================================================================ */
+
+/* ----------------------------------------------------------------------------
+   Root container
+   ---------------------------------------------------------------------------- */
+.schedule-panel {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  position: relative;
+}
+
+/* ----------------------------------------------------------------------------
+   Loading overlay
+   ---------------------------------------------------------------------------- */
+.schedule-panel__loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  z-index: 100;
+  border-radius: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.schedule-panel__spinner {
+  border: 5px solid #f3f3f3;
+  border-top: 5px solid #3498db;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  animation: schedule-panel-spin 1s linear infinite;
+}
+
+@keyframes schedule-panel-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.schedule-panel__loading-title {
+  margin-top: 20px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.schedule-panel__loading-status {
+  margin-top: 8px;
+  font-size: 0.95rem;
+  color: #7f8c8d;
+}
+
+/* ----------------------------------------------------------------------------
+   Modal backdrop (shared by instruction & overwrite modals)
+   ---------------------------------------------------------------------------- */
+.schedule-panel__modal-backdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.schedule-panel__modal-backdrop--instruction {
+  z-index: 1100;
+}
+
+.schedule-panel__modal-backdrop--overwrite {
+  z-index: 1000;
+}
+
+/* ----------------------------------------------------------------------------
+   Modal box (shared)
+   ---------------------------------------------------------------------------- */
+.schedule-panel__modal-box {
+  background: white;
+  padding: 2rem;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+}
+
+/* --- Instruction modal --- */
+.schedule-panel__modal-title {
+  margin-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.3rem;
+}
+
+.schedule-panel__modal-title--instruction {
+  color: #8e44ad;
+}
+
+.schedule-panel__modal-title--overwrite {
+  color: #e74c3c;
+}
+
+.schedule-panel__modal-desc {
+  color: #555;
+  line-height: 1.6;
+  margin-bottom: 15px;
+}
+
+.schedule-panel__modal-desc--overwrite {
+  margin-bottom: 20px;
+}
+
+.schedule-panel__modal-hint {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.schedule-panel__modal-textarea {
+  width: 100%;
+  height: 100px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  resize: vertical;
+  margin-bottom: 20px;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.schedule-panel__modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.schedule-panel__modal-actions--column {
+  flex-direction: column;
+}
+
+/* --- Modal buttons --- */
+.schedule-panel__btn {
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.schedule-panel__btn--cancel {
+  padding: 10px 20px;
+  background: #f1f2f6;
+  color: #555;
+}
+
+.schedule-panel__btn--confirm {
+  padding: 10px 20px;
+  background: #8e44ad;
+  color: white;
+  box-shadow: 0 4px 6px rgba(142, 68, 173, 0.3);
+}
+
+.schedule-panel__btn--archive {
+  padding: 12px;
+  background: #3498db;
+  color: white;
+  font-size: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-panel__btn--archive:disabled {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
+
+.schedule-panel__btn--danger {
+  padding: 12px;
+  background: #e74c3c;
+  color: white;
+  font-size: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.schedule-panel__btn--keep {
+  padding: 12px;
+  background: #f1f2f6;
+  color: #555;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+/* ----------------------------------------------------------------------------
+   Toolbar (top bar)
+   ---------------------------------------------------------------------------- */
+.schedule-panel__toolbar {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.schedule-panel__toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.schedule-panel__title {
+  color: black;
+  font-weight: bold;
+  margin: 0;
+}
+
+.schedule-panel__toolbar-right {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* --- Date picker --- */
+.schedule-panel__date-picker {
+  display: flex;
+  align-items: center;
+  background: #e3f2fd;
+  padding: 5px 10px;
+  border-radius: 8px;
+  margin-right: 5px;
+  border: 1px solid #90caf9;
+}
+
+.schedule-panel__year-input {
+  width: 60px;
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-weight: bold;
+  text-align: center;
+}
+
+.schedule-panel__date-label {
+  margin: 0 5px;
+  color: #1565c0;
+  font-weight: bold;
+}
+
+.schedule-panel__month-select {
+  padding: 5px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.schedule-panel__days-count {
+  font-size: 0.85rem;
+  color: #555;
+  margin-left: 5px;
+}
+
+/* --- Toolbar action buttons --- */
+.schedule-panel__toolbar-btn {
+  padding: 0.5rem 1rem;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.schedule-panel__toolbar-btn--sync {
+  background: #3498db;
+  margin-left: 5px;
+  margin-right: 5px;
+}
+
+.schedule-panel__toolbar-btn--options {
+  background: #6c757d;
+  font-weight: normal;
+}
+
+.schedule-panel__toolbar-btn--generate {
+  background: #8e44ad;
+  box-shadow: 0 2px 4px rgba(142, 68, 173, 0.3);
+}
+
+.schedule-panel__toolbar-btn--generate:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.schedule-panel__toolbar-btn--clear {
+  background: #e74c3c;
+}
+
+.schedule-panel__toolbar-btn--export {
+  background: #27ae60;
+}
+
+.schedule-panel__toolbar-btn--save {
+  background: #2980b9;
+}
+
+/* ----------------------------------------------------------------------------
+   Add-option panel
+   ---------------------------------------------------------------------------- */
+.schedule-panel__option-panel {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: #f1f3f5;
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.schedule-panel__option-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.schedule-panel__option-input {
+  padding: 5px;
+  color: black;
+}
+
+.schedule-panel__option-input--code {
+  width: 80px;
+}
+
+.schedule-panel__option-input--name {
+  width: 120px;
+}
+
+.schedule-panel__option-color-input {
+  border: none;
+  width: 40px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.schedule-panel__option-add-btn {
+  padding: 5px 15px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.schedule-panel__option-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+  width: 100%;
+}
+
+.schedule-panel__option-tag {
+  background: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+}
+
+.schedule-panel__option-dot {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.schedule-panel__option-code {
+  color: #000000;
+}
+
+.schedule-panel__option-delete-btn {
+  border: none;
+  background: transparent;
+  color: red;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 0 2px;
+}
+
+/* ----------------------------------------------------------------------------
+   AI Chat box
+   ---------------------------------------------------------------------------- */
+.schedule-panel__chat {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 12px;
+  border: 1px solid #eee;
+}
+
+.schedule-panel__chat-messages {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-bottom: 10px;
+}
+
+.schedule-panel__chat-bubble-wrapper {
+  margin-bottom: 0.8rem;
+}
+
+.schedule-panel__chat-bubble-wrapper--user {
+  text-align: right;
+}
+
+.schedule-panel__chat-bubble-wrapper--assistant {
+  text-align: left;
+}
+
+.schedule-panel__chat-bubble {
+  display: inline-block;
+  padding: 10px 15px;
+  border-radius: 12px;
+  max-width: 80%;
+  white-space: pre-wrap;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.schedule-panel__chat-bubble--user {
+  background: #667eea;
+  color: white;
+  border: none;
+}
+
+.schedule-panel__chat-bubble--assistant {
+  background: white;
+  color: #333;
+  border: 1px solid #ddd;
+}
+
+.schedule-panel__chat-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.schedule-panel__chat-input {
+  flex: 1;
+  padding: 0.8rem;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: black;
+}
+
+.schedule-panel__chat-send-btn {
+  padding: 0 20px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.schedule-panel__chat-send-btn:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* ----------------------------------------------------------------------------
+   Schedule table container
+   ---------------------------------------------------------------------------- */
+.schedule-panel__table-container {
+  overflow-x: auto;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.schedule-panel__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+/* --- Table header --- */
+.schedule-panel__thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.schedule-panel__header-row {
+  background: #667eea;
+  color: white;
+}
+
+.schedule-panel__header-cell {
+  padding: 8px;
+  min-width: 80px;
+  position: sticky;
+  left: 0;
+  background: #667eea;
+  z-index: 10;
+}
+
+.schedule-panel__header-day {
+  padding: 4px;
+  min-width: 45px;
+  color: white;
+}
+
+.schedule-panel__header-day--weekend {
+  color: #ffcccc;
+}
+
+.schedule-panel__header-day-num {
+  font-size: 1rem;
+}
+
+.schedule-panel__header-day-name {
+  font-size: 0.75rem;
+  font-weight: normal;
+}
+
+/* --- Table body rows --- */
+.schedule-panel__row {
+  border-bottom: 1px solid #eee;
+  background: white;
+}
+
+.schedule-panel__row--virtual {
+  background: #fafafa;
+}
+
+/* --- Staff name cell (sticky first column) --- */
+.schedule-panel__staff-cell {
+  padding: 8px;
+  border-right: 1px solid #eee;
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 5;
+}
+
+.schedule-panel__staff-cell--virtual {
+  background: #f9f9f9;
+}
+
+.schedule-panel__staff-name {
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.schedule-panel__staff-name--virtual {
+  color: #888;
+}
+
+.schedule-panel__staff-name--real {
+  color: #2c3e50;
+}
+
+.schedule-panel__staff-id {
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+
+.schedule-panel__staff-id--virtual {
+  color: #aaa;
+}
+
+.schedule-panel__staff-id--real {
+  color: #667eea;
+}
+
+/* --- Schedule data cell --- */
+.schedule-panel__cell {
+  padding: 0;
+  border-right: 1px solid #f0f0f0;
+  height: 40px;
+}
+
+.schedule-panel__cell-select {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  font-weight: bold;
+  text-align-last: center;
+  cursor: pointer;
+  appearance: none;
+  border-radius: 0;
+}
+
+.schedule-panel__cell-select--dark {
+  color: white;
+}
+
+.schedule-panel__cell-select--light {
+  color: #333;
+}
+
+.schedule-panel__cell-option {
+  background: white;
+  color: black;
+}
+
+/* --- Table footer (stats) --- */
+.schedule-panel__tfoot {
+  border-top: 2px solid #ddd;
+}
+
+.schedule-panel__stats-row {
+  background: #f8f9fa;
+}
+
+.schedule-panel__stats-label {
+  padding: 8px;
+  position: sticky;
+  left: 0;
+  background: #f8f9fa;
+  z-index: 5;
+  font-weight: bold;
+  border-right: 1px solid #eee;
+  color: #333;
+}
+
+.schedule-panel__stats-req {
+  font-size: 0.8rem;
+  color: #666;
+}
+
+.schedule-panel__stats-cell {
+  text-align: center;
+  font-weight: bold;
+  font-size: 0.9rem;
+  border-right: 1px solid white;
+}
+
+.schedule-panel__stats-cell--ok {
+  color: #27ae60;
+  background: #d4edda;
+}
+
+.schedule-panel__stats-cell--fail {
+  color: #e74c3c;
+  background: #f8d7da;
+}
+
+/* ----------------------------------------------------------------------------
+   Empty state
+   ---------------------------------------------------------------------------- */
+.schedule-panel__empty {
+  text-align: center;
+  padding: 3rem;
+  color: #888;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #ddd;
+}
+
+.schedule-panel__empty-title {
+  margin: 0;
+  color: #666;
+}

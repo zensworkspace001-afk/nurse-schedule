@@ -1,0 +1,648 @@
+/* ==========================================================================
+   StaffDashboard — BEM Stylesheet
+   ========================================================================== */
+
+/* --- Keyframe Animations --- */
+@keyframes pulseLock {
+  0%   { transform: scale(1); opacity: 1; }
+  50%  { transform: scale(1.1); opacity: 0.7; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulseAlert {
+  0%   { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.4); }
+  70%  { transform: scale(1.01); box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+}
+
+/* ==========================================================================
+   Guard / Fallback screens (loading, inactive, leave, turn-lock)
+   ========================================================================== */
+.dashboard__loading {
+  padding: 40px;
+  text-align: center;
+  color: #666;
+}
+
+.dashboard__guard {
+  padding: 3rem;
+  text-align: center;
+  background: white;
+  border-radius: 16px;
+  max-width: 500px;
+  margin: 3rem auto;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+.dashboard__guard-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard__guard-icon--pulse {
+  animation: pulseLock 2s infinite;
+}
+
+.dashboard__guard-title--inactive {
+  color: #c0392b;
+  margin-bottom: 1rem;
+}
+
+.dashboard__guard-title--leave {
+  color: #f39c12;
+  margin-bottom: 1rem;
+}
+
+.dashboard__guard-title--locked {
+  color: #2980b9;
+  margin-bottom: 1rem;
+  font-weight: bold;
+}
+
+.dashboard__guard-text {
+  color: #7f8c8d;
+  font-size: 1.1rem;
+  line-height: 1.6;
+}
+
+.dashboard__guard-info {
+  color: #34495e;
+  font-size: 1.1rem;
+  line-height: 1.6;
+  margin-bottom: 1.5rem;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 4px solid #3498db;
+  text-align: left;
+}
+
+.dashboard__guard-highlight {
+  color: #e74c3c;
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.dashboard__guard-refresh-btn {
+  padding: 12px 30px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 50px;
+  cursor: pointer;
+  font-weight: bold;
+  font-size: 1rem;
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+}
+
+/* ==========================================================================
+   Main container
+   ========================================================================== */
+.dashboard {
+  padding: 2rem;
+  max-width: 900px;
+  margin: 0 auto;
+  background: white;
+  border-radius: 16px;
+  min-height: 80vh;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  position: relative;
+}
+
+/* ==========================================================================
+   Password Modal
+   ========================================================================== */
+.dashboard__pwd-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.dashboard__pwd-modal {
+  background: white;
+  padding: 2rem;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 400px;
+  position: relative;
+}
+
+.dashboard__pwd-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #666;
+}
+
+.dashboard__pwd-title {
+  margin-top: 0;
+  color: #333;
+}
+
+.dashboard__pwd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.dashboard__pwd-label {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 5px;
+  display: block;
+}
+
+.dashboard__pwd-input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+.dashboard__pwd-msg {
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.dashboard__pwd-msg--error {
+  color: #e74c3c;
+  background: #fdecea;
+}
+
+.dashboard__pwd-msg--success {
+  color: #27ae60;
+  background: #e8f8f5;
+}
+
+.dashboard__pwd-submit-btn {
+  padding: 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+}
+
+/* ==========================================================================
+   Stepper
+   ========================================================================== */
+.dashboard__stepper {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 1rem;
+}
+
+.dashboard__step {
+  font-weight: bold;
+  color: #ccc;
+}
+
+.dashboard__step--active {
+  color: #667eea;
+}
+
+/* ==========================================================================
+   Step 1 — Shift type selection
+   ========================================================================== */
+.dashboard__step1 {
+  text-align: center;
+}
+
+.dashboard__header-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 10px;
+}
+
+.dashboard__greeting {
+  color: black;
+  font-weight: bold;
+  margin: 0;
+}
+
+.dashboard__version-tag {
+  color: red;
+}
+
+.dashboard__pwd-btn {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #555;
+  font-weight: bold;
+}
+
+.dashboard__month-subtitle {
+  color: #666;
+  font-size: 1rem;
+  margin-top: 0;
+}
+
+.dashboard__month-highlight {
+  color: #667eea;
+  font-weight: bold;
+}
+
+.dashboard__streak-info {
+  background: #e3f2fd;
+  padding: 10px;
+  border-radius: 8px;
+  display: inline-block;
+  margin-bottom: 2rem;
+  font-size: 0.9rem;
+  color: #0d47a1;
+  margin-top: 1rem;
+}
+
+.dashboard__streak-warning {
+  color: red;
+  font-weight: bold;
+}
+
+.dashboard__no-schedule {
+  padding: 20px;
+  background: #fff3cd;
+  color: #856404;
+  border-radius: 8px;
+}
+
+/* --- Already claimed banner (step 1) --- */
+.dashboard__claimed-banner {
+  padding: 25px;
+  background: #d4edda;
+  color: #155724;
+  border-radius: 12px;
+  margin-top: 20px;
+  border: 2px solid #c3e6cb;
+}
+
+.dashboard__claimed-title {
+  margin: 0;
+  font-size: 1.4rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.dashboard__claimed-desc {
+  margin-top: 10px;
+  color: #155724;
+  font-weight: bold;
+}
+
+.dashboard__claimed-note {
+  font-size: 0.9rem;
+  margin-top: 5px;
+}
+
+.dashboard__claimed-view-btn {
+  margin-top: 15px;
+  padding: 10px 25px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+/* --- Unclaimed alert --- */
+.dashboard__unclaimed-alert {
+  background: #ffebee;
+  color: #c62828;
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+  font-weight: bold;
+  border: 2px solid #ffcdd2;
+  animation: pulseAlert 2s infinite;
+  font-size: 1.1rem;
+}
+
+.dashboard__shift-prompt {
+  margin-bottom: 1rem;
+  color: #666;
+  font-weight: bold;
+}
+
+.dashboard__shift-buttons {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.dashboard__shift-btn {
+  width: 120px;
+  height: 120px;
+  border: none;
+  border-radius: 15px;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+.dashboard__shift-btn--disabled {
+  opacity: 0.7;
+}
+
+.dashboard__shift-btn--all {
+  background: #95a5a6;
+}
+
+/* ==========================================================================
+   Step 2 — Schedule option list
+   ========================================================================== */
+.dashboard__back-btn {
+  border: none;
+  background: #4a5568;
+  color: white;
+  padding: 8px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 15px;
+  font-weight: bold;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.dashboard__step2-title {
+  color: black;
+  font-weight: bold;
+}
+
+.dashboard__step2-hint {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 15px;
+}
+
+.dashboard__claimed-readonly {
+  padding: 10px;
+  background: #d4edda;
+  color: #155724;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  font-weight: bold;
+  text-align: center;
+  border: 1px solid #c3e6cb;
+}
+
+.dashboard__options-grid {
+  display: grid;
+  gap: 20px;
+  max-height: 600px;
+  overflow-y: auto;
+  padding-right: 10px;
+}
+
+.dashboard__options-empty {
+  padding: 40px;
+  text-align: center;
+  color: #666;
+  background: #f9f9f9;
+  border-radius: 12px;
+}
+
+/* --- Shift card --- */
+.dashboard__shift-card {
+  padding: 1.5rem;
+  border-radius: 16px;
+  border: 1px solid #e2e8f0;
+  background: white;
+  cursor: pointer;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  transition: transform 0.2s;
+}
+
+.dashboard__shift-card--selected {
+  border: 3px solid #667eea;
+}
+
+.dashboard__shift-card--claimed {
+  background: #f1f3f5;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.dashboard__shift-card--invalid {
+  background: #fff5f5;
+  cursor: not-allowed;
+}
+
+.dashboard__shift-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.dashboard__shift-card-title {
+  font-weight: bold;
+  font-size: 1.1rem;
+  color: #2d3748;
+}
+
+.dashboard__shift-card-title--claimed {
+  color: #7f8c8d;
+}
+
+.dashboard__shift-card-locked {
+  color: #e67e22;
+  font-size: 0.85rem;
+  font-weight: bold;
+  margin-top: 4px;
+}
+
+.dashboard__shift-card-warning {
+  color: #e53e3e;
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.dashboard__mini-calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.dashboard__mini-calendar--greyed {
+  filter: grayscale(30%);
+}
+
+.dashboard__mini-calendar-weekday {
+  text-align: center;
+  font-size: 0.7rem;
+  color: #718096;
+  margin-bottom: 2px;
+}
+
+.dashboard__mini-calendar-cell {
+  height: 25px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard__mini-calendar-cell--light {
+  color: #333;
+}
+
+.dashboard__mini-calendar-cell--dark {
+  color: white;
+}
+
+/* ==========================================================================
+   Step 3 — Preview / Confirm
+   ========================================================================== */
+.dashboard__step3-title {
+  color: black;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.dashboard__preview-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 8px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.dashboard__preview-weekday {
+  text-align: center;
+  font-weight: bold;
+  color: #555;
+  padding-bottom: 5px;
+}
+
+.dashboard__preview-cell {
+  padding: 8px 5px;
+  text-align: center;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60px;
+}
+
+.dashboard__preview-cell--light {
+  border: 1px solid #eee;
+}
+
+.dashboard__preview-day {
+  font-size: 0.75rem;
+  margin-bottom: 2px;
+}
+
+.dashboard__preview-day--dark {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.dashboard__preview-day--light {
+  color: #888;
+}
+
+.dashboard__preview-type {
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+.dashboard__preview-type--dark {
+  color: white;
+}
+
+.dashboard__preview-type--light {
+  color: #333;
+}
+
+.dashboard__confirm-area {
+  text-align: center;
+  margin-top: 30px;
+}
+
+.dashboard__confirm-btn {
+  padding: 12px 40px;
+  color: white;
+  border: none;
+  border-radius: 20px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+}
+
+.dashboard__confirm-btn--active {
+  background: #667eea;
+  cursor: pointer;
+}
+
+.dashboard__confirm-btn--processing {
+  background: #95a5a6;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+   Step 4 — Success
+   ========================================================================== */
+.dashboard__success {
+  text-align: center;
+  padding: 4rem 2rem;
+}
+
+.dashboard__success-title {
+  color: #2d3748;
+  font-weight: 900;
+  font-size: 2rem;
+  margin-bottom: 1rem;
+}
+
+.dashboard__success-text {
+  color: #718096;
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+.dashboard__success-btn {
+  margin-top: 10px;
+  padding: 15px 40px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 50px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+}

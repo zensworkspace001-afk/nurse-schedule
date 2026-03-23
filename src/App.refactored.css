@@ -1,0 +1,165 @@
+/* ============================================
+   App.refactored.css — NurseSchedulingSystem
+   BEM naming convention
+   ============================================ */
+
+/* --- Root layout --- */
+.app {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  padding: 2rem;
+  font-family: sans-serif;
+}
+
+/* --- Header bar --- */
+.app__header {
+  max-width: 1400px;
+  margin: 0 auto 2rem;
+  background: rgba(255, 255, 255, 0.95);
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app__header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app__header-title {
+  margin: 0;
+  font-size: 1.8rem;
+  color: #333;
+}
+
+.app__header-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.app__header-user {
+  color: #555;
+  font-weight: bold;
+}
+
+.app__header-pwd-btn {
+  background: #f8f9fa;
+  border: 1px solid #ddd;
+  padding: 6px 12px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: #555;
+  font-weight: bold;
+}
+
+.app__header-logout-btn {
+  padding: 0.5rem 1rem;
+  background: #e74c3c;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* --- Main content area --- */
+.app__content {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* --- Modal overlay --- */
+.app__modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* --- Modal container --- */
+.app__modal {
+  background: white;
+  padding: 2rem;
+  border-radius: 16px;
+  width: 90%;
+  max-width: 400px;
+  position: relative;
+}
+
+.app__modal-close-btn {
+  position: absolute;
+  top: 10px;
+  right: 15px;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #666;
+}
+
+.app__modal-title {
+  margin-top: 0;
+  color: #333;
+}
+
+/* --- Modal form --- */
+.app__modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.app__modal-label {
+  font-size: 0.85rem;
+  color: #666;
+  margin-bottom: 5px;
+  display: block;
+}
+
+.app__modal-input {
+  width: 100%;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  box-sizing: border-box;
+}
+
+/* --- Modal message (success / error) --- */
+.app__modal-msg {
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.app__modal-msg--error {
+  color: #e74c3c;
+  background: #fdecea;
+}
+
+.app__modal-msg--success {
+  color: #27ae60;
+  background: #e8f8f5;
+}
+
+/* --- Modal submit button --- */
+.app__modal-submit-btn {
+  padding: 12px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 10px;
+}

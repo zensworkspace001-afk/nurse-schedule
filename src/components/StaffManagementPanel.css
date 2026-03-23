@@ -1,0 +1,241 @@
+/* ==========================================================================
+   StaffManagementPanel — BEM-style CSS
+   ========================================================================== */
+
+/* --- Root container --- */
+.staff-mgmt {
+  background: white;
+  border-radius: 16px;
+  padding: 2rem;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* --- Header bar --- */
+.staff-mgmt__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.staff-mgmt__title {
+  margin: 0;
+}
+
+.staff-mgmt__actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+/* --- Hidden file input (CSV import) --- */
+.staff-mgmt__file-input {
+  display: none;
+}
+
+/* --- Buttons --- */
+.staff-mgmt__btn {
+  padding: 0.5rem 1rem;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.staff-mgmt__btn--import {
+  background: #3498db;
+  font-weight: bold;
+}
+
+.staff-mgmt__btn--add {
+  background: #27ae60;
+}
+
+.staff-mgmt__btn--save {
+  padding: 0.5rem 2rem;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  color: white;
+}
+
+.staff-mgmt__btn--save-dirty {
+  background: #e67e22;
+  cursor: pointer;
+  box-shadow: 0 4px 10px rgba(230, 126, 34, 0.4);
+}
+
+.staff-mgmt__btn--save-clean {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+/* --- Table wrapper (scrollable area) --- */
+.staff-mgmt__table-wrapper {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+/* --- Table --- */
+.staff-mgmt__table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 1300px;
+}
+
+/* --- Table head --- */
+.staff-mgmt__thead {
+  position: sticky;
+  top: 0;
+  background: #f8f9fa;
+  z-index: 1;
+}
+
+.staff-mgmt__th {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 2px solid #ddd;
+  color: black;
+  font-weight: bold;
+}
+
+.staff-mgmt__th--actions {
+  padding: 12px;
+  border-bottom: 2px solid #ddd;
+  width: 100px;
+  color: black;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* --- Table rows --- */
+.staff-mgmt__row {
+  border-bottom: 1px solid #f0f0f0;
+  background: white;
+}
+
+.staff-mgmt__row--inactive {
+  background: #fafafa;
+  opacity: 0.7;
+}
+
+/* --- Table cells --- */
+.staff-mgmt__td {
+  padding: 8px;
+}
+
+.staff-mgmt__td--actions {
+  padding: 8px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* --- Read-only cell text (e.g. staff_id) --- */
+.staff-mgmt__readonly {
+  color: #888;
+  font-weight: bold;
+}
+
+/* --- Checkbox input --- */
+.staff-mgmt__checkbox {
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+}
+
+/* --- Select dropdown --- */
+.staff-mgmt__select {
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  width: 100%;
+}
+
+/* --- Text / number input --- */
+.staff-mgmt__input {
+  padding: 6px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  width: 100%;
+  background: transparent;
+  color: inherit;
+  font-weight: normal;
+}
+
+.staff-mgmt__input--name {
+  background: #fff;
+}
+
+.staff-mgmt__input--bold {
+  color: black;
+  font-weight: bold;
+}
+
+.staff-mgmt__input--black {
+  color: black;
+}
+
+/* --- Streak display (consecutive work days) --- */
+.staff-mgmt__streak-empty {
+  text-align: center;
+  color: #bbb;
+  font-size: 0.85rem;
+}
+
+.staff-mgmt__streak-wrap {
+  text-align: center;
+}
+
+.staff-mgmt__streak-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 1.1rem;
+}
+
+/* Streak severity levels */
+.streak--normal {
+  background: #e8f8f5;
+  color: #27ae60;
+  border: 1px solid #a9dfbf;
+}
+
+.streak--alert {
+  background: #fff3e0;
+  color: #e67e22;
+  border: 1px solid #ffd8a8;
+}
+
+.streak--warning {
+  background: #fdecea;
+  color: #c0392b;
+  border: 1px solid #f5c6cb;
+}
+
+.staff-mgmt__streak-limit {
+  font-size: 0.7rem;
+  color: #e74c3c;
+  margin-top: 2px;
+}
+
+/* --- Action icon buttons (reset password, delete) --- */
+.staff-mgmt__icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3rem;
+}
+
+.staff-mgmt__icon-btn--reset {
+  color: #f39c12;
+  margin-right: 10px;
+}
+
+.staff-mgmt__icon-btn--delete {
+  color: #e74c3c;
+}

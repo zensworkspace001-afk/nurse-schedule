@@ -1,0 +1,673 @@
+/* ==========================================================
+   ScheduleReviewPanel – BEM-styled external CSS
+   ========================================================== */
+
+/* --- Root container --- */
+.review {
+  display: flex;
+  gap: 20px;
+  height: 80vh;
+  flex-direction: column;
+  position: relative;
+}
+
+/* --- Header / toolbar --- */
+.review__header {
+  background: white;
+  border-radius: 16px;
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.review__header-left {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.review__title {
+  margin: 0;
+  font-size: 1.5rem;
+  color: #2c3e50;
+}
+
+/* --- Archive selector (year/month) --- */
+.review__archive-selector {
+  display: flex;
+  align-items: center;
+  background: #f8f9fa;
+  padding: 5px 15px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  color: #34495e;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.review__archive-label {
+  margin-right: 8px;
+}
+
+.review__year-input {
+  width: 65px;
+  padding: 4px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-weight: bold;
+  text-align: center;
+  color: #f1f4f8;
+}
+
+.review__year-separator {
+  margin: 0 5px;
+}
+
+.review__month-select {
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  font-weight: bold;
+  cursor: pointer;
+  color: #f7f9fc;
+}
+
+.review__month-separator {
+  margin: 0 0 0 5px;
+}
+
+/* --- Toolbar right side --- */
+.review__toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+/* --- Base salary field --- */
+.review__salary-field {
+  background: #f8f9fa;
+  padding: 4px 10px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.review__salary-label {
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #34495e;
+}
+
+.review__salary-input {
+  width: 80px;
+  padding: 4px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: center;
+  font-weight: bold;
+}
+
+/* --- Toolbar buttons --- */
+.review__btn {
+  padding: 0.5rem 1rem;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.review__btn--manage {
+  background: #6c757d;
+}
+
+.review__btn--settle {
+  background: #8e44ad;
+  font-weight: bold;
+}
+
+.review__btn--export {
+  background: #27ae60;
+  font-weight: bold;
+}
+
+.review__btn--test-api {
+  background: #34495e;
+  font-weight: bold;
+  border: 1px dashed #ccc;
+}
+
+/* ==========================================================
+   Settlement modal
+   ========================================================== */
+.review__modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.review__modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 16px;
+  width: 95%;
+  max-width: 1100px;
+  max-height: 85vh;
+  overflow-y: auto;
+  position: relative;
+}
+
+.review__modal-close {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: black;
+}
+
+.review__modal-title {
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+}
+
+/* --- Settlement table --- */
+.review__settlement-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: center;
+  font-size: 0.9rem;
+  margin-top: 15px;
+}
+
+.review__settlement-thead {
+  background: #34495e;
+  color: white;
+}
+
+.review__settlement-th {
+  padding: 10px;
+}
+
+.review__settlement-th--night {
+  padding: 10px;
+  background: #8e44ad;
+}
+
+.review__settlement-th--overtime {
+  padding: 10px;
+  background: #e74c3c;
+}
+
+.review__settlement-th--leave {
+  padding: 10px;
+  background: #95a5a6;
+}
+
+.review__settlement-th--deduction {
+  padding: 10px;
+  background: #7f8c8d;
+}
+
+.review__settlement-th--salary {
+  padding: 10px;
+  background: #27ae60;
+}
+
+.review__settlement-row {
+  border-bottom: 1px solid #eee;
+}
+
+.review__settlement-td {
+  padding: 10px;
+}
+
+.review__settlement-name {
+  font-weight: bold;
+  color: black;
+}
+
+.review__settlement-id {
+  font-size: 0.8rem;
+  color: #888;
+}
+
+.review__settlement-work {
+  color: black;
+}
+
+.review__settlement-holiday {
+  font-size: 0.8rem;
+  color: #e67e22;
+}
+
+.review__settlement-night-count {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.review__settlement-night-bonus {
+  font-size: 0.85rem;
+  margin-top: 4px;
+  font-weight: bold;
+}
+
+.review__settlement-ot-detail {
+  font-size: 0.85rem;
+  color: #e74c3c;
+  margin-top: 4px;
+}
+
+.review__settlement-empty {
+  padding: 20px;
+  color: #888;
+}
+
+.review__settlement-salary {
+  font-weight: bold;
+  color: #27ae60;
+  font-size: 1.1rem;
+}
+
+/* --- Settlement confirm section --- */
+.review__settlement-confirm {
+  margin-top: 20px;
+  text-align: center;
+  background: #f8f9fa;
+  padding: 15px;
+  border-radius: 8px;
+  border: 1px dashed #ccc;
+}
+
+.review__settlement-confirm-hint {
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.review__settlement-confirm-btn {
+  padding: 12px 30px;
+  background: #27ae60;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: bold;
+  box-shadow: 0 4px 6px rgba(39, 174, 96, 0.3);
+}
+
+.review__settlement-confirm-warning {
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: #e74c3c;
+}
+
+/* ==========================================================
+   Shift options panel (add / manage)
+   ========================================================== */
+.review__options-panel {
+  padding: 1rem;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid #ddd;
+}
+
+.review__options-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.review__options-input {
+  padding: 5px;
+  color: black;
+}
+
+.review__options-input--code {
+  width: 80px;
+}
+
+.review__options-input--name {
+  width: 120px;
+}
+
+.review__options-color {
+  border: none;
+  width: 40px;
+  height: 30px;
+  cursor: pointer;
+}
+
+.review__options-add-btn {
+  padding: 5px 15px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.review__options-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #eee;
+}
+
+.review__options-chip {
+  background: #f8f9fa;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid #ddd;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.85rem;
+}
+
+.review__options-chip-dot {
+  width: 12px;
+  height: 12px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.review__options-chip-code {
+  color: #000000;
+}
+
+.review__options-chip-delete {
+  border: none;
+  background: transparent;
+  color: red;
+  cursor: pointer;
+  font-weight: bold;
+  padding: 0 2px;
+}
+
+/* ==========================================================
+   Main content area (table + side panels)
+   ========================================================== */
+.review__body {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* --- Schedule table wrapper --- */
+.review__table-wrapper {
+  flex: 3;
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.review__table-scroll {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #eee;
+  border-radius: 8px;
+}
+
+.review__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.review__table thead {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.review__table-header-row {
+  background: #34495e;
+  color: white;
+}
+
+.review__table-th-name {
+  padding: 8px;
+  min-width: 130px;
+  position: sticky;
+  left: 0;
+  background: #34495e;
+  z-index: 11;
+}
+
+.review__table-th-health {
+  padding: 8px;
+  min-width: 50px;
+  background: #2c3e50;
+  z-index: 10;
+  border-right: 2px solid #555;
+}
+
+.review__table-th-day {
+  padding: 4px;
+  min-width: 35px;
+  text-align: center;
+}
+
+.review__table-th-day--weekend {
+  color: #ffcccc;
+}
+
+.review__table-th-day--holiday {
+  color: #ff7675;
+}
+
+.review__table-day-number {
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.review__table-day-label {
+  font-size: 0.7rem;
+  font-weight: normal;
+  line-height: 1.2;
+}
+
+/* --- Table body rows --- */
+.review__table-row {
+  border-bottom: 1px solid #eee;
+  background: white;
+}
+
+.review__table-row--virtual {
+  background: #fafafa;
+}
+
+.review__table-td-name {
+  padding: 8px;
+  border-right: 1px solid #eee;
+  position: sticky;
+  left: 0;
+  background: white;
+  z-index: 5;
+}
+
+.review__table-td-name--virtual {
+  background: #f9f9f9;
+}
+
+.review__table-staff-name {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
+.review__table-staff-name--virtual {
+  color: #888;
+}
+
+.review__table-td-health {
+  padding: 4px;
+  text-align: center;
+  font-weight: bold;
+  border-right: 2px solid #ddd;
+  cursor: help;
+  font-size: 1.1rem;
+}
+
+.review__table-td-health--bg-default {
+  background: white;
+}
+
+.review__table-td-health--bg-virtual {
+  background: #fafafa;
+}
+
+.review__table-td-cell {
+  padding: 0;
+  border-right: 1px solid #f0f0f0;
+  height: 40px;
+}
+
+.review__table-cell-select {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: none;
+  color: black;
+  font-weight: bold;
+  text-align-last: center;
+  cursor: pointer;
+  appearance: none;
+  border-radius: 0;
+}
+
+.review__table-empty {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+}
+
+/* ==========================================================
+   Right sidebar – Violations & Risks
+   ========================================================== */
+.review__sidebar {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  overflow: hidden;
+}
+
+/* --- Violations panel --- */
+.review__violations {
+  flex: 1;
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  border-left: 4px solid #e74c3c;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.review__violations-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #c0392b;
+}
+
+.review__violations-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.review__violations-ok {
+  color: #27ae60;
+  text-align: center;
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.review__violations-item {
+  padding: 8px;
+  background: #fff5f5;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  border-left: 3px solid #e74c3c;
+  font-size: 0.85rem;
+}
+
+.review__violations-item-name {
+  font-weight: bold;
+  color: #c0392b;
+}
+
+.review__violations-item-msg {
+  color: #444;
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
+/* --- Risks panel --- */
+.review__risks {
+  flex: 1;
+  background: white;
+  border-radius: 16px;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  border-left: 4px solid #f39c12;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.review__risks-title {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+  color: #d35400;
+}
+
+.review__risks-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.review__risks-ok {
+  color: #f39c12;
+  text-align: center;
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.review__risks-item {
+  padding: 8px;
+  background: #fdf8e3;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.review__risks-item-name {
+  font-weight: bold;
+  color: #8a6d3b;
+}
+
+.review__risks-item-tag {
+  color: #666;
+}
