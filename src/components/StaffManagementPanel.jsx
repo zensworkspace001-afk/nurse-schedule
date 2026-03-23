@@ -255,7 +255,10 @@ const handleSave = async () => {
                     {col.readOnly ? (
                       <span className="staff-mgmt__readonly">{staff[col.key]}</span>
                     ) : col.type === 'checkbox' ? (
-                      <input type="checkbox" checked={staff[col.key] === true || staff[col.key] === 'True'} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.checked)} className="staff-mgmt__checkbox" />
+                      <label className="staff-mgmt__toggle">
+                        <input type="checkbox" checked={staff[col.key] === true || staff[col.key] === 'True'} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.checked)} className="staff-mgmt__toggle-input" />
+                        <span className="staff-mgmt__toggle-slider"></span>
+                      </label>
                     ) : col.type === 'select' ? (
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} className="staff-mgmt__select">{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
                     ) : col.type === 'streak_display' ? (

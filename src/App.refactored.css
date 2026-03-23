@@ -1,26 +1,96 @@
 /* ============================================
-   App.refactored.css — NurseSchedulingSystem
-   BEM naming convention
+   App.refactored.css — NurseSchedulingSystem (Flat Glassmorphism UI)
    ============================================ */
 
 /* --- Root layout --- */
 .app {
   min-height: 100vh;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  /* 🌟 與登入頁面完全相同的深冷色調漸層背景 */
+  background: linear-gradient(135deg, #879ca8 0%, #4a5c6a 100%);
   padding: 2rem;
-  font-family: sans-serif;
+  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  color: #ffffff;
+  position: relative;
+  overflow-x: hidden; /* 防止色塊造成水平捲動 */
+}
+
+/* ==========================================================================
+   Animated Background Blobs (會動的色塊 - 與登入頁面相同)
+   ========================================================================== */
+.app__blob {
+  position: absolute;
+  filter: blur(80px); /* 讓色塊邊緣非常柔和，變成光暈效果 */
+  z-index: 0; /* 必須在所有內容之下 */
+  opacity: 0.6; /* 稍微調降透明度以免干擾主系統閱讀 */
+  animation: floatBlobs 15s infinite ease-in-out alternate;
+  pointer-events: none; /* 確保色塊不會擋住滑鼠點擊 */
+}
+
+/* 第一個色塊：紫紅色 */
+.app__blob--1 {
+  width: 500px;
+  height: 500px;
+  background: #ff4785;
+  top: -100px;
+  left: -100px;
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  animation-delay: 0s;
+}
+
+/* 第二個色塊：藍綠色 */
+.app__blob--2 {
+  width: 450px;
+  height: 450px;
+  background: #00d2ff;
+  bottom: -150px;
+  right: -100px;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation-duration: 18s;
+  animation-delay: -2s;
+}
+
+/* 第三個色塊：深紫色 */
+.app__blob--3 {
+  width: 400px;
+  height: 400px;
+  background: #7b2cbf;
+  top: 40%;
+  left: 30%;
+  border-radius: 50%;
+  animation-duration: 20s;
+  animation-delay: -5s;
+}
+
+@keyframes floatBlobs {
+  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
+  33% { transform: translate(40px, -60px) scale(1.1) rotate(90deg); }
+  66% { transform: translate(-30px, 30px) scale(0.9) rotate(180deg); }
+  100% { transform: translate(0, 0) scale(1) rotate(360deg); }
+}
+
+/* --- Content Wrapper (確保內容在色塊之上) --- */
+.app__wrapper {
+  position: relative;
+  z-index: 10;
 }
 
 /* --- Header bar --- */
 .app__header {
   max-width: 1400px;
   margin: 0 auto 2rem;
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
+  
+  /* 🌟 UI範本：半透明毛玻璃面板 */
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  
+  border-radius: 20px;
   padding: 1.5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .app__header-left {
@@ -32,38 +102,52 @@
 .app__header-title {
   margin: 0;
   font-size: 1.8rem;
-  color: #333;
+  color: #ffffff; /* 🌟 白字標題 */
+  font-weight: 300; /* 🌟 UI範本：細字體風格 */
+  letter-spacing: 1px;
 }
 
 .app__header-right {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 1.5rem;
 }
 
 .app__header-user {
-  color: #555;
-  font-weight: bold;
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: 400;
+  font-size: 1.1rem;
 }
 
+/* 🌟 UI範本：圓角邊框按鈕 (如 SETTINGS) */
 .app__header-pwd-btn {
-  background: #f8f9fa;
-  border: 1px solid #ddd;
-  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  padding: 8px 16px;
   border-radius: 20px;
   cursor: pointer;
-  font-size: 0.85rem;
-  color: #555;
-  font-weight: bold;
+  font-size: 0.9rem;
+  color: #ffffff;
+  transition: all 0.3s ease;
 }
 
+.app__header-pwd-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* 🌟 UI範本：圓角邊框按鈕 (登出) */
 .app__header-logout-btn {
-  padding: 0.5rem 1rem;
-  background: #e74c3c;
+  padding: 8px 20px;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
   cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.app__header-logout-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
 
 /* --- Main content area --- */
@@ -79,7 +163,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
   z-index: 1000;
   display: flex;
   justify-content: center;
@@ -88,28 +173,44 @@
 
 /* --- Modal container --- */
 .app__modal {
-  background: white;
-  padding: 2rem;
-  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  padding: 2.5rem;
+  border-radius: 20px;
   width: 90%;
   max-width: 400px;
   position: relative;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
 }
 
 .app__modal-close-btn {
   position: absolute;
-  top: 10px;
-  right: 15px;
+  top: 15px;
+  right: 20px;
   background: none;
-  border: none;
-  font-size: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  color: #666;
+  color: #ffffff;
+  transition: all 0.3s;
+}
+
+.app__modal-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .app__modal-title {
   margin-top: 0;
-  color: #333;
+  color: #ffffff;
+  font-weight: 300;
+  text-align: center;
 }
 
 /* --- Modal form --- */
@@ -117,25 +218,34 @@
   display: flex;
   flex-direction: column;
   gap: 15px;
-  margin-top: 15px;
+  margin-top: 20px;
 }
 
 .app__modal-label {
-  font-size: 0.85rem;
-  color: #666;
+  font-size: 0.9rem;
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 5px;
   display: block;
 }
 
+/* 🌟 UI範本：半透明輸入框 */
 .app__modal-input {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   border-radius: 8px;
-  border: 1px solid #ddd;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
   box-sizing: border-box;
 }
 
-/* --- Modal message (success / error) --- */
+.app__modal-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.8);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+/* --- Modal message --- */
 .app__modal-msg {
   padding: 10px;
   border-radius: 8px;
@@ -143,23 +253,30 @@
 }
 
 .app__modal-msg--error {
-  color: #e74c3c;
-  background: #fdecea;
+  color: #ffcccc;
+  background: rgba(231, 76, 60, 0.4);
+  border: 1px solid rgba(231, 76, 60, 0.6);
 }
 
 .app__modal-msg--success {
-  color: #27ae60;
-  background: #e8f8f5;
+  color: #ccffcc;
+  background: rgba(39, 174, 96, 0.4);
+  border: 1px solid rgba(39, 174, 96, 0.6);
 }
 
 /* --- Modal submit button --- */
 .app__modal-submit-btn {
-  padding: 12px;
-  background: #667eea;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
   font-weight: bold;
   cursor: pointer;
   margin-top: 10px;
+  transition: all 0.3s;
+}
+
+.app__modal-submit-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
 }

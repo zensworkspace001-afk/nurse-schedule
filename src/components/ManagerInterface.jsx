@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
@@ -11,36 +11,58 @@ const ManagerInterface = ({
   staffData, setStaffData, historyData, requirements, setRequirements,
   preferences, setPreferences, schedule, violations,
   scheduleRisks,bedConfig, setBedConfig,
-  shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays, 
-  selectedYear, setSelectedYear, 
+  shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays,
+  selectedYear, setSelectedYear,
   selectedMonth, setSelectedMonth,
-  onGenerateSchedule, onSaveSchedule, setSchedule, 
-  finalizedSchedule, 
+  onGenerateSchedule, onSaveSchedule, setSchedule,
+  finalizedSchedule,
   setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff,
-  baseSalary, setBaseSalary, // ★ 這裡接住 
+  baseSalary, setBaseSalary, // ★ 這裡接住
 }) => {
   const [activeTab, setActiveTab] = useState('requirements');
+  const tabs = ['requirements', 'staff', 'schedule', 'publish', 'review', 'statistics'];
+
+  // Ref 用於取得每個按鈕的實際大小與位置，以便滑塊能精準跟隨
+  const tabRefs = useRef([]);
+  const [gliderStyle, setGliderStyle] = useState({ left: 0, width: 0, opacity: 0 });
+
+  useEffect(() => {
+    const activeIndex = tabs.indexOf(activeTab);
+    const currentTab = tabRefs.current[activeIndex];
+    if (currentTab) {
+      setGliderStyle({
+        left: currentTab.offsetLeft,
+        top: currentTab.offsetTop,
+        width: currentTab.offsetWidth,
+        height: currentTab.offsetHeight,
+        opacity: 1,
+      });
+    }
+  }, [activeTab, tabs]);
 
   return (
     <div className="manager">
 
       <div className="manager__tabs">
-        {['requirements', 'staff', 'schedule', 'publish','review', 'statistics'].map(tab => (
+        {/* 🌟 背景滑動毛玻璃游標 */}
+        <div className="manager__glider" style={gliderStyle}></div>
+
+        {tabs.map((tab, index) => (
           <button
             key={tab}
+            ref={(el) => (tabRefs.current[index] = el)}
             onClick={() => setActiveTab(tab)}
             className={`manager__tab${activeTab === tab ? ' manager__tab--active' : ''}`}
           >
             {tab === 'requirements' && '⚙️ 人力需求'}
             {tab === 'staff' && '👥 員工管理'}
-            {tab === 'schedule' && '🛠️ 排班工作桌'} 
+            {tab === 'schedule' && '🛠️ 排班工作桌'}
             {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
             {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
             {tab === 'statistics' && '📊 統計報表'}
           </button>
         ))}
       </div>
-
       {activeTab === 'requirements' && (
         <RequirementsPanel
           requirements={requirements} setRequirements={setRequirements}

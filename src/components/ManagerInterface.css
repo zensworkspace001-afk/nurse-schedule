@@ -1,5 +1,5 @@
 /* ============================================
-   ManagerInterface — Layout & Tab Navigation
+   ManagerInterface — Layout & Tab Navigation (Flat Glass UI)
    ============================================ */
 
 /* --- Container --- */
@@ -9,33 +9,61 @@
   gap: 1.5rem;
 }
 
-/* --- Tab bar --- */
+/* --- Tab bar (底板保留原樣，稍作優化以襯托玻璃) --- */
 .manager__tabs {
-  background: rgba(255, 255, 255, 0.95);
-  border-radius: 16px;
-  padding: 1rem;
+  background: rgba(0, 0, 0, 0.15); /* 🌟 UI範本：深色半透明基底 */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
+  border-radius: 20px;
+  padding: 0.5rem;
   display: flex;
-  gap: 1rem;
+  gap: 0.5rem;
   flex-wrap: wrap;
+  position: relative;
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.1);
+  z-index: 1;
+}
+
+/* --- 🌟 選項框框：經典毛玻璃風格 (Glassmorphism Glider) --- */
+.manager__glider {
+  position: absolute;
+  /* 🌟 純淨毛玻璃核心：半透明白 + 強力模糊 */
+  background: rgba(255, 255, 255, 0.25); 
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  
+  /* 🌟 玻璃的高光邊框 */
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  
+  border-radius: 16px;
+  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  
+  /* 🌟 柔和的玻璃投影 */
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  z-index: -1;
 }
 
 /* --- Individual tab button --- */
 .manager__tab {
   flex: 1;
-  padding: 1rem;
+  padding: 0.8rem 1rem;
   border: none;
-  border-radius: 10px;
+  border-radius: 16px;
   cursor: pointer;
-  font-weight: bold;
-  transition: all 0.2s;
+  font-weight: 300; /* 🌟 UI範本：較輕的字體權重 */
   background: transparent;
-  color: #666;
-  box-shadow: none;
+  color: rgba(255, 255, 255, 0.6); /* 🌟 UI範本：未選中時為稍微暗淡的白色 */
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+  min-width: 120px;
 }
 
-/* --- Active tab state --- */
+/* --- Active tab state (文字在玻璃下的顏色) --- */
 .manager__tab--active {
-  background: #667eea;
-  color: white;
-  box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+  color: #ffffff; /* 🌟 UI範本：選中時變為純白 */
+  font-weight: 400;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  transform: scale(1.02);
 }

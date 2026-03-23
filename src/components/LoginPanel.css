@@ -9,27 +9,98 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  /* 背景保留漸層，並確保它是暗色系能凸顯色塊 */
+  background: linear-gradient(135deg, #879ca8 0%, #4a5c6a 100%);
   position: relative;
   padding: 20px;
-  box-sizing: border-box; /* 確保 padding 不會撐破版面 */
+  box-sizing: border-box;
+  overflow: hidden; /* 隱藏溢出的色塊 */
+}
+
+/* ==========================================================================
+   Animated Background Blobs (會動的色塊)
+   ========================================================================== */
+.login-panel__blob {
+  position: absolute;
+  filter: blur(80px); /* 讓色塊邊緣非常柔和，變成光暈效果 */
+  z-index: 1; /* 必須在 Card(z-index:10) 之下 */
+  opacity: 0.8;
+  animation: floatBlobs 15s infinite ease-in-out alternate;
+}
+
+/* 第一個色塊：紫紅色 */
+.login-panel__blob--1 {
+  width: 400px;
+  height: 400px;
+  background: #ff4785;
+  top: -100px;
+  left: -100px;
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  animation-delay: 0s;
+}
+
+/* 第二個色塊：藍綠色 */
+.login-panel__blob--2 {
+  width: 350px;
+  height: 350px;
+  background: #00d2ff;
+  bottom: -50px;
+  right: -50px;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation-duration: 18s;
+  animation-delay: -2s;
+}
+
+/* 第三個色塊：深紫色 */
+.login-panel__blob--3 {
+  width: 300px;
+  height: 300px;
+  background: #7b2cbf;
+  bottom: 20%;
+  left: 20%;
+  border-radius: 50%;
+  animation-duration: 20s;
+  animation-delay: -5s;
+}
+
+@keyframes floatBlobs {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0deg);
+  }
+  33% {
+    transform: translate(30px, -50px) scale(1.1) rotate(90deg);
+  }
+  66% {
+    transform: translate(-20px, 20px) scale(0.9) rotate(180deg);
+  }
+  100% {
+    transform: translate(0, 0) scale(1) rotate(360deg);
+  }
 }
 
 /* --- Card --- */
 .login-panel__card {
-  background: white;
+  /* 🌟 毛玻璃效果核心：半透明背景 + 背景模糊 */
+  background: rgba(255, 255, 255, 0.15); 
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px); /* 支援 Safari */
+  
   padding: 3rem;
   border-radius: 20px;
   
-  /* 🌟 響應式寬度：最小 320px，理想是螢幕寬度的 90%，最大不超過 450px (電腦螢幕上的最適大小) */
+  /* 🌟 玻璃質感邊框 */
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  
+  /* 響應式寬度 */
   width: 100%;
   max-width: clamp(320px, 90vw, 450px);
-  min-height: 400px; /* 給予面板一個固定的最低高度，看起來更大器 */
+  min-height: 400px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  /* 🌟 深邃但柔和的陰影 */
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.3);
   text-align: center;
   margin-bottom: 30px;
   z-index: 10;
@@ -38,16 +109,18 @@
 
 /* --- Title --- */
 .login-panel__title {
-  color: #333;
+  color: #ffffff; /* 在深色/玻璃背景下改為白色 */
   margin-bottom: 0.5rem;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
 .login-panel__badge {
   font-size: 0.9rem;
-  background: #e8f8f5;
-  color: #27ae60;
-  padding: 2px 8px;
-  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  padding: 2px 12px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 /* --- Form --- */
@@ -61,8 +134,24 @@
   padding: 12px;
   margin-bottom: 1rem;
   border-radius: 8px;
-  border: 1px solid #ddd;
+  
+  /* 🌟 輸入框也採用半透明玻璃感 */
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: white; /* 文字改為白色 */
   box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.login-panel__input::placeholder {
+  color: rgba(255, 255, 255, 0.6); /* 讓 Placeholder 隱約透出 */
+}
+
+.login-panel__input:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
 }
 
 .login-panel__input--password {

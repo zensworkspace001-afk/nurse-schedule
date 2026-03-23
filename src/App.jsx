@@ -623,6 +623,13 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
 
   return (
     <div className="app">
+      {/* 🌟 背景動畫色塊 (與登入頁面相同) */}
+      <div className="app__blob app__blob--1"></div>
+      <div className="app__blob app__blob--2"></div>
+      <div className="app__blob app__blob--3"></div>
+
+      {/* 🌟 確保所有主要內容都在色塊之上 */}
+      <div className="app__wrapper">
       {/* ★★★ 新增：Admin 修改密碼 Modal ★★★ */}
       {showAdminPwdModal && (
         <div className="app__modal-overlay">
@@ -655,7 +662,7 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
 
       <div className="app__header">
           <div className="app__header-left">
-            <Calendar size={28} color="#667eea" />
+            <Calendar size={28} color="#ffffff" />
             <h1 className="app__header-title">智能排班系統</h1>
           </div>
           <div className="app__header-right">
@@ -715,11 +722,11 @@ return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳
   setStaffData={setStaffData} // <--- ★★★ 補上這行：讓員工有權限改自己密碼 ★★★
           />
         )}
+        </div>
       </div>
     </div>
   );
 };
-
 // ============================================================================
 // 子元件區 (ManagerInterface) - 負責管理分頁切換
 // ============================================================================
