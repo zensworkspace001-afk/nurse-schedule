@@ -11,6 +11,9 @@
   border-radius: 16px;
   padding: 2rem;
   position: relative;
+  flex: 1; /* 🌟 讓排班面板撐滿剩餘高度 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ----------------------------------------------------------------------------
@@ -491,9 +494,11 @@
    Schedule table container
    ---------------------------------------------------------------------------- */
 .schedule-panel__table-container {
-  overflow-x: auto;
+  overflow: auto;
   border: 1px solid #eee;
   border-radius: 8px;
+  flex: 1;
+  min-height: 0;
 }
 
 .schedule-panel__table {

@@ -6,7 +6,6 @@
 .publish {
   display: flex;
   gap: 20px;
-  height: 80vh;
   flex-direction: column;
 }
 
