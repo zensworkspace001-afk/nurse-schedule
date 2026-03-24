@@ -320,3 +320,44 @@
 .app__modal-submit-btn:hover {
   background: rgba(255, 255, 255, 0.3);
 }
+
+/* ==========================================================================
+   Responsive Web Design (RWD) for Main App Layout
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .app {
+    padding: 1rem 0.5rem; /* 手機版減少外圍留白，讓內容更填滿畫面 */
+  }
+
+  .app__header {
+    flex-direction: column; /* 讓標題和按鈕在手機上垂直排列 */
+    gap: 1rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    border-radius: 16px;
+  }
+
+  .app__header-left {
+    width: 100%;
+    justify-content: center; /* 標題置中 */
+  }
+
+  .app__header-title {
+    font-size: 1.5rem; /* 縮小標題字體 */
+  }
+
+  .app__header-right {
+    width: 100%;
+    justify-content: space-between; /* 按鈕分散對齊 */
+    gap: 0.5rem;
+  }
+
+  .app__header-user {
+    font-size: 0.9rem;
+  }
+
+  .app__header-pwd-btn, .app__header-logout-btn {
+    padding: 6px 12px;
+    font-size: 0.85rem;
+  }
+}

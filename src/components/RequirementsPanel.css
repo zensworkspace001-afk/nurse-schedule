@@ -106,3 +106,21 @@
   font-weight: bold;
   font-size: 1rem;
 }
+
+/* ==========================================================================
+   Responsive Web Design (RWD)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .requirements-panel {
+    padding: 1rem; /* 手機版減少外邊距 */
+  }
+
+  .requirements-panel__settings {
+    padding: 1rem;
+  }
+
+  .requirements-panel__shifts {
+    flex-direction: column; /* 讓三班制卡片垂直排列 */
+    gap: 1rem;
+  }
+}

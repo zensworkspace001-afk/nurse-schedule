@@ -239,6 +239,27 @@
   color: #e74c3c;
 }
 
+/* ==========================================================================
+   Responsive Web Design (RWD)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .staff-mgmt {
+    padding: 1rem; /* 手機版減少面板內邊距 */
+  }
+
+  .staff-mgmt__header {
+    flex-direction: column; /* 標題與按鈕上下排列 */
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .staff-mgmt__actions {
+    width: 100%;
+    flex-wrap: wrap; /* 按鈕多時自動換行 */
+    justify-content: flex-start;
+  }
+}
+
 /* --- Selection Controls (Figma Style Toggle Switch) --- */
 .staff-mgmt__toggle {
   position: relative;

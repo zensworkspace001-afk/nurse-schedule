@@ -85,8 +85,8 @@
 }
 
 /* --- Mobile Hamburger Menu Button --- */
-.manager__mobile-menu-btn {
-  display: none;
+.manager .manager__mobile-menu-btn {
+  display: none !important;
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
@@ -114,8 +114,8 @@
     gap: 0.5rem; /* 手機上縮小間距 */
   }
 
-  .manager__mobile-menu-btn {
-    display: block; /* 手機上顯示漢堡按鈕 */
+  .manager .manager__mobile-menu-btn {
+    display: block !important; /* 手機上顯示漢堡按鈕 */
   }
 
   .manager__tabs {

@@ -857,3 +857,27 @@
   transition: opacity 0.3s;
   font-weight: bold;
 }
+
+/* ==========================================================================
+   Responsive Web Design (RWD)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .statistics {
+    padding: 0;
+  }
+  .statistics__top-row {
+    flex-direction: column;
+  }
+  .statistics__chart-section {
+    flex-direction: column;
+  }
+  .statistics__radar-layout {
+    flex-direction: column;
+  }
+  .statistics__middle-row {
+    flex-direction: column;
+  }
+  .statistics__ratio-panel, .statistics__card {
+    padding: 1rem;
+  }
+}

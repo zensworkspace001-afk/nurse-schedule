@@ -649,3 +649,31 @@
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
 }
+
+/* ==========================================================================
+   Responsive Web Design (RWD)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .dashboard {
+    padding: 1rem;
+    margin: 0;
+    border-radius: 12px;
+  }
+  .dashboard__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  .dashboard__header-user {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .dashboard__shift-btn {
+    width: 100%;
+    height: 80px;
+    font-size: 1.5rem;
+  }
+  .dashboard__calendar-grid {
+    grid-template-columns: repeat(7, minmax(40px, 1fr));
+  }
+}
