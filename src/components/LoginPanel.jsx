@@ -6,7 +6,7 @@ import './LoginPanel.css';
 // ============================================================================
 // 1. LoginPanel (安全升級版 - 串接 Firebase Auth)
 // ============================================================================
-const LoginPanel = ({ onLogin, staffData = [] }) => {
+const LoginPanel = ({ onLogin, onApiStatus, staffData = [] }) => {
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -24,7 +24,16 @@ const LoginPanel = ({ onLogin, staffData = [] }) => {
 
 try {
         // 1. 呼叫 Firebase 伺服器進行真實密碼比對！
+        const loginStart = Date.now();
         await signInWithEmailAndPassword(auth, emailToLogin, password);
+        const loginMs = Date.now() - loginStart;
+
+        // ★ 回報 API 狀態：< 3 秒綠色，3~8 秒黃色，> 8 秒紅色
+        if (onApiStatus) {
+          if (loginMs < 3000) onApiStatus('green');
+          else if (loginMs < 8000) onApiStatus('yellow');
+          else onApiStatus('red');
+        }
 
         // 2. 登入成功後，判斷角色權限
         if (inputId === 'admin') {
@@ -39,6 +48,8 @@ try {
             });
         }
     } catch (err) {
+        // ★ 登入失敗 → API 狀態紅燈
+        if (onApiStatus) onApiStatus('red');
         // ... 原本的 catch 錯誤處理保留不動 ...
         if (import.meta.env.DEV) {
         console.error("登入錯誤:", err.code);

@@ -16,6 +16,10 @@ import './App.refactored.css';
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
+  // ★ 系統連線狀態指示燈 ★
+  const [apiStatus, setApiStatus] = useState('green');       // green | yellow | red
+  const [serverStatus, setServerStatus] = useState('green'); // green | yellow | red
+
 
 
 
@@ -91,6 +95,31 @@ const [historyYear, setHistoryYear] = useState(() => {
   
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
+
+  // ★ Server (Firebase) 健康檢查：寫入 timestamp 後讀回驗證 ★
+  useEffect(() => {
+    if (!currentUser) return; // 登入後才開始檢查
+
+    const checkServerHealth = async () => {
+      try {
+        const healthRef = doc(db, 'SystemHealth', 'ping');
+        const now = Date.now();
+        await setDoc(healthRef, { timestamp: now });
+        const snap = await getDoc(healthRef);
+        if (snap.exists() && snap.data().timestamp === now) {
+          setServerStatus('green');
+        } else {
+          setServerStatus('yellow');
+        }
+      } catch {
+        setServerStatus('red');
+      }
+    };
+
+    checkServerHealth();
+    const interval = setInterval(checkServerHealth, 60000); // 每 60 秒檢查一次
+    return () => clearInterval(interval);
+  }, [currentUser]);
 
   // ★★★ 新增：自動抓取台灣國定假日 API ★★★
   const [publicHolidays, setPublicHolidays] = useState([]);
@@ -635,7 +664,7 @@ const handleSaveAndPublish = async () => {
   };
 
   if (!currentUser) {
-    return <LoginPanel onLogin={handleLoginTransition} staffData={staffData} />;
+    return <LoginPanel onLogin={handleLoginTransition} onApiStatus={setApiStatus} staffData={staffData} />;
   }
 
   return (
@@ -683,6 +712,17 @@ const handleSaveAndPublish = async () => {
             <h1 className="app__header-title">智能排班系統</h1>
           </div>
           <div className="app__header-right">
+            {/* ★ 系統連線狀態指示燈 ★ */}
+            <div className="app__status-group">
+              <div className="app__status-item">
+                <span className={`app__status-dot app__status-dot--${apiStatus}`}></span>
+                <span className="app__status-label">API</span>
+              </div>
+              <div className="app__status-item">
+                <span className={`app__status-dot app__status-dot--${serverStatus}`}></span>
+                <span className="app__status-label">Server</span>
+              </div>
+            </div>
             <span className="app__header-user">👋 {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
             {/* 就是這裡！判斷如果是 admin 才會顯示這個按鈕 */}
             {currentUser.role === 'admin' && (
