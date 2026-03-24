@@ -109,7 +109,13 @@ const [historyYear, setHistoryYear] = useState(() => {
         const snap = await getDoc(healthRef);
         const ms = Date.now() - t0;
         if (snap.exists() && snap.data().timestamp === now) {
-          setServerStatus({ color: 'green', reason: `Firebase 讀寫正常 (${ms}ms)` });
+          if (ms < 2000) {
+            setServerStatus({ color: 'green', reason: `Firebase 讀寫正常 (${ms}ms)` });
+          } else if (ms < 5000) {
+            setServerStatus({ color: 'yellow', reason: `Firebase 回應緩慢 (${ms}ms)` });
+          } else {
+            setServerStatus({ color: 'red', reason: `Firebase 回應過慢 (${ms}ms)` });
+          }
         } else {
           setServerStatus({ color: 'yellow', reason: `Firebase 讀回資料不一致 (${ms}ms)` });
         }
