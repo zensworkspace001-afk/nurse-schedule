@@ -312,7 +312,7 @@ const handlePushToHistory = async () => {
                 historySchedule, 
                 "歷史區舊班表被覆蓋前自動歸檔"
             );
-            console.log(`✅ 舊班表 ${historyYear}年${historyMonth}月 已成功備份至雲端封存庫`);
+            if (import.meta.env.DEV) console.log(`✅ 舊班表 ${historyYear}年${historyMonth}月 已成功備份至雲端封存庫`);
         } catch (e) {
             console.error("❌ 舊班表備份失敗:", e);
             // 備份失敗不阻斷主流程
@@ -548,7 +548,7 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
   const handleManualRefresh = async () => {
     try {
       // 顯示讀取中的提示 (可選，讓使用者知道有在跑)
-      console.log("🔄 正在向雲端請求最新資料...");
+      if (import.meta.env.DEV) console.log("🔄 正在向雲端請求最新資料...");
       
       // 直接向 Firebase 請求目前選擇的「年_月」的真實資料
       const docRef = doc(db, 'Schedules', `${selectedYear}_${selectedMonth}`);

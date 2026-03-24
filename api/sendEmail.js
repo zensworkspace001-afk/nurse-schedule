@@ -15,7 +15,7 @@ export default async function handler(req, res) {
 
     try {
         const data = await resend.emails.send({
-            from: '護理排班系統 <onboarding@resend.dev>', // 測試階段先用 resend 提供的預設信箱
+            from: '護理排班系統 <onboarding@resend.dev>', // Resend 免費方案預設寄件地址
             to: [to],
             subject: subject,
             html: html

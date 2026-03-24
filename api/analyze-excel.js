@@ -39,8 +39,8 @@ export default async function handler(req, res) {
     // ★ 現在可以正確 await，錯誤也能被 catch 接住
     const { fileContent, userPrompt } = await parseForm();
 
-    console.log("📂 收到內容長度:", fileContent.length);
-    console.log("💬 使用者問題:", userPrompt);
+    // (DEV) console.log("📂 收到內容長度:", fileContent.length);
+    // (DEV) console.log("💬 使用者問題:", userPrompt);
 
     if (!fileContent) {
       return res.status(400).json({ error: '未收到報表內容' });

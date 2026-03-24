@@ -147,7 +147,7 @@ const handleReset = () => {
               if (setHistoryMonth) setHistoryMonth(selectedMonth);
               if (setHistorySchedule) setHistorySchedule(targetSchedule);
 
-              console.log("✅ 舊班表已成功歸檔至 archive_reports，並完成歷史區替換！");
+              if (import.meta.env.DEV) console.log("✅ 舊班表已成功歸檔至 archive_reports，並完成歷史區替換！");
 
           } catch (error) {
               console.error("伺服器備份失敗:", error);

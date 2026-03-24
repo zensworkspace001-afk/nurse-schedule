@@ -21,9 +21,10 @@ export default async function handler(req, res) {
     try {
         console.log("🤖 [巡邏機器人] 啟動巡邏...");
         
-        // 假設預設巡邏 2026年 2月 (實務上可以從資料庫讀取「目前開放月份」)
-        const currentYear = 2026;
-        const currentMonth = 2;
+        // 動態取得當前年月（Vercel Cron 每日執行）
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
         
         // 3. 去雷達 (SelectionTurn) 看現在輪到誰
         const turnRef = db.collection('SelectionTurn').doc(`${currentYear}_${currentMonth}`);

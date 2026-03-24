@@ -405,7 +405,7 @@ return (
               <button onClick={() => setShowAddOption(!showAddOption)} className="review__btn review__btn--manage">➕ 管理班別選項</button>
               <button onClick={handleOpenSettlement} className="review__btn review__btn--settle">💰 薪資與加班費結算</button>
               <button onClick={handleExportExcel} className="review__btn review__btn--export">📥 匯出 Excel</button>
-              <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用">⚙️ 測試 API</button>
+              {import.meta.env.DEV && <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用">⚙️ 測試 API</button>}
            </div>
       </div>
       {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
