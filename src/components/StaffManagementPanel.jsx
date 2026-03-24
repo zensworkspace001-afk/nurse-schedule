@@ -5,6 +5,8 @@ import './StaffManagementPanel.css';
 const StaffManagementPanel = ({ staffData, setStaffData }) => {
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all'); // all | active | inactive
 
 useEffect(() => {
   // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
@@ -207,12 +209,31 @@ const handleSave = async () => {
     return 'streak--normal';
   };
 
+  // ★ 搜尋 & 篩選邏輯
+  const filteredStaff = localStaff.filter(staff => {
+    // 狀態篩選
+    if (filterStatus === 'active' && !staff.is_active) return false;
+    if (filterStatus === 'inactive' && staff.is_active) return false;
+    // 搜尋關鍵字 (工號、姓名、Email)
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (
+        staff.staff_id.toLowerCase().includes(q) ||
+        (staff.name || '').toLowerCase().includes(q) ||
+        (staff.email || '').toLowerCase().includes(q)
+      );
+    }
+    return true;
+  });
+
+  const activeCount = localStaff.filter(s => s.is_active).length;
+  const inactiveCount = localStaff.length - activeCount;
+
   return (
     <div className="staff-mgmt">
       <div className="staff-mgmt__header">
         <h2 className="staff-mgmt__title">員工資料管理 ({localStaff.length}人)</h2>
         <div className="staff-mgmt__actions">
-          {/* ★ 新增：隱藏的檔案選擇器與匯入按鈕 */}
           <input
             type="file"
             accept=".csv"
@@ -223,7 +244,6 @@ const handleSave = async () => {
           <button onClick={() => fileInputRef.current.click()} className="staff-mgmt__btn staff-mgmt__btn--import">
             📥 匯入 CSV
           </button>
-
           <button onClick={handleAddStaff} className="staff-mgmt__btn staff-mgmt__btn--add">+ 單筆新增</button>
           <button
             onClick={handleSave}
@@ -233,6 +253,46 @@ const handleSave = async () => {
             {isDirty ? '💾 儲存變更' : '已同步'}
           </button>
         </div>
+      </div>
+
+      {/* ★ 搜尋與快速篩選列 */}
+      <div className="staff-mgmt__filter-bar">
+        <div className="staff-mgmt__search-wrap">
+          <span className="staff-mgmt__search-icon">🔍</span>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜尋工號、姓名或 Email..."
+            className="staff-mgmt__search-input"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="staff-mgmt__search-clear">✕</button>
+          )}
+        </div>
+        <div className="staff-mgmt__filter-group">
+          <button
+            onClick={() => setFilterStatus('all')}
+            className={`staff-mgmt__filter-btn${filterStatus === 'all' ? ' staff-mgmt__filter-btn--active' : ''}`}
+          >
+            全部 ({localStaff.length})
+          </button>
+          <button
+            onClick={() => setFilterStatus('active')}
+            className={`staff-mgmt__filter-btn${filterStatus === 'active' ? ' staff-mgmt__filter-btn--active' : ''}`}
+          >
+            在職 ({activeCount})
+          </button>
+          <button
+            onClick={() => setFilterStatus('inactive')}
+            className={`staff-mgmt__filter-btn${filterStatus === 'inactive' ? ' staff-mgmt__filter-btn--active' : ''}`}
+          >
+            離職 ({inactiveCount})
+          </button>
+        </div>
+        {searchQuery && (
+          <span className="staff-mgmt__filter-result">找到 {filteredStaff.length} 筆</span>
+        )}
       </div>
 
       <div className="staff-mgmt__table-wrapper">
@@ -248,7 +308,7 @@ const handleSave = async () => {
             </tr>
           </thead>
           <tbody>
-            {localStaff.map((staff) => (
+            {filteredStaff.map((staff) => (
               <tr key={staff.staff_id} className={`staff-mgmt__row${!staff.is_active ? ' staff-mgmt__row--inactive' : ''}`}>
                 {columns.map(col => (
                   <td key={col.key} className="staff-mgmt__td">

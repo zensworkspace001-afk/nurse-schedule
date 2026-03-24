@@ -34,6 +34,104 @@
   display: none;
 }
 
+/* ==========================================================================
+   Search & Filter Bar
+   ========================================================================== */
+.staff-mgmt__filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.staff-mgmt__search-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+}
+
+.staff-mgmt__search-icon {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.9rem;
+  pointer-events: none;
+}
+
+.staff-mgmt__search-input {
+  width: 100%;
+  padding: 10px 36px 10px 36px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  font-size: 0.95rem;
+  background: #f8f9fa;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.staff-mgmt__search-input:focus {
+  outline: none;
+  border-color: #667eea;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+}
+
+.staff-mgmt__search-clear {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #999;
+  font-size: 0.85rem;
+  padding: 2px 6px;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.staff-mgmt__search-clear:hover {
+  background: #eee;
+  color: #333;
+}
+
+.staff-mgmt__filter-group {
+  display: flex;
+  gap: 4px;
+  background: #f0f0f0;
+  border-radius: 10px;
+  padding: 3px;
+}
+
+.staff-mgmt__filter-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: transparent;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.staff-mgmt__filter-btn--active {
+  background: #fff;
+  color: #333;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
+.staff-mgmt__filter-result {
+  font-size: 0.85rem;
+  color: #888;
+  white-space: nowrap;
+}
+
 /* --- Buttons --- */
 .staff-mgmt__btn {
   padding: 0.5rem 1rem;
@@ -115,11 +213,25 @@
 .staff-mgmt__row {
   border-bottom: 1px solid #f0f0f0;
   background: white;
+  transition: background 0.15s ease;
+}
+
+.staff-mgmt__row:nth-child(even) {
+  background: #fafbfc;
+}
+
+.staff-mgmt__row:hover {
+  background: #eef2ff;
 }
 
 .staff-mgmt__row--inactive {
-  background: #fafafa;
-  opacity: 0.7;
+  background: #f5f5f5;
+  opacity: 0.55;
+}
+
+.staff-mgmt__row--inactive:hover {
+  opacity: 0.8;
+  background: #fff3e0;
 }
 
 /* --- Table cells --- */
@@ -149,20 +261,38 @@
 /* --- Select dropdown --- */
 .staff-mgmt__select {
   padding: 6px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
   width: 100%;
+  background: #fff;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.staff-mgmt__select:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
 }
 
 /* --- Text / number input --- */
 .staff-mgmt__input {
   padding: 6px;
-  border-radius: 4px;
-  border: 1px solid #ddd;
+  border-radius: 6px;
+  border: 1px solid #e0e0e0;
   width: 100%;
   background: transparent;
   color: inherit;
   font-weight: normal;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.staff-mgmt__input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  background: #fff;
 }
 
 .staff-mgmt__input--name {
@@ -255,8 +385,21 @@
 
   .staff-mgmt__actions {
     width: 100%;
-    flex-wrap: wrap; /* 按鈕多時自動換行 */
+    flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .staff-mgmt__filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .staff-mgmt__search-wrap {
+    max-width: 100%;
+  }
+
+  .staff-mgmt__filter-group {
+    justify-content: center;
   }
 }
 
