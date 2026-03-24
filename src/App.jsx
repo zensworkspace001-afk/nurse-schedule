@@ -17,8 +17,8 @@ const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
   // ★ 系統連線狀態指示燈 ★
-  const [apiStatus, setApiStatus] = useState('green');       // green | yellow | red
-  const [serverStatus, setServerStatus] = useState('green'); // green | yellow | red
+  const [apiStatus, setApiStatus] = useState({ color: 'green', reason: '尚未登入，等待檢測' });
+  const [serverStatus, setServerStatus] = useState({ color: 'green', reason: '尚未檢測' });
 
 
 
@@ -101,18 +101,21 @@ const [historyYear, setHistoryYear] = useState(() => {
     if (!currentUser) return; // 登入後才開始檢查
 
     const checkServerHealth = async () => {
+      const t0 = Date.now();
       try {
         const healthRef = doc(db, 'SystemHealth', 'ping');
         const now = Date.now();
         await setDoc(healthRef, { timestamp: now });
         const snap = await getDoc(healthRef);
+        const ms = Date.now() - t0;
         if (snap.exists() && snap.data().timestamp === now) {
-          setServerStatus('green');
+          setServerStatus({ color: 'green', reason: `Firebase 讀寫正常 (${ms}ms)` });
         } else {
-          setServerStatus('yellow');
+          setServerStatus({ color: 'yellow', reason: `Firebase 讀回資料不一致 (${ms}ms)` });
         }
-      } catch {
-        setServerStatus('red');
+      } catch (err) {
+        const ms = Date.now() - t0;
+        setServerStatus({ color: 'red', reason: `Firebase 無法連線 (${ms}ms): ${err.message}` });
       }
     };
 
@@ -664,7 +667,7 @@ const handleSaveAndPublish = async () => {
   };
 
   if (!currentUser) {
-    return <LoginPanel onLogin={handleLoginTransition} onApiStatus={setApiStatus} staffData={staffData} />;
+    return <LoginPanel onLogin={handleLoginTransition} onApiStatus={(color, reason) => setApiStatus({ color, reason })} staffData={staffData} />;
   }
 
   return (
@@ -714,12 +717,12 @@ const handleSaveAndPublish = async () => {
           <div className="app__header-right">
             {/* ★ 系統連線狀態指示燈 ★ */}
             <div className="app__status-group">
-              <div className="app__status-item">
-                <span className={`app__status-dot app__status-dot--${apiStatus}`}></span>
+              <div className="app__status-item" title={apiStatus.reason}>
+                <span className={`app__status-dot app__status-dot--${apiStatus.color}`}></span>
                 <span className="app__status-label">API</span>
               </div>
-              <div className="app__status-item">
-                <span className={`app__status-dot app__status-dot--${serverStatus}`}></span>
+              <div className="app__status-item" title={serverStatus.reason}>
+                <span className={`app__status-dot app__status-dot--${serverStatus.color}`}></span>
                 <span className="app__status-label">Server</span>
               </div>
             </div>

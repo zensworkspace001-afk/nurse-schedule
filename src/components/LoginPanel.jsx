@@ -30,9 +30,9 @@ try {
 
         // ★ 回報 API 狀態：< 3 秒綠色，3~8 秒黃色，> 8 秒紅色
         if (onApiStatus) {
-          if (loginMs < 3000) onApiStatus('green');
-          else if (loginMs < 8000) onApiStatus('yellow');
-          else onApiStatus('red');
+          if (loginMs < 3000) onApiStatus('green', `登入成功 (${loginMs}ms)`);
+          else if (loginMs < 8000) onApiStatus('yellow', `登入回應緩慢 (${loginMs}ms)`);
+          else onApiStatus('red', `登入回應過慢 (${loginMs}ms)`);
         }
 
         // 2. 登入成功後，判斷角色權限
@@ -49,7 +49,7 @@ try {
         }
     } catch (err) {
         // ★ 登入失敗 → API 狀態紅燈
-        if (onApiStatus) onApiStatus('red');
+        if (onApiStatus) onApiStatus('red', `登入失敗: ${err.code || err.message}`);
         // ... 原本的 catch 錯誤處理保留不動 ...
         if (import.meta.env.DEV) {
         console.error("登入錯誤:", err.code);

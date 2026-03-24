@@ -209,6 +209,34 @@
   text-transform: uppercase;
 }
 
+/* --- 狀態燈 hover 說明氣泡 --- */
+.app__status-item {
+  position: relative;
+  cursor: help;
+}
+
+.app__status-item::after {
+  content: attr(title);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-size: 0.75rem;
+  padding: 6px 12px;
+  border-radius: 8px;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  z-index: 100;
+}
+
+.app__status-item:hover::after {
+  opacity: 1;
+}
+
 .app__header-user {
   color: rgba(255, 255, 255, 0.9);
   font-weight: 400;
