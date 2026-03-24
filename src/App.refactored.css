@@ -70,6 +70,36 @@
   100% { transform: translate(0, 0) scale(1) rotate(360deg); }
 }
 
+/* ==========================================================================
+   Transition Cover (登入過場蓋板動畫)
+   ========================================================================== */
+.app__transition-cover {
+  position: fixed;
+  top: 100%; /* 初始位置在螢幕最下方外面 */
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, #879ca8 0%, #4a5c6a 100%); /* 系統主漸層色 */
+  z-index: 9999; /* 絕對蓋在最上層 */
+  animation: slideCover 1.5s cubic-bezier(0.77, 0, 0.175, 1) forwards;
+  pointer-events: none; /* 防止點擊干擾 */
+}
+
+@keyframes slideCover {
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(-100%); /* 向上滑動，剛好遮滿整個螢幕 */
+  }
+  60% {
+    transform: translateY(-100%); /* 停留 20% 的時間，讓背後的 React 有時間瞬間把 DOM 替換成主系統 */
+  }
+  100% {
+    transform: translateY(-200%); /* 繼續向上滑出螢幕，露出已經準備好的主系統 */
+  }
+}
+
 /* --- Content Wrapper (確保內容在色塊之上) --- */
 .app__wrapper {
   position: relative;

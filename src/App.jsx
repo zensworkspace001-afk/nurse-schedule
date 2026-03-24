@@ -617,8 +617,25 @@ const handleSaveAndPublish = async () => {
       }
   };
 
+  const handleLoginTransition = (user) => {
+    // 1. 動態產生一個滿版的 CSS 動畫蓋板
+    const cover = document.createElement('div');
+    cover.className = 'app__transition-cover';
+    document.body.appendChild(cover);
+    
+    // 2. 當蓋板完全遮住畫面時 (約 750ms)，切換登入狀態 (背後畫面瞬間替換)
+    setTimeout(() => {
+      setCurrentUser(user);
+    }, 750);
+    
+    // 3. 等動畫播完 (1500ms)，清除 DOM 元素
+    setTimeout(() => {
+      cover.remove();
+    }, 1500);
+  };
+
   if (!currentUser) {
-return <LoginPanel onLogin={setCurrentUser} staffData={staffData} />; // ★ 傳入 adminPassword
+    return <LoginPanel onLogin={handleLoginTransition} staffData={staffData} />;
   }
 
   return (
