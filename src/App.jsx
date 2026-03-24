@@ -343,13 +343,25 @@ const handlePushToHistory = async () => {
   };
 
 const handleLogout = () => {
-  signOut(auth).then(() => {
-    // ★ 核心修復：登出時，把瀏覽器裡面所有記住的髒東西全部炸掉！
-    localStorage.clear(); 
-    window.location.reload(); // 強制重整網頁，回到最乾淨的狀態
-  }).catch((error) => {
-    console.error("登出失敗:", error);
-  });
+  // 1. 動態產生反向蓋板（從上往下滑）
+  const cover = document.createElement('div');
+  cover.className = 'app__transition-cover--reverse';
+  document.body.appendChild(cover);
+
+  // 2. 蓋板完全遮住畫面時 (約 750ms)，執行登出並清除狀態
+  setTimeout(() => {
+    signOut(auth).then(() => {
+      localStorage.clear();
+      setCurrentUser(null);
+    }).catch((error) => {
+      console.error("登出失敗:", error);
+    });
+  }, 750);
+
+  // 3. 動畫播完後清除 DOM 元素
+  setTimeout(() => {
+    cover.remove();
+  }, 1500);
 };
 // ★ 核心功能 1：寄送 Email 的共用小幫手
   const sendSystemEmail = async (toEmail, subject, htmlContent) => {

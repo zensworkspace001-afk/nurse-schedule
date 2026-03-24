@@ -100,6 +100,34 @@
   }
 }
 
+/* 登出過場蓋板（登入動畫的反向：從上往下） */
+.app__transition-cover--reverse {
+  position: fixed;
+  top: -100%; /* 初始位置在螢幕最上方外面 */
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(135deg, #879ca8 0%, #4a5c6a 100%);
+  z-index: 9999;
+  animation: slideCoverReverse 1.5s cubic-bezier(0.77, 0, 0.175, 1) forwards;
+  pointer-events: none;
+}
+
+@keyframes slideCoverReverse {
+  0% {
+    transform: translateY(0);
+  }
+  40% {
+    transform: translateY(100%); /* 向下滑動，剛好遮滿整個螢幕 */
+  }
+  60% {
+    transform: translateY(100%); /* 停留，讓背後 React 切換回登入頁 */
+  }
+  100% {
+    transform: translateY(200%); /* 繼續向下滑出螢幕，露出登入頁 */
+  }
+}
+
 /* --- Content Wrapper (確保內容在色塊之上) --- */
 .app__wrapper {
   position: relative;
