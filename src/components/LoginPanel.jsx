@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
+import { AlertCircle, LogIn, Shield } from 'lucide-react';
 import { auth } from '../api/database';
 import './LoginPanel.css';
 
@@ -83,7 +84,7 @@ try {
       <div className="login-panel__blob login-panel__blob--3"></div>
 
       <div className="login-panel__card">
-        <h2 className="login-panel__title">護理排班系統 <span className="login-panel__badge">安全版</span></h2>
+        <h2 className="login-panel__title">護理排班系統 <span className="login-panel__badge"><Shield size={12} /> 安全版</span></h2>
 
         <form onSubmit={handleLogin} className="login-panel__form">
           <input
@@ -99,10 +100,10 @@ try {
             className="login-panel__input login-panel__input--password"
           />
 
-          {error && <div className="login-panel__error">❌ {error}</div>}
+          {error && <div className="login-panel__error"><AlertCircle size={14} /> {error}</div>}
 
           <button type="submit" disabled={isLoggingIn} className={`login-panel__button ${isLoggingIn ? 'login-panel__button--disabled' : 'login-panel__button--active'}`}>
-              {isLoggingIn ? '驗證中...' : '登入系統'}
+              {isLoggingIn ? '驗證中...' : <><LogIn size={16} /> 登入系統</>}
           </button>
         </form>
       </div>

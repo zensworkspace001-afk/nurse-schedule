@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { Loader, Ban, CalendarOff, Clock, Lock, ClipboardList, Lightbulb, PartyPopper, Eye, Bell, Settings, X, Hand, Info, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
 import { auth, db } from '../api/database';
 import './StaffDashboard.css';
 
@@ -137,7 +138,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   // ============================================================================
 
 // 防呆 1: 基本未載入檢查
-  if (!currentUser) return <div className="dashboard__loading">🔄 正在載入使用者資料...</div>;
+  if (!currentUser) return <div className="dashboard__loading"><Loader size={18} className="dashboard__spin" /> 正在載入使用者資料...</div>;
 
   const currentStaffInfo = staffData.find(s => s.staff_id === currentUser.id);
 
@@ -145,7 +146,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   if (currentStaffInfo && (currentStaffInfo.is_active === false || currentStaffInfo.is_active === 'false')) {
       return (
           <div className="dashboard__guard">
-              <div className="dashboard__guard-icon">🚫</div>
+              <div className="dashboard__guard-icon"><Ban size={48} /></div>
               <h2 className="dashboard__guard-title--inactive">帳號無效 / 已離職</h2>
               <p className="dashboard__guard-text">您的帳號目前為「非在職狀態」，無法登入選班。<br/>如有疑問請洽詢護理長。</p>
           </div>
@@ -158,7 +159,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       const statusName = statusMap[currentStaffInfo.leave_status] || '特殊休假';
       return (
           <div className="dashboard__guard">
-              <div className="dashboard__guard-icon">🏖️</div>
+              <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
               <h2 className="dashboard__guard-title--leave">暫停排班</h2>
               <p className="dashboard__guard-text">您目前的狀態為<strong>「{statusName}」</strong>，本月不需參與系統排班作業。<br/>祝您休假愉快！</p>
           </div>
@@ -171,13 +172,13 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       const activeStaffName = staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id;
       return (
           <div className="dashboard__guard">
-              <div className="dashboard__guard-icon dashboard__guard-icon--pulse">⏳</div>
+              <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
               <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
               <div className="dashboard__guard-info">
                   目前的 <strong>優先發球權</strong> 在 <span className="dashboard__guard-highlight">{activeStaffName}</span> 手上。<br/><br/>
                   為確保最需要的人能優先挑選好班，請等待 AI 引擎發送您的專屬換棒 Email 通知！
               </div>
-              <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn">🔄 重新整理確認狀態</button>
+              <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
           </div>
       );
   }
@@ -259,8 +260,8 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
       {showPwdModal && (
         <div className="dashboard__pwd-overlay">
             <div className="dashboard__pwd-modal">
-                <button onClick={() => setShowPwdModal(false)} className="dashboard__pwd-close-btn">✖</button>
-                <h3 className="dashboard__pwd-title">⚙️ 修改密碼</h3>
+                <button onClick={() => setShowPwdModal(false)} className="dashboard__pwd-close-btn"><X size={14} /></button>
+                <h3 className="dashboard__pwd-title"><Settings size={18} /> 修改密碼</h3>
                 <form onSubmit={handlePasswordSubmit} className="dashboard__pwd-form">
                     <div>
                         <label className="dashboard__pwd-label">舊密碼 (預設: 123456)</label>
@@ -294,9 +295,9 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
       {currentStep === 1 && (
         <div className="dashboard__step1">
           <div className="dashboard__header-row">
-             <h2 className="dashboard__greeting">👋 嗨，{currentUser.name} <span className="dashboard__version-tag"> (路徑修復版 V3)</span></h2>
+             <h2 className="dashboard__greeting"><Hand size={22} /> 嗨，{currentUser.name}</h2>
               {/* ★★★ 新增：修改密碼按鈕 ★★★ */}
-              <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn">⚙️ 修改密碼</button>
+              <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn"><Settings size={14} /> 修改密碼</button>
           </div>
 
           <h3 className="dashboard__month-subtitle">
@@ -304,25 +305,25 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
           </h3>
 
           <div className="dashboard__streak-info">
-              ℹ️ 系統偵測：您上個月底已連續上班 <strong>{prevStreak}</strong> 天。
-              {prevStreak >= 6 && <div className="dashboard__streak-warning">⚠️ 警告：您已達連六上限，本月 1 號必須排休！</div>}
+              <Info size={14} /> 系統偵測：您上個月底已連續上班 <strong>{prevStreak}</strong> 天。
+              {prevStreak >= 6 && <div className="dashboard__streak-warning"><AlertTriangle size={14} /> 警告：您已達連六上限，本月 1 號必須排休！</div>}
           </div>
 
           {!currentSchedule || Object.keys(currentSchedule).length === 0 ? (
-              <div className="dashboard__no-schedule">⚠️ 管理員尚未發布此月份 ({targetMonth}月) 的班表，請稍後再來。</div>
+              <div className="dashboard__no-schedule"><AlertTriangle size={16} /> 管理員尚未發布此月份 ({targetMonth}月) 的班表，請稍後再來。</div>
           ) : hasClaimed ? (
               // ★ 已經認領過的畫面：隱藏選擇按鈕，顯示完成狀態
               <div className="dashboard__claimed-banner">
-                  <h3 className="dashboard__claimed-title">✅ 您已完成 {targetMonth} 月的認領！</h3>
+                  <h3 className="dashboard__claimed-title"><CheckCircle size={18} /> 您已完成 {targetMonth} 月的認領！</h3>
                   <p className="dashboard__claimed-desc">您的排班已成功鎖定。選好的班表不能再被選一次。</p>
                   <p className="dashboard__claimed-note">如需修改，請聯繫護理長在後台將您「拔除釋出」，您才能重新選擇。</p>
-                  <button onClick={() => setCurrentStep(2)} className="dashboard__claimed-view-btn">👀 進入查看所有人認領狀況</button>
+                  <button onClick={() => setCurrentStep(2)} className="dashboard__claimed-view-btn"><Eye size={14} /> 進入查看所有人認領狀況</button>
               </div>
           ) : (
               // ★ 尚未認領的畫面：顯示閃爍提醒與選擇按鈕
               <>
                 <div className="dashboard__unclaimed-alert">
-                    🔔 提醒：您尚未認領 {targetMonth} 月的班表，請盡速於下方選擇！
+                    <Bell size={16} /> 提醒：您尚未認領 {targetMonth} 月的班表，請盡速於下方選擇！
                 </div>
                 <p className="dashboard__shift-prompt">請選擇您下個月希望認領的班別類型：</p>
 
@@ -347,9 +348,9 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
       {currentStep === 2 && (
         <div>
           <button onClick={() => setCurrentStep(1)} className="dashboard__back-btn">← 返回</button>
-          <h2 className="dashboard__step2-title">📋 選擇整月方案 ({targetYear}年{targetMonth}月)</h2>
-          <div className="dashboard__step2-hint">💡 提示：灰底並標示「鎖頭」的班表代表已被其他人選走。若您極需該班表，請私下與該同仁協調。</div>
-          {hasClaimed && <div className="dashboard__claimed-readonly">🔒 您已完成認領，目前僅供檢視狀態，無法再選擇其他班表。</div>}
+          <h2 className="dashboard__step2-title"><ClipboardList size={20} /> 選擇整月方案 ({targetYear}年{targetMonth}月)</h2>
+          <div className="dashboard__step2-hint"><Lightbulb size={14} /> 提示：灰底並標示「鎖頭」的班表代表已被其他人選走。若您極需該班表，請私下與該同仁協調。</div>
+          {hasClaimed && <div className="dashboard__claimed-readonly"><Lock size={14} /> 您已完成認領，目前僅供檢視狀態，無法再選擇其他班表。</div>}
           <div className="dashboard__options-grid">
             {filteredOptions.length === 0 ? (
               <div className="dashboard__options-empty"><h3>無符合條件的推薦方案 😕</h3></div>
@@ -373,9 +374,9 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
                         <div className="dashboard__shift-card-header">
                             <div>
                                 <div className={`dashboard__shift-card-title ${opt.isClaimed ? 'dashboard__shift-card-title--claimed' : ''}`}>{opt.title}</div>
-                                {opt.isClaimed && <div className="dashboard__shift-card-locked">🔒 已被 {opt.claimantName} 選擇 (請員工間自主協調)</div>}
+                                {opt.isClaimed && <div className="dashboard__shift-card-locked"><Lock size={12} /> 已被 {opt.claimantName} 選擇 (請員工間自主協調)</div>}
                             </div>
-                            {!opt.isClaimed && !check.valid && <div className="dashboard__shift-card-warning">⚠️ {check.reason}</div>}
+                            {!opt.isClaimed && !check.valid && <div className="dashboard__shift-card-warning"><AlertTriangle size={12} /> {check.reason}</div>}
                         </div>
                         <div className={`dashboard__mini-calendar ${opt.isClaimed ? 'dashboard__mini-calendar--greyed' : ''}`}>
                             {['日','一','二','三','四','五','六'].map(d => <div key={d} className="dashboard__mini-calendar-weekday">{d}</div>)}
@@ -424,7 +425,7 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
     disabled={isProcessing}
     className={`dashboard__confirm-btn ${isProcessing ? 'dashboard__confirm-btn--processing' : 'dashboard__confirm-btn--active'}`}
 >
-    {isProcessing ? '⏳ 正在交棒給下一位 (約需10秒)...' : '確認認領'}
+    {isProcessing ? <><Loader size={14} className="dashboard__spin" /> 正在交棒給下一位 (約需10秒)...</> : '確認認領'}
 </button>
           </div>
         </div>
@@ -432,7 +433,7 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
 
       {currentStep === 4 && (
         <div className="dashboard__success">
-          <h2 className="dashboard__success-title">🎉 認領成功！</h2>
+          <h2 className="dashboard__success-title"><PartyPopper size={24} /> 認領成功！</h2>
           <p className="dashboard__success-text">您的班表已成功送出，系統已更新。<br/>(您選擇的月份：{targetYear}年 {targetMonth}月)</p>
           <button onClick={() => window.location.reload()} className="dashboard__success-btn">回首頁</button>
         </div>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import {
   doc, getDoc, setDoc, addDoc, collection,
   query, orderBy, limit, getDocs, arrayUnion, onSnapshot
@@ -689,8 +689,8 @@ const handleSaveAndPublish = async () => {
       {showAdminPwdModal && (
         <div className="app__modal-overlay">
             <div className="app__modal">
-                <button onClick={() => setShowAdminPwdModal(false)} className="app__modal-close-btn">✖</button>
-                <h3 className="app__modal-title">⚙️ 修改管理員密碼</h3>
+                <button onClick={() => setShowAdminPwdModal(false)} className="app__modal-close-btn"><X size={14} /></button>
+                <h3 className="app__modal-title"><Settings size={20} /> 修改管理員密碼</h3>
                 <form onSubmit={handleAdminPasswordSubmit} className="app__modal-form">
                     <div>
                         <label className="app__modal-label">舊密碼</label>
@@ -732,12 +732,11 @@ const handleSaveAndPublish = async () => {
                 <span className="app__status-label">Server</span>
               </div>
             </div>
-            <span className="app__header-user">👋 {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
-            {/* 就是這裡！判斷如果是 admin 才會顯示這個按鈕 */}
+            <span className="app__header-user"><Hand size={18} /> {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
             {currentUser.role === 'admin' && (
-                <button onClick={() => setShowAdminPwdModal(true)} className="app__header-pwd-btn">⚙️ 修改密碼</button>
+                <button onClick={() => setShowAdminPwdModal(true)} className="app__header-pwd-btn"><Settings size={14} /> 修改密碼</button>
             )}
-            <button onClick={handleLogout} className="app__header-logout-btn">登出</button>
+            <button onClick={handleLogout} className="app__header-logout-btn"><LogOut size={14} /> 登出</button>
           </div>
       </div>
 

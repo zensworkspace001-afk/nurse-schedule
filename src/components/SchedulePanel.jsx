@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw } from 'lucide-react';
 import { auth } from '../api/database';
 import { backupScheduleToArchive } from '../api/database';
 import './SchedulePanel.css';
@@ -446,7 +447,7 @@ const handleCellChange = (staffId, day, newValue) => {
                         取消
                     </button>
                     <button onClick={handleConfirmInstruction} className="schedule-panel__btn schedule-panel__btn--confirm">
-                        確認並繼續 🚀
+                        確認並繼續 <Rocket size={14} />
                     </button>
                 </div>
             </div>
@@ -467,12 +468,12 @@ const handleCellChange = (staffId, day, newValue) => {
 
                 <div className="schedule-panel__modal-actions schedule-panel__modal-actions--column">
                 <button onClick={handleArchiveThenGenerate} disabled={isBackingUp} className="schedule-panel__btn schedule-panel__btn--archive">
-                <span>{isBackingUp ? '⏳ 正在備份至伺服器...' : '📂 儲存至伺服器備份後重新生成'}</span>
+                <span>{isBackingUp ? <><Loader size={14} className="schedule-panel__spin" /> 正在備份至伺服器...</> : <><FolderArchive size={14} /> 儲存至伺服器備份後重新生成</>}</span>
                 <span>→</span>
                 </button>
 
                     <button onClick={handleDirectOverwrite} className="schedule-panel__btn schedule-panel__btn--danger">
-                        <span>🗑️ 直接清除畫面並覆蓋</span>
+                        <span><Trash2 size={14} /> 直接清除畫面並覆蓋</span>
                         <span>→</span>
                     </button>
 
@@ -513,17 +514,17 @@ const handleCellChange = (staffId, day, newValue) => {
              onClick={onManualRefresh}
              className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--sync"
            >
-             🔄 手動同步
+             <RefreshCw size={14} /> 手動同步
            </button>
-           <button onClick={() => setShowAddOption(!showAddOption)} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--options">➕ 選項</button>
+           <button onClick={() => setShowAddOption(!showAddOption)} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--options"><Plus size={14} /> 選項</button>
 
            {/* ★ 確保這裡綁定的是 handleGeminiSolveClick */}
-           <button id="gemini-trigger-btn" onClick={handleGeminiSolveClick} disabled={processing} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--generate">{processing ? '⏳' : '✨ 生成 AI 班表'}</button>
+           <button id="gemini-trigger-btn" onClick={handleGeminiSolveClick} disabled={processing} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--generate">{processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Sparkles size={16} /> 生成 AI 班表</>}</button>
 
-           <button onClick={handleClearAll} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--clear">🗑️ 清空舊班表</button>
+           <button onClick={handleClearAll} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--clear"><Trash2 size={14} /> 清空舊班表</button>
 
-           <button onClick={handleExportExcel} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--export">📥 Excel</button>
-           <button onClick={onSaveSchedule} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--save">💾 儲存並發布</button>
+           <button onClick={handleExportExcel} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--export"><FileDown size={14} /> Excel</button>
+           <button onClick={onSaveSchedule} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--save"><Save size={14} /> 儲存並發布</button>
         </div>
       </div>
 
@@ -655,7 +656,7 @@ const handleCellChange = (staffId, day, newValue) => {
         </div>
       ) : <div className="schedule-panel__empty">
           <h3 className="schedule-panel__empty-title">桌面空空如也 🌬️</h3>
-          <p>請點擊上方的「✨ 生成 AI 班表」開始排班，或是切換其他月份。</p>
+          <p>請點擊上方的「生成 AI 班表」開始排班，或是切換其他月份。</p>
       </div>}
     </div>
  );

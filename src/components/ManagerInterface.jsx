@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
@@ -21,12 +22,12 @@ const ManagerInterface = ({
   baseSalary, setBaseSalary, // ★ 這裡接住
 }) => {
   const tabs = [
-    { id: 'requirements', path: '/requirements', label: '⚙️ 人力需求' },
-    { id: 'staff', path: '/staff', label: '👥 員工管理' },
-    { id: 'schedule', path: '/schedule', label: '🛠️ 排班工作桌' },
-    { id: 'publish', path: '/publish', label: '📢 2. 發布與認領' },
-    { id: 'review', path: '/review', label: '✅ 3. 結算與歷史' },
-    { id: 'statistics', path: '/statistics', label: '📊 統計報表' }
+    { id: 'requirements', path: '/requirements', label: '人力需求', icon: Settings },
+    { id: 'staff', path: '/staff', label: '員工管理', icon: Users },
+    { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
+    { id: 'publish', path: '/publish', label: '2. 發布與認領', icon: Megaphone },
+    { id: 'review', path: '/review', label: '3. 結算與歷史', icon: ClipboardCheck },
+    { id: 'statistics', path: '/statistics', label: '統計報表', icon: BarChart3 }
   ];
 
   const location = useLocation();
@@ -67,7 +68,7 @@ const ManagerInterface = ({
         className="manager__mobile-menu-btn" 
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       >
-        {isMobileMenuOpen ? '✖ 關閉選單' : '☰ 開啟導覽選單'}
+        {isMobileMenuOpen ? <><X size={16} /> 關閉選單</> : <><Menu size={16} /> 開啟導覽選單</>}
       </button>
 
       <div className={`manager__tabs ${isMobileMenuOpen ? 'manager__tabs--open' : ''}`}>
@@ -83,7 +84,7 @@ const ManagerInterface = ({
             className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'requirements') ? ' manager__tab--active' : ''}`}
             style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            {tab.label}
+            <tab.icon size={16} /> {tab.label}
           </NavLink>
         ))}
       </div>

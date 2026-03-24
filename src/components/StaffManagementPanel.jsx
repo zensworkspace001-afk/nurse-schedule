@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Search, X, Download, Plus, Save, KeyRound, Trash2, AlertTriangle } from 'lucide-react';
 import { auth } from '../api/database';
 import './StaffManagementPanel.css';
 
@@ -242,15 +243,15 @@ const handleSave = async () => {
             onChange={handleImportCSV}
           />
           <button onClick={() => fileInputRef.current.click()} className="staff-mgmt__btn staff-mgmt__btn--import">
-            📥 匯入 CSV
+            <Download size={14} /> 匯入 CSV
           </button>
-          <button onClick={handleAddStaff} className="staff-mgmt__btn staff-mgmt__btn--add">+ 單筆新增</button>
+          <button onClick={handleAddStaff} className="staff-mgmt__btn staff-mgmt__btn--add"><Plus size={14} /> 單筆新增</button>
           <button
             onClick={handleSave}
             disabled={!isDirty}
             className={`staff-mgmt__btn--save ${isDirty ? 'staff-mgmt__btn--save-dirty' : 'staff-mgmt__btn--save-clean'}`}
           >
-            {isDirty ? '💾 儲存變更' : '已同步'}
+            {isDirty ? <><Save size={14} /> 儲存變更</> : '已同步'}
           </button>
         </div>
       </div>
@@ -258,7 +259,7 @@ const handleSave = async () => {
       {/* ★ 搜尋與快速篩選列 */}
       <div className="staff-mgmt__filter-bar">
         <div className="staff-mgmt__search-wrap">
-          <span className="staff-mgmt__search-icon">🔍</span>
+          <span className="staff-mgmt__search-icon"><Search size={14} /></span>
           <input
             type="text"
             value={searchQuery}
@@ -267,7 +268,7 @@ const handleSave = async () => {
             className="staff-mgmt__search-input"
           />
           {searchQuery && (
-            <button onClick={() => setSearchQuery('')} className="staff-mgmt__search-clear">✕</button>
+            <button onClick={() => setSearchQuery('')} className="staff-mgmt__search-clear"><X size={12} /></button>
           )}
         </div>
         <div className="staff-mgmt__filter-group">
@@ -342,7 +343,7 @@ const handleSave = async () => {
                             <div className={`staff-mgmt__streak-badge ${getStreakClass(isWarning, isAlert)}`}>
                               {streak}天
                             </div>
-                            {isWarning && <div className="staff-mgmt__streak-limit">⚠️ 達上限</div>}
+                            {isWarning && <div className="staff-mgmt__streak-limit"><AlertTriangle size={10} /> 達上限</div>}
                           </div>
                         );
                       })()
@@ -360,9 +361,8 @@ const handleSave = async () => {
                 {/* ★★★ 這裡是操作欄位 ★★★ */}
                 <td className="staff-mgmt__td--actions">
                   {/* 新增：重置密碼按鈕 */}
-                  <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--reset" title="重置密碼為 1234">🔑</button>
-                  {/* 原本：刪除按鈕 */}
-                  <button onClick={() => handleDelete(staff.staff_id)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--delete" title="刪除員工">🗑️</button>
+                  <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--reset" title="重置密碼為 123456"><KeyRound size={16} /></button>
+                  <button onClick={() => handleDelete(staff.staff_id)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--delete" title="刪除員工"><Trash2 size={16} /></button>
                 </td>
 
               </tr>

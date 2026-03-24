@@ -2,6 +2,16 @@
    StaffDashboard — BEM Stylesheet
    ========================================================================== */
 
+/* --- Lucide icon spin --- */
+.dashboard__spin {
+  animation: dashboard-spin 1s linear infinite;
+}
+
+@keyframes dashboard-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* --- Keyframe Animations --- */
 @keyframes pulseLock {
   0%   { transform: scale(1); opacity: 1; }

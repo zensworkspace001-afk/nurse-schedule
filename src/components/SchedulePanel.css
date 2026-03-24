@@ -3,6 +3,16 @@
    BEM naming convention: .schedule-panel, .schedule-panel__*, .schedule-panel--*
    ============================================================================ */
 
+/* --- Lucide icon spin animation --- */
+.schedule-panel__spin {
+  animation: schedule-spin 1s linear infinite;
+}
+
+@keyframes schedule-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ----------------------------------------------------------------------------
    Root container
    ---------------------------------------------------------------------------- */

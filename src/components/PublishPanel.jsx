@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Megaphone, Plus, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
 import { updateStaffSchedule } from '../api/database';
 import './PublishPanel.css';
 
@@ -135,16 +136,16 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         {/* ▼▼▼ 這是全新替換的頂部區塊 (包含 Push 封存按鈕) ▼▼▼ */}
         <div className="publish__header">
              <div className="publish__header-left">
-                 <h2 className="publish__header-title">📢 當前發布與認領動態</h2>
+                 <h2 className="publish__header-title"><Megaphone size={20} /> 當前發布與認領動態</h2>
                  <span className="publish__header-badge">{selectedYear}年 {selectedMonth}月</span>
              </div>
 
            <div className="publish__header-actions">
                  {/* ★ 新增下拉選單按鈕 */}
-                 <button onClick={() => setShowAddOption(!showAddOption)} className="publish__btn publish__btn--manage">➕ 管理班別選項</button>
-                 <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all">⚠️ 全部拔除釋出</button>
+                 <button onClick={() => setShowAddOption(!showAddOption)} className="publish__btn publish__btn--manage"><Plus size={14} /> 管理班別選項</button>
+                 <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all"><AlertTriangle size={14} /> 全部拔除釋出</button>
                  <button onClick={onPushToHistory} className="publish__btn publish__btn--archive">
-                     ➡️ 結算並封存至歷史區
+                     <ArrowRight size={14} /> 結算並封存至歷史區
                  </button>
              </div>
         </div>
@@ -239,9 +240,9 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
             {/* 右側：風險與法遵監控 (原封不動從舊版搬過來) */}
             <div className="publish__sidebar">
                <div className="publish__violations">
-                  <h2 className="publish__violations-title">⚖️ 法遵檢查結果</h2>
+                  <h2 className="publish__violations-title"><Scale size={18} /> 法遵檢查結果</h2>
                   <div className="publish__violations-list">
-                     {violations.length === 0 ? <div className="publish__violations-ok">✅ 無勞基法違規</div> : violations.map((v, i) => (
+                     {violations.length === 0 ? <div className="publish__violations-ok"><CheckCircle size={16} /> 無勞基法違規</div> : violations.map((v, i) => (
                            <div key={i} className="publish__violation-item">
                              <div className="publish__violation-name">{v.staffName}</div>
                              <div className="publish__violation-msg">Day {v.day}: {v.message}</div>
@@ -250,9 +251,9 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                   </div>
                </div>
                <div className="publish__risks">
-                  <h2 className="publish__risks-title">⚠️ 壓力風險監控</h2>
+                  <h2 className="publish__risks-title"><AlertTriangle size={18} /> 壓力風險監控</h2>
                   <div className="publish__risks-list">
-                     {(!scheduleRisks || scheduleRisks.length === 0) ? <div className="publish__risks-ok">✨ 團隊負荷平均</div> : scheduleRisks.map((risk, i) => (
+                     {(!scheduleRisks || scheduleRisks.length === 0) ? <div className="publish__risks-ok"><Sparkles size={16} /> 團隊負荷平均</div> : scheduleRisks.map((risk, i) => (
                            <div key={i} className="publish__risk-item">
                              <div className="publish__risk-name">{risk.staffName}</div>
                              {risk.tags.map((tag, j) => (<div key={j} className="publish__risk-tag">- {tag.label}</div>))}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Plus, Banknote, FileDown, Settings, X } from 'lucide-react';
 import { updateStaffSchedule, saveArchiveReport, backupScheduleToArchive } from '../api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from '../constants';
 import './ScheduleReviewPanel.css';
@@ -402,10 +403,10 @@ return (
                   />
               </div>
 
-              <button onClick={() => setShowAddOption(!showAddOption)} className="review__btn review__btn--manage">➕ 管理班別選項</button>
-              <button onClick={handleOpenSettlement} className="review__btn review__btn--settle">💰 薪資與加班費結算</button>
-              <button onClick={handleExportExcel} className="review__btn review__btn--export">📥 匯出 Excel</button>
-              {import.meta.env.DEV && <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用">⚙️ 測試 API</button>}
+              <button onClick={() => setShowAddOption(!showAddOption)} className="review__btn review__btn--manage"><Plus size={14} /> 管理班別選項</button>
+              <button onClick={handleOpenSettlement} className="review__btn review__btn--settle"><Banknote size={14} /> 薪資與加班費結算</button>
+              <button onClick={handleExportExcel} className="review__btn review__btn--export"><FileDown size={14} /> 匯出 Excel</button>
+              {import.meta.env.DEV && <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用"><Settings size={14} /> 測試 API</button>}
            </div>
       </div>
       {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
@@ -414,8 +415,8 @@ return (
       {showSettlement && (
           <div className="review__modal-overlay">
               <div className="review__modal-content">
-                  <button onClick={() => setShowSettlement(false)} className="review__modal-close">✖</button>
-                  <h2 className="review__modal-title">💰 薪資與加班費結算預覽 ({historyYear}年{historyMonth}月)</h2>
+                  <button onClick={() => setShowSettlement(false)} className="review__modal-close"><X size={14} /></button>
+                  <h2 className="review__modal-title"><Banknote size={20} /> 薪資與加班費結算預覽 ({historyYear}年{historyMonth}月)</h2>
 
                   <table className="review__settlement-table">
                       <thead className="review__settlement-thead">
