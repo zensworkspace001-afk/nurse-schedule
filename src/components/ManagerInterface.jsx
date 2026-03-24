@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
@@ -19,26 +20,42 @@ const ManagerInterface = ({
   setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff,
   baseSalary, setBaseSalary, // ★ 這裡接住
 }) => {
-  const [activeTab, setActiveTab] = useState('requirements');
-  const tabs = ['requirements', 'staff', 'schedule', 'publish', 'review', 'statistics'];
+  const tabs = [
+    { id: 'requirements', path: '/requirements', label: '⚙️ 人力需求' },
+    { id: 'staff', path: '/staff', label: '👥 員工管理' },
+    { id: 'schedule', path: '/schedule', label: '🛠️ 排班工作桌' },
+    { id: 'publish', path: '/publish', label: '📢 2. 發布與認領' },
+    { id: 'review', path: '/review', label: '✅ 3. 結算與歷史' },
+    { id: 'statistics', path: '/statistics', label: '📊 統計報表' }
+  ];
+
+  const location = useLocation();
+  const currentPath = location.pathname;
 
   // Ref 用於取得每個按鈕的實際大小與位置，以便滑塊能精準跟隨
   const tabRefs = useRef([]);
-  const [gliderStyle, setGliderStyle] = useState({ left: 0, width: 0, opacity: 0 });
+  const [gliderStyle, setGliderStyle] = useState({ transform: 'translate(0px, 0px)', width: 0, height: 0, opacity: 0 });
 
   useEffect(() => {
-    const activeIndex = tabs.indexOf(activeTab);
+    // 找出目前路由對應的 tab index，若在根目錄則預設為 0
+    let activeIndex = tabs.findIndex(t => t.path === currentPath);
+    if (activeIndex === -1 && currentPath === '/') activeIndex = 0;
+    
     const currentTab = tabRefs.current[activeIndex];
-    if (currentTab) {
-      setGliderStyle({
-        left: currentTab.offsetLeft,
-        top: currentTab.offsetTop,
-        width: currentTab.offsetWidth,
-        height: currentTab.offsetHeight,
-        opacity: 1,
-      });
-    }
-  }, [activeTab, tabs]);
+    
+    // 加一點延遲確保 DOM 已渲染
+    const timer = setTimeout(() => {
+        if (currentTab) {
+          setGliderStyle({
+            transform: `translate(${currentTab.offsetLeft}px, ${currentTab.offsetTop}px)`,
+            width: currentTab.offsetWidth,
+            height: currentTab.offsetHeight,
+            opacity: 1,
+          });
+        }
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [currentPath]);
 
   return (
     <div className="manager">
@@ -48,111 +65,99 @@ const ManagerInterface = ({
         <div className="manager__glider" style={gliderStyle}></div>
 
         {tabs.map((tab, index) => (
-          <button
-            key={tab}
+          <NavLink
+            key={tab.id}
+            to={tab.path}
             ref={(el) => (tabRefs.current[index] = el)}
-            onClick={() => setActiveTab(tab)}
-            className={`manager__tab${activeTab === tab ? ' manager__tab--active' : ''}`}
+            className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'requirements') ? ' manager__tab--active' : ''}`}
+            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >
-            {tab === 'requirements' && '⚙️ 人力需求'}
-            {tab === 'staff' && '👥 員工管理'}
-            {tab === 'schedule' && '🛠️ 排班工作桌'}
-            {tab === 'publish' && '📢 2. 發布與認領'} {/* ★ 新增 */}
-            {tab === 'review' && '✅ 3. 結算與歷史'}  {/* ★ 改名 */}
-            {tab === 'statistics' && '📊 統計報表'}
-          </button>
+            {tab.label}
+          </NavLink>
         ))}
       </div>
-      {activeTab === 'requirements' && (
-        <RequirementsPanel
-          requirements={requirements} setRequirements={setRequirements}
-          bedConfig={bedConfig} setBedConfig={setBedConfig}
-          onGenerateSchedule={onGenerateSchedule} 
-          onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
-          selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
-        />
-      )}
       
-      {activeTab === 'staff' && (
-        <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
-      )}
-      
-      {activeTab === 'schedule' && (
-        <SchedulePanel
-          schedule={schedule} staffData={staffData} violations={violations}
-          requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
-          onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
-          selectedYear={selectedYear} selectedMonth={selectedMonth}
-          setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
-          shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-          finalizedSchedule={finalizedSchedule}
-          setHistoryYear={setHistoryYear} 
-          setHistoryMonth={setHistoryMonth} 
-          setHistorySchedule={setHistorySchedule}
-// 👇 請在這裡補上下面這三行 👇
-          historyYear={historyYear}
-          historyMonth={historyMonth}
-          historySchedule={historySchedule}
-          onManualRefresh={onManualRefresh} 
-          publicHolidays={publicHolidays}        
-          setFinalizedSchedule={setFinalizedSchedule} 
-        />
-      )}
-      
-{/* ★ 新增：階段二 (發布與認領區) */}
-      {activeTab === 'publish' && (
-        <PublishPanel 
-           staffData={staffData}
-           violations={violations} scheduleRisks={scheduleRisks} 
-           selectedYear={selectedYear} selectedMonth={selectedMonth}
-           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-           publicHolidays={publicHolidays}
-           finalizedSchedule={finalizedSchedule} 
-           setFinalizedSchedule={setFinalizedSchedule}
-           onPushToHistory={onPushToHistory} // 👈 補上這行
-        />
-      )}
+      <div className="manager__content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <Routes>
+              <Route path="/" element={<Navigate to="/requirements" replace />} />
+              
+              <Route path="/requirements" element={
+                <RequirementsPanel
+                  requirements={requirements} setRequirements={setRequirements}
+                  bedConfig={bedConfig} setBedConfig={setBedConfig}
+                  onGenerateSchedule={onGenerateSchedule} 
+                  onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
+                  selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
+                />
+              } />
+              
+              <Route path="/staff" element={
+                <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
+              } />
+              
+              <Route path="/schedule" element={
+                <SchedulePanel
+                  schedule={schedule} staffData={staffData} violations={violations}
+                  requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
+                  onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
+                  selectedYear={selectedYear} selectedMonth={selectedMonth}
+                  setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
+                  shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+                  finalizedSchedule={finalizedSchedule}
+                  setHistoryYear={setHistoryYear} 
+                  setHistoryMonth={setHistoryMonth} 
+                  setHistorySchedule={setHistorySchedule}
+                  historyYear={historyYear}
+                  historyMonth={historyMonth}
+                  historySchedule={historySchedule}
+                  onManualRefresh={onManualRefresh} 
+                  publicHolidays={publicHolidays}        
+                  setFinalizedSchedule={setFinalizedSchedule} 
+                />
+              } />
+              
+              <Route path="/publish" element={
+                <PublishPanel 
+                   staffData={staffData}
+                   violations={violations} scheduleRisks={scheduleRisks} 
+                   selectedYear={selectedYear} selectedMonth={selectedMonth}
+                   shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+                   publicHolidays={publicHolidays}
+                   finalizedSchedule={finalizedSchedule} 
+                   setFinalizedSchedule={setFinalizedSchedule}
+                   onPushToHistory={onPushToHistory}
+                />
+              } />
 
-      {/* ★ 修改：階段三 (結算與歷史區)，改吃 history 狀態 */}
-      {activeTab === 'review' && (
-        <ScheduleReviewPanel 
-           staffData={staffData} setStaffData={setStaffData}
-           shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
-           publicHolidays={publicHolidays}
-           onUpdateHealthStats={onUpdateHealthStats}
-           bedConfig={bedConfig}
-           // 改吃專屬的歷史狀態
-           historyYear={historyYear} historyMonth={historyMonth}
-           setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
-           historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
-           baseSalary={baseSalary} setBaseSalary={setBaseSalary} // ★ 傳給歷史面板
-        />
-      )}
-      
-      {activeTab === 'statistics' && (
-        <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
-        healthStats={healthStats} // ★ 傳遞歷年數據給報表畫圖
-        accumulatedReports={accumulatedReports}       // 👈 補上：把雲端抓下來的報表傳進去
-            setAccumulatedReports={setAccumulatedReports} // 👈 補上：讓面板可以清空記憶
-            // 🌟 ★★★ 這裡再往下傳給 StatisticsPanel ★★★
-            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
-            bedConfig={bedConfig} // ★★★ 新增這行：把病床設定傳進來
-            schedule={schedule}
-            finalizedSchedule={finalizedSchedule}
-            selectedYear={selectedYear}
-            selectedMonth={selectedMonth}
-        />
-      )}
-
-     {/* {activeTab === 'simulation' && (
-        <SimulationPanel 
-            staffData={staffData} requirements={requirements}
-            baseSalary={localStorage.getItem('globalBaseSalary') || 40000}
-            publicHolidays={publicHolidays} selectedYear={selectedYear}
-            selectedMonth={selectedMonth} shiftOptions={shiftOptions}
-        />
-      )}
-        */}
+              <Route path="/review" element={
+                <ScheduleReviewPanel 
+                   staffData={staffData} setStaffData={setStaffData}
+                   shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+                   publicHolidays={publicHolidays}
+                   onUpdateHealthStats={onUpdateHealthStats}
+                   bedConfig={bedConfig}
+                   historyYear={historyYear} historyMonth={historyMonth}
+                   setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
+                   historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
+                   baseSalary={baseSalary} setBaseSalary={setBaseSalary}
+                />
+              } />
+              
+              <Route path="/statistics" element={
+                <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
+                    healthStats={healthStats}
+                    accumulatedReports={accumulatedReports}
+                    setAccumulatedReports={setAccumulatedReports}
+                    calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+                    bedConfig={bedConfig}
+                    schedule={schedule}
+                    finalizedSchedule={finalizedSchedule}
+                    selectedYear={selectedYear}
+                    selectedMonth={selectedMonth}
+                />
+              } />
+          </Routes>
+      </div>
     </div>
   );
 };

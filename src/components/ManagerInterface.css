@@ -37,6 +37,8 @@
 /* --- 🌟 選項框框：經典毛玻璃風格 (Glassmorphism Glider) --- */
 .manager__glider {
   position: absolute;
+  top: 0;
+  left: 0;
   /* 🌟 純淨毛玻璃核心：半透明白 + 強力模糊 */
   background: rgba(255, 255, 255, 0.25); 
   backdrop-filter: blur(20px);
@@ -46,7 +48,12 @@
   border: 1px solid rgba(255, 255, 255, 0.6);
   
   border-radius: 16px;
-  transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+  /* 🌟 效能優化：只針對會改變的屬性做過渡，並開啟 GPU 加速 */
+  transition: transform 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+              width 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+              height 0.4s cubic-bezier(0.25, 1, 0.5, 1),
+              opacity 0.2s ease;
+  will-change: transform, width, height;
   
   /* 🌟 柔和的玻璃投影 */
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
