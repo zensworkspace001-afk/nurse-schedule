@@ -242,12 +242,38 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                <div className="publish__violations">
                   <h2 className="publish__violations-title"><Scale size={18} /> 法遵檢查結果</h2>
                   <div className="publish__violations-list">
-                     {violations.length === 0 ? <div className="publish__violations-ok"><CheckCircle size={16} /> 無勞基法違規</div> : violations.map((v, i) => (
-                           <div key={i} className="publish__violation-item">
-                             <div className="publish__violation-name">{v.staffName}</div>
-                             <div className="publish__violation-msg">Day {v.day}: {v.message}</div>
-                           </div>
-                     ))}
+                     {violations.length === 0 ? <div className="publish__violations-ok"><CheckCircle size={16} /> 無勞基法違規</div> : (() => {
+                       const skillMix = violations.filter(v => v.type === 'SKILL_MIX');
+                       const others = violations.filter(v => v.type !== 'SKILL_MIX');
+                       const grouped = [];
+                       if (skillMix.length > 0) {
+                         const byShift = {};
+                         skillMix.forEach(v => {
+                           const shift = v.message.match(/\[(.+?)\]/)?.[1] || '未知';
+                           if (!byShift[shift]) byShift[shift] = [];
+                           byShift[shift].push(v.day);
+                         });
+                         Object.entries(byShift).forEach(([shift, days]) => {
+                           grouped.push({ staffName: '臨床安全警告', message: `[${shift}] Day ${days.join(', ')} 全為新人(N0/N1)，無資深人員(N2+)或組長坐鎮！` });
+                         });
+                       }
+                       return (
+                         <>
+                           {others.map((v, i) => (
+                             <div key={i} className="publish__violation-item">
+                               <div className="publish__violation-name">{v.staffName}</div>
+                               <div className="publish__violation-msg">Day {v.day}: {v.message}</div>
+                             </div>
+                           ))}
+                           {grouped.map((g, i) => (
+                             <div key={`mix-${i}`} className="publish__violation-item">
+                               <div className="publish__violation-name"><AlertTriangle size={14} /> {g.staffName}</div>
+                               <div className="publish__violation-msg">{g.message}</div>
+                             </div>
+                           ))}
+                         </>
+                       );
+                     })()}
                   </div>
                </div>
                <div className="publish__risks">

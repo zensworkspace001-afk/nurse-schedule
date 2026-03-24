@@ -25,8 +25,8 @@ const ManagerInterface = ({
     { id: 'requirements', path: '/requirements', label: '人力需求', icon: Settings },
     { id: 'staff', path: '/staff', label: '員工管理', icon: Users },
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
-    { id: 'publish', path: '/publish', label: '2. 發布與認領', icon: Megaphone },
-    { id: 'review', path: '/review', label: '3. 結算與歷史', icon: ClipboardCheck },
+    { id: 'publish', path: '/publish', label: '發布與認領', icon: Megaphone },
+    { id: 'review', path: '/review', label: '結算與歷史', icon: ClipboardCheck },
     { id: 'statistics', path: '/statistics', label: '統計報表', icon: BarChart3 }
   ];
 

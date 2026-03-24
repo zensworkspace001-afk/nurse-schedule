@@ -561,12 +561,38 @@ return (
              <div className="review__violations">
                 <h2 className="review__violations-title">⚖️ 法遵檢查結果</h2>
                 <div className="review__violations-body">
-                   {historyViolations.length === 0 ? <div className="review__violations-ok">✅ 無勞基法違規</div> : historyViolations.map((v, i) => (
-                         <div key={i} className="review__violations-item">
-                           <div className="review__violations-item-name">{v.staffName}</div>
-                           <div className="review__violations-item-msg">Day {v.day}: {v.message}</div>
-                         </div>
-                   ))}
+                   {historyViolations.length === 0 ? <div className="review__violations-ok">✅ 無勞基法違規</div> : (() => {
+                     const skillMix = historyViolations.filter(v => v.type === 'SKILL_MIX');
+                     const others = historyViolations.filter(v => v.type !== 'SKILL_MIX');
+                     const grouped = [];
+                     if (skillMix.length > 0) {
+                       const byShift = {};
+                       skillMix.forEach(v => {
+                         const shift = v.message.match(/\[(.+?)\]/)?.[1] || '未知';
+                         if (!byShift[shift]) byShift[shift] = [];
+                         byShift[shift].push(v.day);
+                       });
+                       Object.entries(byShift).forEach(([shift, days]) => {
+                         grouped.push({ staffName: '⚠️ 臨床安全警告', message: `[${shift}] Day ${days.join(', ')} 全為新人(N0/N1)，無資深人員(N2+)或組長坐鎮！` });
+                       });
+                     }
+                     return (
+                       <>
+                         {others.map((v, i) => (
+                           <div key={i} className="review__violations-item">
+                             <div className="review__violations-item-name">{v.staffName}</div>
+                             <div className="review__violations-item-msg">Day {v.day}: {v.message}</div>
+                           </div>
+                         ))}
+                         {grouped.map((g, i) => (
+                           <div key={`mix-${i}`} className="review__violations-item">
+                             <div className="review__violations-item-name">{g.staffName}</div>
+                             <div className="review__violations-item-msg">{g.message}</div>
+                           </div>
+                         ))}
+                       </>
+                     );
+                   })()}
                 </div>
              </div>
              <div className="review__risks">
