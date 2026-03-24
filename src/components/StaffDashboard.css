@@ -122,6 +122,8 @@
   right: 0;
   bottom: 0;
   background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
   justify-content: center;
@@ -129,28 +131,44 @@
 }
 
 .dashboard__pwd-modal {
-  background: white;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
   padding: 2rem;
-  border-radius: 16px;
+  border-radius: 20px;
   width: 90%;
   max-width: 400px;
   position: relative;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
 }
 
 .dashboard__pwd-close-btn {
   position: absolute;
-  top: 10px;
-  right: 15px;
+  top: 15px;
+  right: 20px;
   background: none;
-  border: none;
-  font-size: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  color: #666;
+  color: #ffffff;
+  transition: all 0.3s;
+}
+
+.dashboard__pwd-close-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .dashboard__pwd-title {
   margin-top: 0;
-  color: #333;
+  color: #ffffff;
+  font-weight: 300;
+  letter-spacing: 0.5px;
 }
 
 .dashboard__pwd-form {
@@ -162,44 +180,62 @@
 
 .dashboard__pwd-label {
   font-size: 0.85rem;
-  color: #666;
+  color: rgba(255, 255, 255, 0.9);
   margin-bottom: 5px;
   display: block;
 }
 
 .dashboard__pwd-input {
   width: 100%;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #ddd;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
   box-sizing: border-box;
+  transition: all 0.3s ease;
+}
+
+.dashboard__pwd-input:focus {
+  outline: none;
+  background: rgba(0, 0, 0, 0.25);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
 }
 
 .dashboard__pwd-msg {
-  padding: 10px;
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 12px;
   font-size: 0.9rem;
 }
 
 .dashboard__pwd-msg--error {
-  color: #e74c3c;
-  background: #fdecea;
+  color: #ffffff;
+  background: rgba(231, 76, 60, 0.25);
+  border: 1px solid rgba(231, 76, 60, 0.4);
 }
 
 .dashboard__pwd-msg--success {
-  color: #27ae60;
-  background: #e8f8f5;
+  color: #ffffff;
+  background: rgba(46, 204, 113, 0.25);
+  border: 1px solid rgba(46, 204, 113, 0.4);
 }
 
 .dashboard__pwd-submit-btn {
-  padding: 12px;
-  background: #667eea;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.2);
   color: white;
-  border: none;
-  border-radius: 8px;
-  font-weight: bold;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 20px;
+  font-weight: 500;
   cursor: pointer;
   margin-top: 10px;
+  transition: all 0.3s ease;
+}
+
+.dashboard__pwd-submit-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: translateY(-1px);
 }
 
 /* ==========================================================================

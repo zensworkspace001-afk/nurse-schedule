@@ -147,7 +147,9 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
   display: flex;
   justify-content: center;
@@ -155,14 +157,19 @@
 }
 
 .review__modal-content {
-  background: white;
+  background: rgba(30, 40, 55, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   padding: 2rem;
-  border-radius: 16px;
+  border-radius: 20px;
   width: 95%;
   max-width: 1100px;
   max-height: 85vh;
   overflow-y: auto;
   position: relative;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  color: #ffffff;
 }
 
 .review__modal-close {
@@ -170,16 +177,29 @@
   top: 15px;
   right: 20px;
   background: none;
-  border: none;
-  font-size: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
   cursor: pointer;
-  color: black;
+  color: #ffffff;
+  transition: all 0.3s;
+}
+
+.review__modal-close:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .review__modal-title {
   margin: 0 0 10px 0;
-  color: #2c3e50;
-  border-bottom: 2px solid #eee;
+  color: #ffffff;
+  font-weight: 300;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   padding-bottom: 10px;
 }
 
@@ -193,7 +213,7 @@
 }
 
 .review__settlement-thead {
-  background: #34495e;
+  background: rgba(255, 255, 255, 0.1);
   color: white;
 }
 
@@ -203,31 +223,31 @@
 
 .review__settlement-th--night {
   padding: 10px;
-  background: #8e44ad;
+  background: rgba(142, 68, 173, 0.4);
 }
 
 .review__settlement-th--overtime {
   padding: 10px;
-  background: #e74c3c;
+  background: rgba(231, 76, 60, 0.4);
 }
 
 .review__settlement-th--leave {
   padding: 10px;
-  background: #95a5a6;
+  background: rgba(149, 165, 166, 0.3);
 }
 
 .review__settlement-th--deduction {
   padding: 10px;
-  background: #7f8c8d;
+  background: rgba(127, 140, 141, 0.3);
 }
 
 .review__settlement-th--salary {
   padding: 10px;
-  background: #27ae60;
+  background: rgba(39, 174, 96, 0.4);
 }
 
 .review__settlement-row {
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .review__settlement-td {
@@ -236,21 +256,21 @@
 
 .review__settlement-name {
   font-weight: bold;
-  color: black;
+  color: #ffffff;
 }
 
 .review__settlement-id {
   font-size: 0.8rem;
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .review__settlement-work {
-  color: black;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .review__settlement-holiday {
   font-size: 0.8rem;
-  color: #e67e22;
+  color: #f5b041;
 }
 
 .review__settlement-night-count {
@@ -266,18 +286,18 @@
 
 .review__settlement-ot-detail {
   font-size: 0.85rem;
-  color: #e74c3c;
+  color: #ff8a80;
   margin-top: 4px;
 }
 
 .review__settlement-empty {
   padding: 20px;
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .review__settlement-salary {
   font-weight: bold;
-  color: #27ae60;
+  color: #69f0ae;
   font-size: 1.1rem;
 }
 
@@ -285,34 +305,39 @@
 .review__settlement-confirm {
   margin-top: 20px;
   text-align: center;
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.08);
   padding: 15px;
-  border-radius: 8px;
-  border: 1px dashed #ccc;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
 }
 
 .review__settlement-confirm-hint {
   margin-bottom: 10px;
   font-size: 0.9rem;
-  color: #555;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .review__settlement-confirm-btn {
   padding: 12px 30px;
-  background: #27ae60;
+  background: rgba(46, 204, 113, 0.25);
   color: white;
-  border: none;
-  border-radius: 8px;
+  border: 1px solid rgba(46, 204, 113, 0.5);
+  border-radius: 20px;
   cursor: pointer;
   font-size: 1.1rem;
-  font-weight: bold;
-  box-shadow: 0 4px 6px rgba(39, 174, 96, 0.3);
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.review__settlement-confirm-btn:hover {
+  background: rgba(46, 204, 113, 0.4);
+  transform: translateY(-1px);
 }
 
 .review__settlement-confirm-warning {
   margin-top: 8px;
   font-size: 0.8rem;
-  color: #e74c3c;
+  color: #ff8a80;
 }
 
 /* ==========================================================
