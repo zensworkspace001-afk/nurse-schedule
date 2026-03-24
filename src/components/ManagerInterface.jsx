@@ -19,7 +19,8 @@ const ManagerInterface = ({
   onGenerateSchedule, onSaveSchedule, setSchedule,
   finalizedSchedule,
   setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff,
-  baseSalary, setBaseSalary, // ★ 這裡接住
+  baseSalary, setBaseSalary,
+  levelBonus, setLevelBonus,
 }) => {
   const tabs = [
     { id: 'requirements', path: '/requirements', label: '人力需求', icon: Settings },
@@ -152,6 +153,7 @@ const ManagerInterface = ({
                    setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
                    historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
                    baseSalary={baseSalary} setBaseSalary={setBaseSalary}
+                   levelBonus={levelBonus} setLevelBonus={setLevelBonus}
                 />
               } />
               

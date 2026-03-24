@@ -35,40 +35,90 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   z-index: 100;
   border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  animation: loadingOverlayIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.schedule-panel__spinner {
-  border: 5px solid #f3f3f3;
-  border-top: 5px solid #3498db;
+.schedule-panel__loading-overlay--out {
+  animation: loadingOverlayOut 0.4s ease both;
+}
+
+@keyframes loadingOverlayIn {
+  0% { opacity: 0; backdrop-filter: blur(0); }
+  100% { opacity: 1; backdrop-filter: blur(24px); }
+}
+
+@keyframes loadingOverlayOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.02); }
+}
+
+/* --- Loading orb (取代舊的 spinner) --- */
+.schedule-panel__loading-orb {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.schedule-panel__loading-orb-ring {
+  position: absolute;
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  animation: schedule-panel-spin 1s linear infinite;
+  border: 3px solid rgba(168, 216, 234, 0.25);
+  border-top-color: #63b3ed;
+  box-shadow: 0 0 20px rgba(99, 179, 237, 0.3);
+  animation: orbSpin 1.2s cubic-bezier(0.5, 0, 0.5, 1) infinite;
 }
 
-@keyframes schedule-panel-spin {
+.schedule-panel__loading-orb-core {
+  color: #63b3ed;
+  filter: drop-shadow(0 0 8px rgba(99, 179, 237, 0.5));
+  animation: orbPulse 2s ease-in-out infinite;
+}
+
+@keyframes orbSpin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
 
+@keyframes orbPulse {
+  0%, 100% { transform: scale(1); opacity: 0.7; }
+  50% { transform: scale(1.15); opacity: 1; }
+}
+
 .schedule-panel__loading-title {
   margin-top: 20px;
-  font-size: 1.2rem;
-  font-weight: bold;
-  color: #2c3e50;
+  font-size: 1.3rem;
+  font-weight: 500;
+  color: #e8f4fd;
+  letter-spacing: 1px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  animation: loadingTextIn 0.6s ease 0.2s both;
 }
 
 .schedule-panel__loading-status {
   margin-top: 8px;
   font-size: 0.95rem;
-  color: #7f8c8d;
+  color: #a8d8ea;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  animation: loadingTextIn 0.6s ease 0.4s both;
+}
+
+@keyframes loadingTextIn {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
 }
 
 /* ----------------------------------------------------------------------------
@@ -88,6 +138,21 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  animation: modalBackdropIn 0.3s ease both;
+}
+
+@keyframes modalBackdropIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.schedule-panel__modal-backdrop--closing {
+  animation: modalBackdropOut 0.3s ease both;
+}
+
+@keyframes modalBackdropOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .schedule-panel__modal-backdrop--instruction {
@@ -100,15 +165,42 @@
 
 /* --- Modal box (毛玻璃面板) --- */
 .schedule-panel__modal-box {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 2rem;
   border-radius: 20px;
   width: 90%;
   max-width: 500px;
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+  animation: modalBoxIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes modalBoxIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.85) translateY(30px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.schedule-panel__modal-box--closing {
+  animation: modalBoxOut 0.3s ease both;
+}
+
+@keyframes modalBoxOut {
+  0% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.9) translateY(20px);
+  }
 }
 
 /* --- Modal title --- */
@@ -392,12 +484,21 @@
 .schedule-panel__option-panel {
   margin-bottom: 1rem;
   padding: 1rem;
-  background: #f1f3f5;
-  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+  animation: optionPanelIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes optionPanelIn {
+  0% { opacity: 0; transform: translateY(-10px) scaleY(0.95); }
+  100% { opacity: 1; transform: translateY(0) scaleY(1); }
 }
 
 .schedule-panel__option-form {
@@ -482,9 +583,24 @@
 .schedule-panel__chat {
   margin-bottom: 1rem;
   padding: 1rem;
-  background: #f8f9fa;
-  border-radius: 12px;
-  border: 1px solid #eee;
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  animation: chatSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes chatSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateY(-15px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .schedule-panel__chat-messages {
@@ -516,15 +632,15 @@
 }
 
 .schedule-panel__chat-bubble--user {
-  background: #667eea;
-  color: white;
-  border: none;
+  background: rgba(99, 179, 237, 0.35);
+  border: 1px solid rgba(99, 179, 237, 0.4);
+  color: #1a1a1a;
 }
 
 .schedule-panel__chat-bubble--assistant {
-  background: white;
-  color: #333;
-  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.15);
+  color: #1a1a1a;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .schedule-panel__chat-input-row {
@@ -535,22 +651,44 @@
 .schedule-panel__chat-input {
   flex: 1;
   padding: 0.8rem;
-  border-radius: 8px;
-  border: 1px solid #ddd;
-  color: black;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.15);
+  color: #1a1a1a;
+  font-size: 0.95rem;
+  transition: all 0.3s ease;
+}
+
+.schedule-panel__chat-input::placeholder {
+  color: #666;
+}
+
+.schedule-panel__chat-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
 }
 
 .schedule-panel__chat-send-btn {
   padding: 0 20px;
-  background: #667eea;
-  color: white;
-  border: none;
-  border-radius: 8px;
+  background: rgba(102, 126, 234, 0.5);
+  border: 1px solid rgba(102, 126, 234, 0.4);
+  color: #1a1a1a;
+  border-radius: 12px;
   cursor: pointer;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.schedule-panel__chat-send-btn:hover {
+  background: rgba(102, 126, 234, 0.7);
 }
 
 .schedule-panel__chat-send-btn:disabled {
-  background: #ccc;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.4);
   cursor: not-allowed;
 }
 
@@ -620,6 +758,22 @@
 
 .schedule-panel__row--virtual {
   background: #fafafa;
+}
+
+/* --- AI 生成動畫 (逐行滑入) --- */
+.schedule-panel__row--animate {
+  animation: rowSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes rowSlideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* --- Staff name cell (sticky first column) --- */

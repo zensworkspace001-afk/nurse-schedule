@@ -28,8 +28,14 @@ const NurseSchedulingSystem = () => {
   // ★★★ 新增：Admin 密碼狀態與修改視窗 ★★★
 
   const [showAdminPwdModal, setShowAdminPwdModal] = useState(false);
+  const [closingAdminPwdModal, setClosingAdminPwdModal] = useState(false);
   const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
+
+  const closeAdminPwdModal = () => {
+    setClosingAdminPwdModal(true);
+    setTimeout(() => { setShowAdminPwdModal(false); setClosingAdminPwdModal(false); }, 300);
+  };
   // ★★★ 新增 1：儲存健康度歷史數據的狀態 ★★★
   const [healthStats, setHealthStats] = useState([]); 
 
@@ -75,11 +81,22 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   // ★ 新增這行：把病床與護病比的狀態提升到最高層
   const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 });
   const [baseSalary, setBaseSalary] = useState(40000);
+  const [levelBonus, setLevelBonus] = useState({ N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 });
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
   const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
-  const [selectedMonth, setSelectedMonth] = useState(() => Number(localStorage.getItem('selectedMonth')) || 2);
-  const [selectedYear, setSelectedYear] = useState(() => Number(localStorage.getItem('selectedYear')) || 2026);
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const saved = Number(localStorage.getItem('selectedMonth'));
+    if (saved) return saved;
+    const next = new Date().getMonth() + 2; // getMonth() is 0-based, +1 for current, +1 for next
+    return next > 12 ? 1 : next;
+  });
+  const [selectedYear, setSelectedYear] = useState(() => {
+    const saved = Number(localStorage.getItem('selectedYear'));
+    if (saved) return saved;
+    const now = new Date();
+    return now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+  });
 // ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
   const [historyMonth, setHistoryMonth] = useState(() => {
   const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
@@ -208,7 +225,8 @@ const [historyYear, setHistoryYear] = useState(() => {
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         if (data.requirements) setRequirements(data.requirements);
         if (data.bedConfig) setBedConfig(data.bedConfig);
-        if (data.baseSalary) setBaseSalary(data.baseSalary); // ★ 加入讀取底薪
+        if (data.baseSalary) setBaseSalary(data.baseSalary);
+        if (data.levelBonus) setLevelBonus(data.levelBonus);
         if (data.publishedDate) {
           setPublishedDate(prev => {
             if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
@@ -269,8 +287,8 @@ const [historyYear, setHistoryYear] = useState(() => {
           shiftOptions: shiftOptions || [],
           priorityConfig: priorityConfig || {},
           requirements: requirements || { D: 15, E: 12, N: 8 },
-          bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 }
-          // ★ 警告：絕對不能在這裡寫入 publishedDate，只能由發布按鈕寫入！
+          bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
+          levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
         });
 
         saveGlobalStaff({
@@ -319,10 +337,20 @@ const handlePushToHistory = async () => {
         }
     }
 
-    // ★ 步驟 2：把目前發布的班表放入歷史區（覆蓋舊的）
+    // ★ 步驟 2：把目前發布的班表放入歷史區（覆蓋舊的），同時寫入封存庫供統計圖表使用
     setHistoryYear(selectedYear);
     setHistoryMonth(selectedMonth);
     setHistorySchedule(finalizedSchedule);
+
+    try {
+        await backupScheduleToArchive(
+            selectedYear, selectedMonth, finalizedSchedule,
+            "封存班表"
+        );
+        if (import.meta.env.DEV) console.log(`✅ ${selectedYear}年${selectedMonth}月 班表已寫入封存庫`);
+    } catch (e) {
+        console.error("❌ 封存寫入失敗:", e);
+    }
 
     // ★ 步驟 3：計算並切換到下個月
     let nextMonth = selectedMonth + 1;
@@ -603,7 +631,8 @@ const handleSaveAndPublish = async () => {
             priorityConfig: priorityConfig || {},
             requirements: requirements || { D: 15, E: 12, N: 8 },
             bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
-            baseSalary: baseSalary || 40000, // ★ 加入寫入底薪
+            baseSalary: baseSalary || 40000,
+            levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 },
             publishedDate: newPubDate
         });
         await saveMonthlySchedule(selectedYear, selectedMonth, {
@@ -644,9 +673,13 @@ const handleSaveAndPublish = async () => {
               setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
 
               setTimeout(() => {
-                  setShowAdminPwdModal(false);
-                  setAdminPwdData({ old: '', new: '', confirm: '' });
-                  setAdminPwdMsg({ type: '', text: '' });
+                  setClosingAdminPwdModal(true);
+                  setTimeout(() => {
+                    setShowAdminPwdModal(false);
+                    setClosingAdminPwdModal(false);
+                    setAdminPwdData({ old: '', new: '', confirm: '' });
+                    setAdminPwdMsg({ type: '', text: '' });
+                  }, 300);
               }, 2000);
           } else {
               setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
@@ -699,9 +732,9 @@ const handleSaveAndPublish = async () => {
       <div className="app__wrapper">
       {/* ★★★ 新增：Admin 修改密碼 Modal ★★★ */}
       {showAdminPwdModal && (
-        <div className="app__modal-overlay">
-            <div className="app__modal">
-                <button onClick={() => setShowAdminPwdModal(false)} className="app__modal-close-btn"><X size={14} /></button>
+        <div className={`app__modal-overlay${closingAdminPwdModal ? ' app__modal-overlay--closing' : ''}`}>
+            <div className={`app__modal${closingAdminPwdModal ? ' app__modal--closing' : ''}`}>
+                <button onClick={closeAdminPwdModal} className="app__modal-close-btn"><X size={14} /></button>
                 <h3 className="app__modal-title"><Settings size={20} /> 修改管理員密碼</h3>
                 <form onSubmit={handleAdminPasswordSubmit} className="app__modal-form">
                     <div>
@@ -785,7 +818,8 @@ const handleSaveAndPublish = async () => {
             setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
             onManualRefresh={handleManualRefresh}  
             calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
-            baseSalary={baseSalary} setBaseSalary={setBaseSalary} // ★ 傳遞給管理介面
+            baseSalary={baseSalary} setBaseSalary={setBaseSalary}
+            levelBonus={levelBonus} setLevelBonus={setLevelBonus}
           />
         ) : (
           <StaffDashboard

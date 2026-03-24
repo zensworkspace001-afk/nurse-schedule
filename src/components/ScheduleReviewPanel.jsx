@@ -1,19 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, Banknote, FileDown, Settings, X } from 'lucide-react';
+import { Banknote, FileDown, Settings, X } from 'lucide-react';
 import { updateStaffSchedule, saveArchiveReport, backupScheduleToArchive } from '../api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from '../constants';
 import './ScheduleReviewPanel.css';
 
 const ScheduleReviewPanel = ({ 
   staffData, setStaffData, 
-  shiftOptions, setShiftOptions, 
+  shiftOptions, 
   publicHolidays = [],
   onUpdateHealthStats,
   baseSalary, setBaseSalary, // ★★★ 這裡接收
   // ★ 接收專屬的歷史狀態
   setHistorySchedule,
   historyYear, historyMonth, setHistoryYear, setHistoryMonth,
-    historySchedule = {}, bedConfig // ★★★ 新增這行接收
+    historySchedule = {}, bedConfig,
+    levelBonus = { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }, setLevelBonus
 }) => {
     // ★ 加這兩行防呆，避免 undefined 傳進來導致 NaN crash
   const safeYear  = historyYear  || new Date().getFullYear();
@@ -21,9 +22,13 @@ const ScheduleReviewPanel = ({
   const daysInMonth = new Date(historyYear, historyMonth, 0).getDate();
   const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
-  const [showAddOption, setShowAddOption] = useState(false);
-  const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
  const [showSettlement, setShowSettlement] = useState(false);
+  const [closingSettlement, setClosingSettlement] = useState(false);
+
+  const closeSettlementAnimated = () => {
+    setClosingSettlement(true);
+    setTimeout(() => { setShowSettlement(false); setClosingSettlement(false); }, 300);
+  };
 
   // ★★★ 自動同步：結算月份變更且班表載入後，靜默更新員工 prevMonthLeave ★★★
   // 用 ref 記錄「上次已同步的月份」，避免重複覆蓋
@@ -130,16 +135,6 @@ const ScheduleReviewPanel = ({
       setShowSettlement(true);
   };
 
-  const handleAddOption = () => {
-    if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
-    if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
-    setShiftOptions([...shiftOptions, { ...newOption, time: '' }]);
-    setNewOption({ code: '', name: '', color: '#cccccc' });
-  };
-  
-  const handleDeleteOption = (code) => { 
-      if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code)); 
-  };
   
 const handleCellChange = async (staffId, day, newValue) => {
       // === RG 絕對防護罩 (針對 historySchedule) ===
@@ -212,15 +207,20 @@ const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
           
           // ★★★ 新增：大夜班 40% 加給 (日薪 * 40% * 大夜天數) ★★★
           const nightShiftBonus = Math.round(dailyWage * 0.4 * nightShiftsCount);
-          
-          // ★ 最終薪水把大夜獎金加進去
-          const finalSalary = currentBaseSalary + totalOtPay + nightShiftBonus - deduction;
+
+          // ★ 進階加給 (依職級 N0-N4)
+          const staffLevel = staff?.level || 'N0';
+          const levelBonusAmount = Number(levelBonus[staffLevel]) || 0;
+
+          // ★ 最終薪水把大夜獎金 + 進階加給加進去
+          const finalSalary = currentBaseSalary + totalOtPay + nightShiftBonus + levelBonusAmount - deduction;
 
           data.push({
               staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
               workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
-              nightShiftsCount, nightShiftBonus, // 👈 匯出大夜獎金供畫面顯示
-              restDayOtPay, nationalHolidayWorkDays, nationalHolidayPay, totalOtPay, 
+              nightShiftsCount, nightShiftBonus,
+              staffLevel, levelBonusAmount, // 👈 匯出職級加給
+              restDayOtPay, nationalHolidayWorkDays, nationalHolidayPay, totalOtPay,
               personalLeaveDays, sickLeaveDays, deduction, totalSalary: finalSalary
           });
       });
@@ -265,7 +265,7 @@ const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
       }
 
       alert(`✅ ${historyYear}年${historyMonth}月 結算完成！\n已成功將 ${currentSettlement.length} 位員工的 OT 與夜班數派發至帳戶餘額。`);
-      setShowSettlement(false);
+      closeSettlementAnimated();
   };
 
 const handleExportExcel = async () => {
@@ -403,7 +403,6 @@ return (
                   />
               </div>
 
-              <button onClick={() => setShowAddOption(!showAddOption)} className="review__btn review__btn--manage"><Plus size={14} /> 管理班別選項</button>
               <button onClick={handleOpenSettlement} className="review__btn review__btn--settle"><Banknote size={14} /> 薪資與加班費結算</button>
               <button onClick={handleExportExcel} className="review__btn review__btn--export"><FileDown size={14} /> 匯出 Excel</button>
               {import.meta.env.DEV && <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用"><Settings size={14} /> 測試 API</button>}
@@ -413,9 +412,9 @@ return (
 
 
       {showSettlement && (
-          <div className="review__modal-overlay">
-              <div className="review__modal-content">
-                  <button onClick={() => setShowSettlement(false)} className="review__modal-close"><X size={14} /></button>
+          <div className={`review__modal-overlay${closingSettlement ? ' review__modal-overlay--closing' : ''}`}>
+              <div className={`review__modal-content${closingSettlement ? ' review__modal-content--closing' : ''}`}>
+                  <button onClick={closeSettlementAnimated} className="review__modal-close"><X size={14} /></button>
                   <h2 className="review__modal-title"><Banknote size={20} /> 薪資與加班費結算預覽 ({historyYear}年{historyMonth}月)</h2>
 
                   <table className="review__settlement-table">
@@ -453,7 +452,10 @@ return (
                                       {(row.personalLeaveDays === 0 && row.sickLeaveDays === 0) && '-'}
                                   </td>
                                   <td className="review__settlement-td" style={{ color: row.deduction > 0 ? 'red' : '#ccc' }}>{row.deduction > 0 ? `- $${row.deduction.toLocaleString()}` : '-'}</td>
-                                  <td className="review__settlement-td review__settlement-salary">NT$ {row.totalSalary.toLocaleString()}</td>
+                                  <td className="review__settlement-td review__settlement-salary">
+                                      NT$ {row.totalSalary.toLocaleString()}
+                                      {row.levelBonusAmount > 0 && <div className="review__settlement-level-bonus">(含 {row.staffLevel} 進階加給 +${row.levelBonusAmount.toLocaleString()})</div>}
+                                  </td>
                               </tr>
                           ))}
                           {getSettlementData().length === 0 && <tr><td colSpan="7" className="review__settlement-empty">尚無已認領的員工資料</td></tr>}
@@ -472,25 +474,6 @@ return (
           </div>
       )}
 
-      {showAddOption && (
-        <div className="review__options-panel">
-          <div className="review__options-form">
-            <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} className="review__options-input review__options-input--code" />
-            <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} className="review__options-input review__options-input--name" />
-            <input type="color" value={newOption.color} onChange={e=>setNewOption({...newOption, color: e.target.value})} className="review__options-color" />
-            <button onClick={handleAddOption} className="review__options-add-btn">確認新增</button>
-          </div>
-          <div className="review__options-list">
-              {shiftOptions.map(opt => (
-                  <div key={opt.code} className="review__options-chip">
-                      <span className="review__options-chip-dot" style={{background: opt.color}}></span>
-                      <b className="review__options-chip-code">{opt.code}</b>
-                      <button onClick={() => handleDeleteOption(opt.code)} className="review__options-chip-delete">×</button>
-                  </div>
-              ))}
-          </div>
-        </div>
-      )}
 
    <div className="review__body">
 

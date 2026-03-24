@@ -138,6 +138,21 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  animation: dashModalOverlayIn 0.3s ease both;
+}
+
+.dashboard__pwd-overlay--closing {
+  animation: dashModalOverlayOut 0.3s ease both;
+}
+
+@keyframes dashModalOverlayIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes dashModalOverlayOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 .dashboard__pwd-modal {
@@ -151,6 +166,21 @@
   max-width: 400px;
   position: relative;
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+  animation: dashModalIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard__pwd-modal--closing {
+  animation: dashModalOut 0.3s ease both;
+}
+
+@keyframes dashModalIn {
+  0% { opacity: 0; transform: scale(0.85) translateY(30px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes dashModalOut {
+  0% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(0.9) translateY(20px); }
 }
 
 .dashboard__pwd-close-btn {
@@ -377,6 +407,91 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
+}
+
+/* --- My Calendar (已認領班表月曆) --- */
+.dashboard__my-calendar {
+  margin-top: 20px;
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: 12px;
+  padding: 15px;
+}
+
+.dashboard__my-calendar-title {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #155724;
+}
+
+.dashboard__my-calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.dashboard__my-calendar-header {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #555;
+  padding: 4px 0;
+}
+
+.dashboard__my-calendar-empty {
+  /* placeholder for offset days */
+}
+
+.dashboard__my-calendar-cell {
+  text-align: center;
+  border-radius: 8px;
+  padding: 6px 2px;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  background: #f0f0f0;
+  border: 1px solid #e0e0e0;
+}
+
+.dashboard__my-calendar-day {
+  font-size: 0.7rem;
+  color: #888;
+}
+
+.dashboard__my-calendar-shift {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.dashboard__my-calendar-cell--d {
+  background: #FFF8E1;
+  border-color: #FFD93D;
+  color: #b8860b;
+}
+
+.dashboard__my-calendar-cell--e {
+  background: #FCE4EC;
+  border-color: #FF6B9D;
+  color: #c2185b;
+}
+
+.dashboard__my-calendar-cell--n {
+  background: #E3F2FD;
+  border-color: #4D96FF;
+  color: #1565c0;
+}
+
+.dashboard__my-calendar-cell--off,
+.dashboard__my-calendar-cell--rg,
+.dashboard__my-calendar-cell--rc {
+  background: #f5f5f5;
+  border-color: #e0e0e0;
+  color: #999;
 }
 
 /* --- Unclaimed alert --- */

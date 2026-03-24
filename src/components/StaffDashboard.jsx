@@ -12,8 +12,14 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
+  const [closingPwdModal, setClosingPwdModal] = useState(false);
   const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
+
+  const closePwdModalAnimated = () => {
+    setClosingPwdModal(true);
+    setTimeout(() => { setShowPwdModal(false); setClosingPwdModal(false); }, 300);
+  };
 
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedShiftType, setSelectedShiftType] = useState('ALL');
@@ -114,9 +120,13 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
               await updatePassword(user, pwdData.new);
               setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
               setTimeout(() => {
-                  setShowPwdModal(false);
-                  setPwdData({ old: '', new: '', confirm: '' });
-                  setPwdMsg({ type: '', text: '' });
+                  setClosingPwdModal(true);
+                  setTimeout(() => {
+                    setShowPwdModal(false);
+                    setClosingPwdModal(false);
+                    setPwdData({ old: '', new: '', confirm: '' });
+                    setPwdMsg({ type: '', text: '' });
+                  }, 300);
               }, 2000);
           } else {
               setPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
@@ -168,7 +178,8 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 
   // 防呆 4: AI 接力選班引擎鎖定 (最核心！)
   // 若引擎有指定人 (active_staff_id 有值)，且那個人不是我，我就不能選！
-  if (activeTurn && activeTurn.active_staff_id && activeTurn.active_staff_id !== currentUser.id) {
+  // ★ 但已經認領過的員工不受此限制，允許他們查看自己的班表
+  if (!hasClaimed && activeTurn && activeTurn.active_staff_id && activeTurn.active_staff_id !== currentUser.id) {
       const activeStaffName = staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id;
       return (
           <div className="dashboard__guard">
@@ -258,9 +269,9 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
 
       {/* ★★★ 新增：修改密碼 Modal 視窗 ★★★ */}
       {showPwdModal && (
-        <div className="dashboard__pwd-overlay">
-            <div className="dashboard__pwd-modal">
-                <button onClick={() => setShowPwdModal(false)} className="dashboard__pwd-close-btn"><X size={14} /></button>
+        <div className={`dashboard__pwd-overlay${closingPwdModal ? ' dashboard__pwd-overlay--closing' : ''}`}>
+            <div className={`dashboard__pwd-modal${closingPwdModal ? ' dashboard__pwd-modal--closing' : ''}`}>
+                <button onClick={closePwdModalAnimated} className="dashboard__pwd-close-btn"><X size={14} /></button>
                 <h3 className="dashboard__pwd-title"><Settings size={18} /> 修改密碼</h3>
                 <form onSubmit={handlePasswordSubmit} className="dashboard__pwd-form">
                     <div>
@@ -312,10 +323,39 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
           {!currentSchedule || Object.keys(currentSchedule).length === 0 ? (
               <div className="dashboard__no-schedule"><AlertTriangle size={16} /> 管理員尚未發布此月份 ({targetMonth}月) 的班表，請稍後再來。</div>
           ) : hasClaimed ? (
-              // ★ 已經認領過的畫面：隱藏選擇按鈕，顯示完成狀態
+              // ★ 已經認領過的畫面：顯示完成狀態 + 自己的班表月曆
               <div className="dashboard__claimed-banner">
                   <h3 className="dashboard__claimed-title"><CheckCircle size={18} /> 您已完成 {targetMonth} 月的認領！</h3>
                   <p className="dashboard__claimed-desc">您的排班已成功鎖定。選好的班表不能再被選一次。</p>
+
+                  {/* 我的班表月曆 */}
+                  {(() => {
+                    const myData = currentSchedule[currentUser.id];
+                    if (!myData) return null;
+                    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+                    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+                    return (
+                      <div className="dashboard__my-calendar">
+                        <h4 className="dashboard__my-calendar-title"><ClipboardList size={16} /> 我的 {targetMonth} 月班表</h4>
+                        <div className="dashboard__my-calendar-grid">
+                          {weekDays.map(w => <div key={w} className="dashboard__my-calendar-header">{w}</div>)}
+                          {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} className="dashboard__my-calendar-empty" />)}
+                          {Array.from({ length: daysInMonth }).map((_, i) => {
+                            const day = i + 1;
+                            const cell = myData[day];
+                            const shift = (typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF');
+                            return (
+                              <div key={day} className={`dashboard__my-calendar-cell dashboard__my-calendar-cell--${shift.toLowerCase()}`}>
+                                <span className="dashboard__my-calendar-day">{day}</span>
+                                <span className="dashboard__my-calendar-shift">{shift}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <p className="dashboard__claimed-note">如需修改，請聯繫護理長在後台將您「拔除釋出」，您才能重新選擇。</p>
                   <button onClick={() => setCurrentStep(2)} className="dashboard__claimed-view-btn"><Eye size={14} /> 進入查看所有人認領狀況</button>
               </div>

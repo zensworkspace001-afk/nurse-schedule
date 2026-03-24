@@ -185,6 +185,75 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
       }
   };
   // =========================================================
+  // -- ★ API 健康狀態監控 --
+  const [apiHealthStatus, setApiHealthStatus] = useState({});
+  const [hoveredApi, setHoveredApi] = useState(null);
+
+  const API_ENDPOINTS = [
+      { key: 'gemini', name: 'Gemini AI', url: '/api/gemini', method: 'POST', desc: 'AI 排班與對話引擎' },
+      { key: 'analyzeExcel', name: 'Excel 分析', url: '/api/analyze-excel', method: 'POST', desc: 'CSV/Excel Gemini Flash 分析' },
+      { key: 'sendEmail', name: 'Email 服務', url: '/api/sendEmail', method: 'POST', desc: 'Resend 電子郵件發送' },
+      { key: 'syncAccounts', name: '帳號同步', url: '/api/sync-accounts', method: 'POST', desc: '批次建立 Firebase Auth 帳號' },
+      { key: 'resetPassword', name: '密碼重設', url: '/api/reset-password', method: 'POST', desc: '管理員重設員工密碼' },
+      { key: 'autoSettle', name: '自動結算', url: '/api/auto-settle', method: 'GET', desc: '月薪結算引擎' },
+      { key: 'cronTimeout', name: 'Cron 逾時', url: '/api/cron/check-timeout', method: 'GET', desc: '每日自動推進選班逾時' },
+      { key: 'firestore', name: 'Firestore', url: null, method: null, desc: 'Firebase 即時資料庫' },
+      { key: 'taiwanCalendar', name: '國定假日', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${new Date().getFullYear()}.json`, method: 'GET', desc: '台灣國定假日 API' },
+  ];
+
+  const checkApiHealth = async () => {
+      const results = {};
+      const token = await auth.currentUser?.getIdToken?.().catch(() => null);
+
+      const checks = API_ENDPOINTS.map(async (api) => {
+          const startTime = Date.now();
+          try {
+              if (api.key === 'firestore') {
+                  // Firestore: 嘗試讀取一個輕量文件
+                  const testRef = doc(db, 'SystemHealth', 'ping');
+                  await setDoc(testRef, { lastCheck: new Date().toISOString() }, { merge: true });
+                  results[api.key] = { status: 'ok', latency: Date.now() - startTime, checkedAt: new Date() };
+                  return;
+              }
+
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+              const opts = { method: api.method, signal: controller.signal, headers: {} };
+              if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+              if (api.method === 'POST') opts.headers['Content-Type'] = 'application/json';
+              // 發送最小 body 讓伺服器回應（不執行實際業務）
+              if (api.method === 'POST') opts.body = JSON.stringify({ healthCheck: true });
+
+              const res = await fetch(api.url, opts);
+              clearTimeout(timeoutId);
+              const latency = Date.now() - startTime;
+
+              // 任何 HTTP 回應都表示伺服器活著（4xx 也代表可連通）
+              results[api.key] = {
+                  status: res.ok ? 'ok' : 'warn',
+                  httpStatus: res.status,
+                  latency,
+                  checkedAt: new Date()
+              };
+          } catch (err) {
+              results[api.key] = {
+                  status: err.name === 'AbortError' ? 'timeout' : 'error',
+                  error: err.message,
+                  latency: Date.now() - startTime,
+                  checkedAt: new Date()
+              };
+          }
+      });
+
+      await Promise.allSettled(checks);
+      setApiHealthStatus(results);
+  };
+
+  useEffect(() => {
+      checkApiHealth();
+  }, []);
+
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
   const hasData = loadedMonths.length > 0;
@@ -345,10 +414,8 @@ let combinedData = "";
                   for (let i = headerIdx + 1; i < lines.length; i++) {
                       const cols = lines[i].split(',');
                       if (cols.length > healthColIdx) {
-                          if (cols[0] && !cols[0].startsWith('D')) {
-                              const score = Number(cols[healthColIdx]);
-                              if (!isNaN(score)) scores.push(score);
-                          }
+                          const score = Number(cols[healthColIdx]);
+                          if (!isNaN(score)) scores.push(score);
                           // 統計護病比：所有人都要算 (含 Dxxx 空缺)
                           if (cols.length >= 2 + daysInMonth) {
                               for(let j = 2; j < 2 + daysInMonth; j++) {
@@ -373,33 +440,35 @@ let combinedData = "";
                       if (type === 'E') totalE++;
                       if (type === 'N') totalN++;
                   }
-                  // 健康度只算真實員工
-                  if (!staffId.startsWith('D')) {
-                      let score = 100; const shifts = [];
-                      for (let d = 1; d <= daysInMonth; d++) shifts.push((typeof staffSchedule[d] === 'object') ? (staffSchedule[d]?.type || 'OFF') : (staffSchedule[d] || 'OFF'));
-                      const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
-                      const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
+                  // 健康度：含空缺佔位一起計算
+                  let score = 100; const shifts = [];
+                  for (let d = 1; d <= daysInMonth; d++) shifts.push((typeof staffSchedule[d] === 'object') ? (staffSchedule[d]?.type || 'OFF') : (staffSchedule[d] || 'OFF'));
+                  const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
+                  const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
 
-                      for (let i = 0; i < shifts.length - 1; i++) { if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) score -= 20; }
-                      let lastWork = null;
-                      for (let i = 0; i < shifts.length; i++) { if (isWork(shifts[i])) { if (lastWork === 'N' && shifts[i] === 'E') score -= 10; if (lastWork === 'E' && shifts[i] === 'D') score -= 10; lastWork = shifts[i]; } }
-                      for (let i = 0; i <= shifts.length - 7; i++) { const window = shifts.slice(i, i + 7); const workTypes = new Set(window.filter(s => ['D', 'E', 'N'].includes(s))); if (workTypes.size === 3) { score -= 15; i += 6; } }
-                      let consecutiveN = 0, consecutiveWork = 0;
-                      for (let i = 0; i <= shifts.length; i++) { const s = shifts[i]; if (s === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; } if (s && isWork(s)) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; } }
-                      for (let i = 1; i < shifts.length - 1; i++) { if (isWork(shifts[i-1]) && isOff(shifts[i]) && isWork(shifts[i+1])) { score -= 5; if (shifts[i-1] === 'N') score -= 15; } }
-                      let hasFullWeekendOff = false;
-                      for (let d = 1; d <= daysInMonth - 1; d++) { const date = new Date(year, month - 1, d); if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } } }
-                      if (!hasFullWeekendOff) score -= 5;
-                      scores.push(score);
-                  }
+                  for (let i = 0; i < shifts.length - 1; i++) { if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) score -= 20; }
+                  let lastWork = null;
+                  for (let i = 0; i < shifts.length; i++) { if (isWork(shifts[i])) { if (lastWork === 'N' && shifts[i] === 'E') score -= 10; if (lastWork === 'E' && shifts[i] === 'D') score -= 10; lastWork = shifts[i]; } }
+                  for (let i = 0; i <= shifts.length - 7; i++) { const window = shifts.slice(i, i + 7); const workTypes = new Set(window.filter(s => ['D', 'E', 'N'].includes(s))); if (workTypes.size === 3) { score -= 15; i += 6; } }
+                  let consecutiveN = 0, consecutiveWork = 0;
+                  for (let i = 0; i <= shifts.length; i++) { const s = shifts[i]; if (s === 'N') consecutiveN++; else { if (consecutiveN >= 4) score -= 5; consecutiveN = 0; } if (s && isWork(s)) consecutiveWork++; else { if (consecutiveWork >= 6) score -= 5; consecutiveWork = 0; } }
+                  for (let i = 1; i < shifts.length - 1; i++) { if (isWork(shifts[i-1]) && isOff(shifts[i]) && isWork(shifts[i+1])) { score -= 5; if (shifts[i-1] === 'N') score -= 15; } }
+                  let hasFullWeekendOff = false;
+                  for (let d = 1; d <= daysInMonth - 1; d++) { const date = new Date(year, month - 1, d); if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } } }
+                  if (!hasFullWeekendOff) score -= 5;
+                  scores.push(score);
               });
           }
 
-          if (scores.length > 0) {
-              const avg = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
-              scores.sort((a, b) => a - b);
-              const mid = Math.floor(scores.length / 2);
-              const median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
+          const hasRatio = totalD > 0 || totalE > 0 || totalN > 0;
+          if (scores.length > 0 || hasRatio) {
+              const avg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null;
+              let median = null;
+              if (scores.length > 0) {
+                  scores.sort((a, b) => a - b);
+                  const mid = Math.floor(scores.length / 2);
+                  median = scores.length % 2 !== 0 ? scores[mid] : Math.round((scores[mid - 1] + scores[mid]) / 2);
+              }
 
               const avgD = totalD / daysInMonth;
               const avgE = totalE / daysInMonth;
@@ -432,8 +501,8 @@ let combinedData = "";
       const svgWidth = 850; const svgHeight = 400; const padding = 50; const paddingRight = 60;
       const chartWidth = svgWidth - padding - paddingRight; const chartHeight = svgHeight - padding * 2;
 
-      const allScores = dynamicHealthStats.flatMap(d => [d.avg, d.median]);
-      const minScore = Math.max(0, Math.floor(Math.min(...allScores) / 5) * 5 - 5);
+      const allScores = dynamicHealthStats.flatMap(d => [d.avg, d.median]).filter(v => v !== null);
+      const minScore = allScores.length > 0 ? Math.max(0, Math.floor(Math.min(...allScores) / 5) * 5 - 5) : 0;
       const maxScore = 100;
 
       const minRatio = 0; const maxRatio = 20; // 護病比的右側 Y 軸範圍 (0 到 1:20)
@@ -442,8 +511,7 @@ let combinedData = "";
       const getYHealth = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
       const getYRatio = (value) => padding + chartHeight - ((value - minRatio) / (maxRatio - minRatio)) * chartHeight;
 
-      const avgPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYHealth(d.avg)}`).join(' ');
-      const medianPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYHealth(d.median)}`).join(' ');
+      const avgPoints = dynamicHealthStats.filter(d => d.avg !== null).map((d, i) => `${getX(dynamicHealthStats.indexOf(d))},${getYHealth(d.avg)}`).join(' ');
       const ratioDPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioD))}`).join(' ');
       const ratioEPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioE))}`).join(' ');
       const ratioNPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioN))}`).join(' ');
@@ -489,7 +557,6 @@ let combinedData = "";
                   {/* 1. 健康度曲線 (平均與中位數) */}
                   <g className="statistics__chart-anim" style={{ opacity: trendToggles.health ? 1 : 0, transform: trendToggles.health ? 'translateY(0)' : 'translateY(-15px)' }}>
                       <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" />
-                      <polyline points={medianPoints} fill="none" stroke="#e74c3c" strokeWidth="3" strokeLinejoin="round" strokeDasharray="6 6" />
                   </g>
 
                   {/* 2. 白班護病比曲線 */}
@@ -510,7 +577,7 @@ let combinedData = "";
                   {/* X軸標籤與各點數值 (Hover 或常駐顯示) */}
                   {dynamicHealthStats.map((d, i) => {
                       const x = getX(i);
-                      const yAvg = getYHealth(d.avg);
+                      const yAvg = d.avg !== null ? getYHealth(d.avg) : null;
                       const yRD = getYRatio(Number(d.ratioD));
                       const yRE = getYRatio(Number(d.ratioE));
                       const yRN = getYRatio(Number(d.ratioN));
@@ -519,10 +586,10 @@ let combinedData = "";
                           <g key={i}>
                               <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
 
-                              <g className="statistics__chart-anim" style={{ opacity: trendToggles.health ? 1 : 0 }}>
+                              {yAvg !== null && <g className="statistics__chart-anim" style={{ opacity: trendToggles.health ? 1 : 0 }}>
                                   <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
                                   <text x={x} y={yAvg - 12} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
-                              </g>
+                              </g>}
 
                               <g className="statistics__chart-anim" style={{ opacity: trendToggles.ratioD ? 1 : 0 }}>
                                   <circle cx={x} cy={yRD} r="6" fill="#f1c40f" stroke="white" strokeWidth="2" />
@@ -651,6 +718,55 @@ let combinedData = "";
       <div className="statistics__chart">
           <h3 className="statistics__chart-title">📈 過去 12 個月班表健康度與護病比趨勢</h3>
           {renderLineChart()}
+      </div>
+
+      {/* ========================================================= */}
+      {/* 🔌 API 健康狀態監控 */}
+      <div className="statistics__api-health">
+          <div className="statistics__api-health-header">
+              <h3 className="statistics__api-health-title">🔌 系統 API 健康狀態</h3>
+              <button onClick={checkApiHealth} className="statistics__api-health-refresh-btn">🔄 重新檢測</button>
+          </div>
+          <div className="statistics__api-health-grid">
+              {API_ENDPOINTS.map(api => {
+                  const s = apiHealthStatus[api.key];
+                  const statusClass = !s ? 'checking' : s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'error';
+                  const statusIcon = !s ? '⏳' : s.status === 'ok' ? '🟢' : s.status === 'warn' ? '🟡' : '🔴';
+                  const statusText = !s ? '檢測中...'
+                      : s.status === 'ok' ? `正常 (${s.latency}ms)`
+                      : s.status === 'warn' ? `可連通 HTTP ${s.httpStatus} (${s.latency}ms)`
+                      : s.status === 'timeout' ? '逾時 (>8s)'
+                      : `失敗: ${s.error}`;
+
+                  return (
+                      <div
+                          key={api.key}
+                          className={`statistics__api-health-item statistics__api-health-item--${statusClass}`}
+                          onMouseEnter={() => setHoveredApi(api.key)}
+                          onMouseLeave={() => setHoveredApi(null)}
+                      >
+                          <span className="statistics__api-health-icon">{statusIcon}</span>
+                          <span className="statistics__api-health-name">{api.name}</span>
+
+                          {hoveredApi === api.key && (
+                              <div className="statistics__api-health-tooltip">
+                                  <div className="statistics__api-health-tooltip-title">{api.name}</div>
+                                  <div className="statistics__api-health-tooltip-desc">{api.desc}</div>
+                                  {api.url && <div className="statistics__api-health-tooltip-url">{api.method} {api.url}</div>}
+                                  <div className={`statistics__api-health-tooltip-status statistics__api-health-tooltip-status--${statusClass}`}>
+                                      {statusIcon} {statusText}
+                                  </div>
+                                  {s?.checkedAt && (
+                                      <div className="statistics__api-health-tooltip-time">
+                                          檢測時間：{s.checkedAt.toLocaleTimeString()}
+                                      </div>
+                                  )}
+                              </div>
+                          )}
+                      </div>
+                  );
+              })}
+          </div>
       </div>
 
       {/* ========================================================= */}

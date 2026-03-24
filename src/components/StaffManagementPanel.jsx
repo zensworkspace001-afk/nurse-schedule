@@ -173,22 +173,22 @@ const handleSave = async () => {
   };
 
   const columns = [
-    { key: 'staff_id', label: '工號', type: 'text', width: '60px', readOnly: true },
-    { key: 'name', label: '姓名', type: 'text', width: '80px' },
-    { key: 'gender', label: '性別', type: 'select', options: ['女', '男'], width: '60px' }, // 👈 新增這行
-    { key: 'email', label: 'Email信箱', type: 'text', width: '160px' , color:'black'}, // 👈 ★★★ 新增這行 ★★★
-    { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '70px' },
-    { key: 'prevMonthLeave', label: '上月連班天數', type: 'streak_display', width: '80px' },
-    { key: 'tenure_years', label: '年資', type: 'number', width: '60px' },
-    { key: 'is_leader', label: '組長', type: 'checkbox', width: '50px' },
-    { key: 'leave_status', label: '狀態', type: 'select', options: ['None', 'Maternal', 'Student', 'OnLeave'], width: '90px' },
-    { key: 'is_active', label: '在職', type: 'checkbox', width: '50px' },
-    { key: 'special_status', label: '工時', type: 'select', options: ['Standard', 'BiWeekly'], width: '90px' },
-    { key: 'is_pregnant_or_nursing', label: '孕/哺乳', type: 'checkbox', width: '60px' },
-    { key: 'can_night_shift', label: '夜班', type: 'checkbox', width: '50px' },
-    { key: 'annual_leave_used', label: '已休特休', type: 'number', width: '70px',color:'black'},
-    { key: 'accumulated_ot', label: '積假', type: 'number', width: '60px' },
-    { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '60px' },
+    { key: 'staff_id', label: '工號', type: 'text', width: '70px', readOnly: true },
+    { key: 'name', label: '姓名', type: 'text', width: '90px' },
+    { key: 'gender', label: '性別', type: 'select', options: ['女', '男'], width: '70px' },
+    { key: 'email', label: 'Email信箱', type: 'text', width: '180px', color: 'black' },
+    { key: 'level', label: '職級', type: 'select', options: ['N0', 'N1', 'N2', 'N3', 'N4'], width: '80px' },
+    { key: 'prevMonthLeave', label: '上月連班天數', type: 'streak_display', width: '90px' },
+    { key: 'tenure_years', label: '年資', type: 'number', width: '65px' },
+    { key: 'is_leader', label: '組長', type: 'checkbox', width: '60px' },
+    { key: 'leave_status', label: '狀態', type: 'select', options: ['None', 'Maternal', 'Student', 'OnLeave'], width: '100px' },
+    { key: 'is_active', label: '在職', type: 'checkbox', width: '60px' },
+    { key: 'special_status', label: '工時', type: 'select', options: ['Standard', 'BiWeekly'], width: '100px' },
+    { key: 'is_pregnant_or_nursing', label: '孕/哺乳', type: 'checkbox', width: '70px' },
+    { key: 'can_night_shift', label: '夜班', type: 'checkbox', width: '60px' },
+    { key: 'annual_leave_used', label: '已休特休', type: 'number', width: '75px', color: 'black' },
+    { key: 'accumulated_ot', label: '積假', type: 'number', width: '65px' },
+    { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '65px' },
   ];
 
   // Helper: build className string for text/number inputs
@@ -300,8 +300,8 @@ const handleSave = async () => {
         <table className="staff-mgmt__table">
           <thead className="staff-mgmt__thead">
             <tr>
-              {columns.map(col => (
-                <th key={col.key} className="staff-mgmt__th" style={{ minWidth: col.width }}>
+              {columns.map((col, idx) => (
+                <th key={col.key} className={`staff-mgmt__th${idx < 2 ? ' staff-mgmt__th--sticky' : ''}`} style={{ minWidth: col.width, ...(idx === 0 ? { position: 'sticky', left: 0, zIndex: 3 } : idx === 1 ? { position: 'sticky', left: '70px', zIndex: 3 } : {}) }}>
                   {col.label}
                 </th>
               ))}
@@ -311,8 +311,8 @@ const handleSave = async () => {
           <tbody>
             {filteredStaff.map((staff) => (
               <tr key={staff.staff_id} className={`staff-mgmt__row${!staff.is_active ? ' staff-mgmt__row--inactive' : ''}`}>
-                {columns.map(col => (
-                  <td key={col.key} className="staff-mgmt__td">
+                {columns.map((col, idx) => (
+                  <td key={col.key} className={`staff-mgmt__td${idx < 2 ? ' staff-mgmt__td--sticky' : ''}`} style={idx === 0 ? { position: 'sticky', left: 0, zIndex: 1 } : idx === 1 ? { position: 'sticky', left: '70px', zIndex: 1 } : undefined}>
                     {col.readOnly ? (
                       <span className="staff-mgmt__readonly">{staff[col.key]}</span>
                     ) : col.type === 'checkbox' ? (

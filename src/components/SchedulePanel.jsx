@@ -26,6 +26,19 @@ const SchedulePanel = ({
   const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
+  const [justGenerated, setJustGenerated] = useState(false);
+  const [closingModal, setClosingModal] = useState(null); // 'instruction' | 'overwrite' | null
+  const [processingFadeOut, setProcessingFadeOut] = useState(false);
+
+  // 淡出關閉 modal 的共用 helper
+  const closeModalWithAnimation = (which) => {
+    setClosingModal(which);
+    setTimeout(() => {
+      if (which === 'instruction') setShowInstructionModal(false);
+      if (which === 'overwrite') setShowOverwriteModal(false);
+      setClosingModal(null);
+    }, 300);
+  };
 
   const messagesEndRef = useRef(null);
 
@@ -107,14 +120,17 @@ const handleReset = () => {
 
   // 1.5 當使用者在詢問視窗輸入完要求，按下「確認並繼續」時的邏輯
   const handleConfirmInstruction = () => {
-      setShowInstructionModal(false); // 關閉要求詢問視窗
-
-      // 接著檢查畫面上是不是已經有舊班表了？
-      if (schedule && Object.keys(schedule).length > 0) {
-          setShowOverwriteModal(true); // 如果有資料，跳出覆蓋警告視窗
-      } else {
-          executeGeminiSolve(); // 如果是空的，直接發送給 AI 開始生成
-      }
+      setClosingModal('instruction');
+      setTimeout(() => {
+        setShowInstructionModal(false);
+        setClosingModal(null);
+        // 接著檢查畫面上是不是已經有舊班表了？
+        if (schedule && Object.keys(schedule).length > 0) {
+            setShowOverwriteModal(true);
+        } else {
+            executeGeminiSolve();
+        }
+      }, 300);
   };
 
 // 2. 選項 A：先封存至伺服器歷史區，再重新生成
@@ -161,13 +177,12 @@ const handleReset = () => {
       }
 
       // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表
-      setShowOverwriteModal(false);
-      executeGeminiSolve();
+      setClosingModal('overwrite');
+      setTimeout(() => { setShowOverwriteModal(false); setClosingModal(null); executeGeminiSolve(); }, 300);
   };
-  // 👇 ★★★ 請把這段遺失的「選項 B」補在這裡！ ★★★ 👇
   const handleDirectOverwrite = () => {
-      setShowOverwriteModal(false); // 關閉彈出視窗
-      executeGeminiSolve();         // 直接呼叫 AI 重新生成新班表
+      setClosingModal('overwrite');
+      setTimeout(() => { setShowOverwriteModal(false); setClosingModal(null); executeGeminiSolve(); }, 300);
   };
   // 👆 ★★★ 補上這段就修復了！ ★★★ 👆
 
@@ -321,7 +336,9 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                 setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (全新產生)**\n\n已為您配置 ${Object.keys(virtualSchedule).length} 位人力！` }]);
                 isSuccess = true;
 
+                setJustGenerated(true);
                 onGenerateSchedule(virtualSchedule);
+                setTimeout(() => setJustGenerated(false), 3000);
 
 
             } else {
@@ -335,7 +352,13 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
             }
         }
     }
-    setProcessing(false); setLoadingStatus('');
+    // 淡出 loading overlay
+    setProcessingFadeOut(true);
+    setTimeout(() => {
+      setProcessing(false);
+      setProcessingFadeOut(false);
+      setLoadingStatus('');
+    }, 400);
   };
 
   const handleUserChat = async () => {
@@ -417,16 +440,19 @@ const handleCellChange = (staffId, day, newValue) => {
 
       {/* 1. 載入中畫面 */}
       {processing && (
-        <div className="schedule-panel__loading-overlay">
-          <div className="schedule-panel__spinner"></div>
+        <div className={`schedule-panel__loading-overlay${processingFadeOut ? ' schedule-panel__loading-overlay--out' : ''}`}>
+          <div className="schedule-panel__loading-orb">
+            <div className="schedule-panel__loading-orb-ring"></div>
+            <div className="schedule-panel__loading-orb-core"><Sparkles size={24} /></div>
+          </div>
           <div className="schedule-panel__loading-title">AI 正在排班中...</div>
           <div className="schedule-panel__loading-status">{loadingStatus}</div>
         </div>
       )}
 {/* ★★★ 新增的：AI 需求詢問視窗 (Modal) ★★★ */}
       {showInstructionModal && (
-        <div className="schedule-panel__modal-backdrop schedule-panel__modal-backdrop--instruction">
-            <div className="schedule-panel__modal-box">
+        <div className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--instruction${closingModal === 'instruction' ? ' schedule-panel__modal-backdrop--closing' : ''}`}>
+            <div className={`schedule-panel__modal-box${closingModal === 'instruction' ? ' schedule-panel__modal-box--closing' : ''}`}>
                 <h3 className="schedule-panel__modal-title schedule-panel__modal-title--instruction">
                     ✨ 告訴 AI 您的特殊要求
                 </h3>
@@ -443,7 +469,7 @@ const handleCellChange = (staffId, day, newValue) => {
                 />
 
                 <div className="schedule-panel__modal-actions">
-                    <button onClick={() => setShowInstructionModal(false)} className="schedule-panel__btn schedule-panel__btn--cancel">
+                    <button onClick={() => closeModalWithAnimation('instruction')} className="schedule-panel__btn schedule-panel__btn--cancel">
                         取消
                     </button>
                     <button onClick={handleConfirmInstruction} className="schedule-panel__btn schedule-panel__btn--confirm">
@@ -456,8 +482,8 @@ const handleCellChange = (staffId, day, newValue) => {
       {/* ★★★ 需求詢問視窗結束 ★★★ */}
       {/* ★★★ 2. 全新加入的：客製化覆蓋警告視窗 (Modal) ★★★ */}
       {showOverwriteModal && (
-        <div className="schedule-panel__modal-backdrop schedule-panel__modal-backdrop--overwrite">
-            <div className="schedule-panel__modal-box">
+        <div className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--overwrite${closingModal === 'overwrite' ? ' schedule-panel__modal-backdrop--closing' : ''}`}>
+            <div className={`schedule-panel__modal-box${closingModal === 'overwrite' ? ' schedule-panel__modal-box--closing' : ''}`}>
                 <h3 className="schedule-panel__modal-title schedule-panel__modal-title--overwrite">
                     ⚠️ 畫面上已經有班表資料！
                 </h3>
@@ -477,7 +503,7 @@ const handleCellChange = (staffId, day, newValue) => {
                         <span>→</span>
                     </button>
 
-                    <button onClick={() => setShowOverwriteModal(false)} className="schedule-panel__btn schedule-panel__btn--keep">
+                    <button onClick={() => closeModalWithAnimation('overwrite')} className="schedule-panel__btn schedule-panel__btn--keep">
                         取消，保留目前畫面
                     </button>
                 </div>
@@ -595,10 +621,10 @@ const handleCellChange = (staffId, day, newValue) => {
                         if (aIsVirtual && !bIsVirtual) return 1;  // D 永遠墊底
                         if (!aIsVirtual && bIsVirtual) return -1; // 員工永遠置頂
                         return a.localeCompare(b);
-                    }).map(rowId => {
+                    }).map((rowId, rowIndex) => {
                         const isVirtual = rowId.startsWith('D');
                         return (
-                            <tr key={rowId} className={`schedule-panel__row${isVirtual ? ' schedule-panel__row--virtual' : ''}`}>
+                            <tr key={rowId} className={`schedule-panel__row${isVirtual ? ' schedule-panel__row--virtual' : ''}${justGenerated ? ' schedule-panel__row--animate' : ''}`} style={justGenerated ? { animationDelay: `${rowIndex * 80}ms` } : undefined}>
                                 <td className={`schedule-panel__staff-cell${isVirtual ? ' schedule-panel__staff-cell--virtual' : ''}`}>
                                     {isVirtual ? (
                                         <>

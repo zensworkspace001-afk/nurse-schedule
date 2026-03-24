@@ -325,6 +325,21 @@
   display: flex;
   justify-content: center;
   align-items: center;
+  animation: appModalOverlayIn 0.3s ease both;
+}
+
+.app__modal-overlay--closing {
+  animation: appModalOverlayOut 0.3s ease both;
+}
+
+@keyframes appModalOverlayIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes appModalOverlayOut {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 /* --- Modal container --- */
@@ -339,6 +354,21 @@
   max-width: 400px;
   position: relative;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  animation: appModalIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.app__modal--closing {
+  animation: appModalOut 0.3s ease both;
+}
+
+@keyframes appModalIn {
+  0% { opacity: 0; transform: scale(0.85) translateY(30px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes appModalOut {
+  0% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 0; transform: scale(0.9) translateY(20px); }
 }
 
 .app__modal-close-btn {

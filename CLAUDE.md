@@ -30,7 +30,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 ### Frontend (`src/`)
 
-**Styling convention:** Each component has a co-located `.css` file using BEM naming (e.g. `.publish__header`, `.staff-mgmt__row--inactive`). Only truly dynamic values (runtime-computed colors) remain as inline styles. Do not add new inline styles — use CSS classes.
+**Styling convention:** Each component has a co-located `.css` file using BEM naming (e.g. `.publish__header`, `.staff-mgmt__row--inactive`). Only truly dynamic values (runtime-computed colors) remain as inline styles. Do not add new inline styles — use CSS classes. Modals/overlays use glassmorphism (`backdrop-filter: blur()`, `rgba` backgrounds) with fade-in/fade-out CSS animations (closing state + `setTimeout` for deferred unmount).
 
 `src/App.jsx` — Root `NurseSchedulingSystem` component. Owns all top-level state (staffData, schedule, finalizedSchedule, violations, etc.), Firebase `onSnapshot` subscriptions, cloud read/write engines (2s debounce), and core business logic: `handleStaffScheduleUpdate`, `calculateAndNotifyNextStaff`, `handlePushToHistory`, `handleSaveAndPublish`. Routes to `ManagerInterface` (admin) or `StaffDashboard` (staff) based on role.
 
@@ -45,7 +45,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 **Key components:**
 - `SchedulePanel` — AI-powered schedule generation workspace with Gemini chat, drag-to-assign, and conflict detection
 - `PublishPanel` — Publish schedule for staff to claim; supports single/bulk unassign of staff
-- `ScheduleReviewPanel` — Historical schedule viewer, payroll settlement engine, health score calculator, Excel export
+- `ScheduleReviewPanel` — Historical schedule viewer, payroll settlement engine (base salary + OT + night bonus + level bonus 進階加給), health score calculator, Excel export
 - `StatisticsPanel` — Nurse-to-patient ratio monitoring (Taiwan 衛福部 regulations), AI cross-month analytics, agentic turn radar
 - `StaffDashboard` — Staff self-service: 4-step shift selection wizard, turn-based access control, password change
 
@@ -53,7 +53,9 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 **Labor law compliance** (Taiwan 勞基法) via `checkLaborLawCompliance` in `constants.js`: max 40h/week, 46h/month OT, 11h min rest between shifts, max 6 consecutive days, forbidden sequences (E→D, N→D, N→E), maternity protection, RG interval rule (≤6 days, ≤12 for BiWeekly).
 
-**Staff levels:** N0/N1 = junior; N2/N3/N4 = senior. `checkSkillMixSafety` warns when a shift has no senior (N2+) or leader present.
+**Staff levels:** N0/N1 = junior; N2/N3/N4 = senior. `checkSkillMixSafety` warns when a shift has no senior (N2+) or leader present. Each level has a configurable monthly bonus (`levelBonus` in Settings): N0=0, N1=1000, N2=2000, N3=3200, N4=5000 by default.
+
+**Default schedule month:** Defaults to next month (e.g. March → April). If December, rolls to January of next year. Persisted in `localStorage`.
 
 ### Backend (`api/`)
 
@@ -72,10 +74,10 @@ Vercel serverless functions:
 ### Firestore Schema
 
 ```
-NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary, publishedDate)
+NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary, levelBonus, publishedDate)
 NurseApp/Staff             — { staffData: [...], healthStats: [...] }
 Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }
-archive_reports/{YYYY_M}   — { csv, timestamp, schedule_backup }
+archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note, csv? }
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
 SelectionProgress/{YYYY_M} — { submitted_staff: [...] }
 AI_Decision_Logs           — { timestamp, selected_staff, ai_logic, candidates_data }

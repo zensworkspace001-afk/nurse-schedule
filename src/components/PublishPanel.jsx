@@ -1,29 +1,15 @@
-import React, { useState } from 'react';
-import { Megaphone, Plus, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
+import React from 'react';
+import { Megaphone, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
 import { updateStaffSchedule } from '../api/database';
 import './PublishPanel.css';
 
 const PublishPanel = ({
     staffData, violations, scheduleRisks,
-    selectedYear, selectedMonth, shiftOptions, setShiftOptions,
+    selectedYear, selectedMonth, shiftOptions,
     publicHolidays, finalizedSchedule, setFinalizedSchedule,onPushToHistory // 👈 補上這行
 }) => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
-    // ★ 新增：選項管理與儲存邏輯
-    const [showAddOption, setShowAddOption] = useState(false);
-    const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
-
-    const handleAddOption = () => {
-        if (!newOption.code || !newOption.name) return alert("請輸入代號與名稱！");
-        if (shiftOptions.find(o => o.code === newOption.code)) return alert("此代號已存在！");
-        setShiftOptions([...shiftOptions, { ...newOption, time: '' }]);
-        setNewOption({ code: '', name: '', color: '#cccccc' });
-    };
-
-    const handleDeleteOption = (code) => {
-        if(window.confirm(`確定要刪除班別「${code}」嗎？`)) setShiftOptions(shiftOptions.filter(o => o.code !== code));
-    };
 
         const handleCellChange = async (staffId, day, newValue) => {
         // === RG 絕對防護罩 (針對 finalizedSchedule) ===
@@ -141,8 +127,6 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
              </div>
 
            <div className="publish__header-actions">
-                 {/* ★ 新增下拉選單按鈕 */}
-                 <button onClick={() => setShowAddOption(!showAddOption)} className="publish__btn publish__btn--manage"><Plus size={14} /> 管理班別選項</button>
                  <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all"><AlertTriangle size={14} /> 全部拔除釋出</button>
                  <button onClick={onPushToHistory} className="publish__btn publish__btn--archive">
                      <ArrowRight size={14} /> 結算並封存至歷史區
@@ -151,26 +135,6 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         </div>
         {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}
 
-        {/* ★ 新增：選項管理面板介面 */}
-        {showAddOption && (
-          <div className="publish__option-panel">
-            <div className="publish__option-form">
-              <input placeholder="代號" value={newOption.code} onChange={e=>setNewOption({...newOption, code: e.target.value})} className="publish__option-input publish__option-input--code" />
-              <input placeholder="名稱" value={newOption.name} onChange={e=>setNewOption({...newOption, name: e.target.value})} className="publish__option-input publish__option-input--name" />
-              <input type="color" value={newOption.color} onChange={e=>setNewOption({...newOption, color: e.target.value})} className="publish__option-color-picker" />
-              <button onClick={handleAddOption} className="publish__option-add-btn">確認新增</button>
-            </div>
-            <div className="publish__option-list">
-                {shiftOptions.map(opt => (
-                    <div key={opt.code} className="publish__option-tag">
-                        <span className="publish__option-dot" style={{background: opt.color}}></span>
-                        <b className="publish__option-code">{opt.code}</b>
-                        <button onClick={() => handleDeleteOption(opt.code)} className="publish__option-delete-btn">×</button>
-                    </div>
-                ))}
-            </div>
-          </div>
-        )}
 
         <div className="publish__content">
             {/* ... 下面的左側班表與右側監控，請保持原本的樣子不要動它 ... */}            {/* 左側：班表主視窗 */}
