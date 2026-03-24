@@ -36,6 +36,8 @@ const ManagerInterface = ({
   const tabRefs = useRef([]);
   const [gliderStyle, setGliderStyle] = useState({ transform: 'translate(0px, 0px)', width: 0, height: 0, opacity: 0 });
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
   useEffect(() => {
     // 找出目前路由對應的 tab index，若在根目錄則預設為 0
     let activeIndex = tabs.findIndex(t => t.path === currentPath);
@@ -55,12 +57,20 @@ const ManagerInterface = ({
         }
     }, 50);
     return () => clearTimeout(timer);
-  }, [currentPath]);
+  }, [currentPath, isMobileMenuOpen]);
 
   return (
     <div className="manager">
 
-      <div className="manager__tabs">
+      {/* 🌟 手機版漢堡選單按鈕 */}
+      <button 
+        className="manager__mobile-menu-btn" 
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+      >
+        {isMobileMenuOpen ? '✖ 關閉選單' : '☰ 開啟導覽選單'}
+      </button>
+
+      <div className={`manager__tabs ${isMobileMenuOpen ? 'manager__tabs--open' : ''}`}>
         {/* 🌟 背景滑動毛玻璃游標 */}
         <div className="manager__glider" style={gliderStyle}></div>
 
@@ -69,6 +79,7 @@ const ManagerInterface = ({
             key={tab.id}
             to={tab.path}
             ref={(el) => (tabRefs.current[index] = el)}
+            onClick={() => setIsMobileMenuOpen(false)} // 點擊後自動收起
             className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'requirements') ? ' manager__tab--active' : ''}`}
             style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           >

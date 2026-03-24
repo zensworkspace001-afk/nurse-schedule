@@ -451,7 +451,8 @@
   position: sticky;
   left: 0;
   background: #34495e;
-  z-index: 11;
+  z-index: 20;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.15);
 }
 
 .review__table-th-health {
@@ -503,7 +504,8 @@
   position: sticky;
   left: 0;
   background: white;
-  z-index: 5;
+  z-index: 15;
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
 }
 
 .review__table-td-name--virtual {
@@ -669,4 +671,28 @@
 
 .review__risks-item-tag {
   color: #666;
+}
+
+/* ==========================================================================
+   Responsive Web Design (RWD)
+   ========================================================================== */
+@media screen and (max-width: 768px) {
+  .review__toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .review__toolbar-actions {
+    flex-wrap: wrap;
+    width: 100%;
+  }
+  .review__toolbar-actions button {
+    flex: 1 1 auto;
+    text-align: center;
+  }
+  .review__body {
+    flex-direction: column; /* 手機上左右改上下 */
+  }
+  .review__table-wrapper, .review__sidebar, .review__violations, .review__risks {
+    padding: 1rem;
+  }
 }
