@@ -1,0 +1,105 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    // Helper: 是否為已登入使用者
+    // ============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // ============================================================
+    // Helper: 是否為管理員 (admin@hospital.com)
+    // ============================================================
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.email == 'admin@hospital.com';
+    }
+
+    // ============================================================
+    // Helper: 是否為指定員工本人
+    // ============================================================
+    function isStaff(staffId) {
+      return isAuthenticated() && request.auth.uid == staffId;
+    }
+
+    // ============================================================
+    // 1. NurseApp/Settings — 全域設定
+    //    讀取：所有已登入使用者 (前端需要讀取班別、需求等設定)
+    //    寫入：僅管理員
+    // ============================================================
+    match /NurseApp/Settings {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 2. NurseApp/Staff — 員工名單與健康數據
+    //    讀取：所有已登入使用者 (員工需要看到同事資訊做選班)
+    //    寫入：僅管理員
+    // ============================================================
+    match /NurseApp/Staff {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 3. Schedules/{yearMonth} — 月班表
+    //    讀取：所有已登入使用者
+    //    寫入：管理員可完整寫入；員工只能更新 finalizedSchedule
+    // ============================================================
+    match /Schedules/{yearMonth} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+      allow update: if isAuthenticated()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['finalizedSchedule']);
+    }
+
+    // ============================================================
+    // 4. archive_reports/{yearMonth} — 歷史結算報表
+    //    讀取：僅管理員
+    //    寫入：僅管理員 (前端寫入) 或後端 Admin SDK (自動結算)
+    // ============================================================
+    match /archive_reports/{yearMonth} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 5. SelectionTurn/{yearMonth} — 目前輪到誰選班
+    //    讀取：所有已登入使用者 (前端需要知道目前輪到誰)
+    //    寫入：僅管理員 (啟動接力) 或後端 Admin SDK (Cron/AI)
+    // ============================================================
+    match /SelectionTurn/{yearMonth} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 6. SelectionProgress/{yearMonth} — 已完成選班的員工清單
+    //    讀取：所有已登入使用者
+    //    寫入：僅管理員或後端 Admin SDK
+    // ============================================================
+    match /SelectionProgress/{yearMonth} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 7. AI_Decision_Logs — AI 決策紀錄
+    //    讀取：僅管理員
+    //    寫入：僅管理員 (前端 App.jsx 以 admin 身份寫入)
+    // ============================================================
+    match /AI_Decision_Logs/{logId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 預設：拒絕所有未明確允許的存取
+    // ============================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
