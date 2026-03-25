@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
+import { Calendar, Settings, LogOut, X, Hand, Lock } from 'lucide-react';
 import {
   doc, getDoc, setDoc, addDoc, collection,
   query, orderBy, limit, getDocs, arrayUnion, onSnapshot
@@ -30,6 +30,11 @@ const NurseSchedulingSystem = () => {
   const [closingAdminPwdModal, setClosingAdminPwdModal] = useState(false);
   const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
+
+  // ★★★ 資安升級：首次登入強制改密碼 ★★★
+  const [showForceChangePwd, setShowForceChangePwd] = useState(false);
+  const [forceChangePwdData, setForceChangePwdData] = useState({ new: '', confirm: '' });
+  const [forceChangePwdMsg, setForceChangePwdMsg] = useState({ type: '', text: '' });
 
   const closeAdminPwdModal = () => {
     setClosingAdminPwdModal(true);
@@ -678,6 +683,44 @@ const handleSaveAndPublish = async () => {
     alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
 
+// ★★★ 資安升級：首次登入強制改密碼 Handler ★★★
+  const handleForceChangePwd = async (e) => {
+      e.preventDefault();
+      if (forceChangePwdData.new !== forceChangePwdData.confirm) {
+          return setForceChangePwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
+      }
+      if (forceChangePwdData.new === '123456') {
+          return setForceChangePwdMsg({ type: 'error', text: '新密碼不可與預設密碼相同！' });
+      }
+      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
+      if (!strongPasswordRegex.test(forceChangePwdData.new)) {
+          return setForceChangePwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
+      }
+      try {
+          const user = auth.currentUser;
+          if (user) {
+              // 用預設密碼重新驗證
+              const credential = EmailAuthProvider.credential(user.email, '123456');
+              await reauthenticateWithCredential(user, credential);
+              await updatePassword(user, forceChangePwdData.new);
+              setForceChangePwdMsg({ type: 'success', text: '✅ 密碼修改成功！' });
+              setTimeout(() => {
+                  setShowForceChangePwd(false);
+                  setForceChangePwdData({ new: '', confirm: '' });
+                  setForceChangePwdMsg({ type: '', text: '' });
+                  setCurrentUser(prev => ({ ...prev, forcePasswordChange: false }));
+              }, 1500);
+          }
+      } catch (error) {
+          if (import.meta.env.DEV) console.error("強制改密碼失敗:", error);
+          if (error.code === 'auth/requires-recent-login') {
+              setForceChangePwdMsg({ type: 'error', text: '⚠️ 登入已過期，請重新登入後再試。' });
+          } else {
+              setForceChangePwdMsg({ type: 'error', text: '修改失敗，請聯絡系統管理員。' });
+          }
+      }
+  };
+
 // ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
   const handleAdminPasswordSubmit = async (e) => {
       e.preventDefault();
@@ -737,12 +780,16 @@ const handleSaveAndPublish = async () => {
     const cover = document.createElement('div');
     cover.className = 'app__transition-cover';
     document.body.appendChild(cover);
-    
+
     // 2. 當蓋板完全遮住畫面時 (約 750ms)，切換登入狀態 (背後畫面瞬間替換)
     setTimeout(() => {
       setCurrentUser(user);
+      // ★ 資安升級：偵測到預設密碼，強制彈出改密碼視窗
+      if (user.forcePasswordChange) {
+        setShowForceChangePwd(true);
+      }
     }, 750);
-    
+
     // 3. 等動畫播完 (1500ms)，清除 DOM 元素
     setTimeout(() => {
       cover.remove();
@@ -787,6 +834,34 @@ const handleSaveAndPublish = async () => {
                         </div>
                     )}
                     <button type="submit" className="app__modal-submit-btn">儲存修改</button>
+                </form>
+            </div>
+        </div>
+      )}
+
+      {/* ★★★ 資安升級：首次登入強制改密碼 Modal (不可關閉) ★★★ */}
+      {showForceChangePwd && (
+        <div className="app__modal-overlay">
+            <div className="app__modal">
+                <h3 className="app__modal-title"><Lock size={20} /> 首次登入：請修改預設密碼</h3>
+                <p style={{ fontSize: '13px', color: '#666', margin: '0 0 16px' }}>
+                    系統偵測到您正在使用預設密碼，為保護帳號安全，請立即設定新密碼。
+                </p>
+                <form onSubmit={handleForceChangePwd} className="app__modal-form">
+                    <div>
+                        <label className="app__modal-label">新密碼（至少 6 碼，需含英文與數字）</label>
+                        <input type="password" value={forceChangePwdData.new} onChange={e=>setForceChangePwdData({...forceChangePwdData, new: e.target.value})} required minLength="6" className="app__modal-input" autoFocus />
+                    </div>
+                    <div>
+                        <label className="app__modal-label">確認新密碼</label>
+                        <input type="password" value={forceChangePwdData.confirm} onChange={e=>setForceChangePwdData({...forceChangePwdData, confirm: e.target.value})} required minLength="6" className="app__modal-input" />
+                    </div>
+                    {forceChangePwdMsg.text && (
+                        <div className={`app__modal-msg ${forceChangePwdMsg.type === 'error' ? 'app__modal-msg--error' : 'app__modal-msg--success'}`}>
+                            {forceChangePwdMsg.text}
+                        </div>
+                    )}
+                    <button type="submit" className="app__modal-submit-btn">確認修改密碼</button>
                 </form>
             </div>
         </div>

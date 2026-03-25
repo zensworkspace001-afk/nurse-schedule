@@ -37,15 +37,19 @@ try {
         }
 
         // 2. 登入成功後，判斷角色權限
+        // ★ 資安升級：偵測是否使用預設密碼，強制首次改密碼
+        const isDefaultPassword = password === '123456';
+
         if (inputId === 'admin') {
-            onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
+            onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin', forcePasswordChange: isDefaultPassword });
         } else {
             // 🌟 核心修復：登入瞬間先給一個「載入中」的假名字，不要去依賴空的 staffData
             onLogin({
                 id: inputId.toUpperCase(),
                 name: '載入中...',
                 role: 'staff',
-                rule: 'Standard'
+                rule: 'Standard',
+                forcePasswordChange: isDefaultPassword
             });
         }
     } catch (err) {
