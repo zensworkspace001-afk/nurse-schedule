@@ -113,14 +113,19 @@ const [historyYear, setHistoryYear] = useState(() => {
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
 
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const statusTriggerRef = React.useRef(null);
 
   // ★ 全端點健康檢查 ★
   const HEALTH_ENDPOINTS = [
-    { key: 'firestore', label: 'DB' },
-    { key: 'gemini', label: 'AI', url: '/api/gemini', method: 'POST' },
-    { key: 'email', label: 'Mail', url: '/api/sendEmail', method: 'POST' },
-    { key: 'settle', label: 'Settle', url: '/api/auto-settle', method: 'GET' },
-    { key: 'calendar', label: '假日', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
+    { key: 'firestore', label: 'Firestore', desc: 'Firebase 即時資料庫' },
+    { key: 'gemini', label: 'Gemini AI', desc: 'AI 排班與對話引擎', url: '/api/gemini', method: 'POST' },
+    { key: 'analyzeExcel', label: 'Excel 分析', desc: 'CSV/Excel Gemini Flash 分析', url: '/api/analyze-excel', method: 'POST' },
+    { key: 'sendEmail', label: 'Email 服務', desc: 'Resend 電子郵件發送', url: '/api/sendEmail', method: 'POST' },
+    { key: 'syncAccounts', label: '帳號同步', desc: '批次建立 Firebase Auth 帳號', url: '/api/sync-accounts', method: 'POST' },
+    { key: 'resetPassword', label: '密碼重設', desc: '管理員重設員工密碼', url: '/api/reset-password', method: 'POST' },
+    { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle', method: 'GET' },
+    { key: 'cronTimeout', label: 'Cron 逾時', desc: '每日自動推進選班逾時', url: '/api/cron/check-timeout', method: 'GET' },
+    { key: 'calendar', label: '國定假日', desc: '台灣國定假日 API', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
   ];
 
   useEffect(() => {
@@ -791,18 +796,21 @@ const handleSaveAndPublish = async () => {
           <div className="app__header-right">
             {/* ★ 系統連線狀態 — 下拉選單 ★ */}
             <div className="app__status-dropdown-wrapper">
-              <button className="app__status-trigger" onClick={() => setShowStatusDropdown(prev => !prev)}>
-                {HEALTH_ENDPOINTS.map(ep => {
-                  const s = endpointStatus[ep.key];
-                  const color = s ? s.color : 'gray';
-                  return <span key={ep.key} className={`app__status-dot app__status-dot--${color}`}></span>;
-                })}
+              <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => setShowStatusDropdown(prev => !prev)}>
+                {(() => {
+                  const colors = HEALTH_ENDPOINTS.map(ep => endpointStatus[ep.key]?.color || 'gray');
+                  const overall = colors.includes('red') ? 'red' : colors.includes('yellow') ? 'yellow' : colors.includes('gray') ? 'gray' : 'green';
+                  return <span className={`app__status-dot app__status-dot--${overall}`}></span>;
+                })()}
                 <span className="app__status-label">API</span>
               </button>
               {showStatusDropdown && (
                 <>
                   <div className="app__status-backdrop" onClick={() => setShowStatusDropdown(false)} />
-                  <div className="app__status-dropdown">
+                  <div className="app__status-dropdown" style={(() => {
+                    const rect = statusTriggerRef.current?.getBoundingClientRect();
+                    return rect ? { top: rect.bottom + 8, right: window.innerWidth - rect.right } : {};
+                  })()}>
                     <div className="app__status-dropdown-title">系統 API 健康狀態</div>
                     {HEALTH_ENDPOINTS.map(ep => {
                       const s = endpointStatus[ep.key];
@@ -811,7 +819,10 @@ const handleSaveAndPublish = async () => {
                       return (
                         <div key={ep.key} className="app__status-dropdown-row">
                           <span className={`app__status-dot app__status-dot--${color}`}></span>
-                          <span className="app__status-dropdown-label">{ep.label}</span>
+                          <div className="app__status-dropdown-info">
+                            <span className="app__status-dropdown-label">{ep.label}</span>
+                            <span className="app__status-dropdown-desc">{ep.desc}</span>
+                          </div>
                           <span className="app__status-dropdown-reason">{reason}</span>
                         </div>
                       );

@@ -184,77 +184,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
           alert("❌ 操作失敗，請檢查網路連線。");
       }
   };
-  // =========================================================
-  // -- ★ API 健康狀態監控 --
-  const [apiHealthStatus, setApiHealthStatus] = useState({});
-  const [hoveredApi, setHoveredApi] = useState(null);
-
-  const API_ENDPOINTS = [
-      { key: 'gemini', name: 'Gemini AI', url: '/api/gemini', method: 'POST', desc: 'AI 排班與對話引擎' },
-      { key: 'analyzeExcel', name: 'Excel 分析', url: '/api/analyze-excel', method: 'POST', desc: 'CSV/Excel Gemini Flash 分析' },
-      { key: 'sendEmail', name: 'Email 服務', url: '/api/sendEmail', method: 'POST', desc: 'Resend 電子郵件發送' },
-      { key: 'syncAccounts', name: '帳號同步', url: '/api/sync-accounts', method: 'POST', desc: '批次建立 Firebase Auth 帳號' },
-      { key: 'resetPassword', name: '密碼重設', url: '/api/reset-password', method: 'POST', desc: '管理員重設員工密碼' },
-      { key: 'autoSettle', name: '自動結算', url: '/api/auto-settle', method: 'GET', desc: '月薪結算引擎' },
-      { key: 'cronTimeout', name: 'Cron 逾時', url: '/api/cron/check-timeout', method: 'GET', desc: '每日自動推進選班逾時' },
-      { key: 'firestore', name: 'Firestore', url: null, method: null, desc: 'Firebase 即時資料庫' },
-      { key: 'taiwanCalendar', name: '國定假日', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${new Date().getFullYear()}.json`, method: 'GET', desc: '台灣國定假日 API' },
-  ];
-
-  const checkApiHealth = async () => {
-      const results = {};
-      const token = await auth.currentUser?.getIdToken?.().catch(() => null);
-
-      const checks = API_ENDPOINTS.map(async (api) => {
-          const startTime = Date.now();
-          try {
-              if (api.key === 'firestore') {
-                  // Firestore: 嘗試讀取一個輕量文件
-                  const testRef = doc(db, 'SystemHealth', 'ping');
-                  await setDoc(testRef, { lastCheck: new Date().toISOString() }, { merge: true });
-                  results[api.key] = { status: 'ok', latency: Date.now() - startTime, checkedAt: new Date() };
-                  return;
-              }
-
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-              const opts = { method: api.method, signal: controller.signal, headers: {} };
-              const isExternal = api.url.startsWith('http');
-              if (token && !isExternal) opts.headers['Authorization'] = `Bearer ${token}`;
-              if (api.method === 'POST') opts.headers['Content-Type'] = 'application/json';
-              // 發送最小 body 讓伺服器回應（不執行實際業務）
-              if (api.method === 'POST') opts.body = JSON.stringify({ healthCheck: true });
-
-              const res = await fetch(api.url, opts);
-              clearTimeout(timeoutId);
-              const latency = Date.now() - startTime;
-
-              // 任何 HTTP 回應都表示伺服器活著（4xx 也代表可連通）
-              results[api.key] = {
-                  status: res.ok ? 'ok' : 'warn',
-                  httpStatus: res.status,
-                  latency,
-                  checkedAt: new Date()
-              };
-          } catch (err) {
-              results[api.key] = {
-                  status: err.name === 'AbortError' ? 'timeout' : 'error',
-                  error: err.message,
-                  latency: Date.now() - startTime,
-                  checkedAt: new Date()
-              };
-          }
-      });
-
-      await Promise.allSettled(checks);
-      setApiHealthStatus(results);
-  };
-
-  useEffect(() => {
-      checkApiHealth();
-  }, []);
-
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
   const hasData = loadedMonths.length > 0;
@@ -719,55 +648,6 @@ let combinedData = "";
       <div className="statistics__chart">
           <h3 className="statistics__chart-title">📈 過去 12 個月班表健康度與護病比趨勢</h3>
           {renderLineChart()}
-      </div>
-
-      {/* ========================================================= */}
-      {/* 🔌 API 健康狀態監控 */}
-      <div className="statistics__api-health">
-          <div className="statistics__api-health-header">
-              <h3 className="statistics__api-health-title">🔌 系統 API 健康狀態</h3>
-              <button onClick={checkApiHealth} className="statistics__api-health-refresh-btn">🔄 重新檢測</button>
-          </div>
-          <div className="statistics__api-health-grid">
-              {API_ENDPOINTS.map(api => {
-                  const s = apiHealthStatus[api.key];
-                  const statusClass = !s ? 'checking' : s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'error';
-                  const statusIcon = !s ? '⏳' : s.status === 'ok' ? '🟢' : s.status === 'warn' ? '🟡' : '🔴';
-                  const statusText = !s ? '檢測中...'
-                      : s.status === 'ok' ? `正常 (${s.latency}ms)`
-                      : s.status === 'warn' ? `可連通 HTTP ${s.httpStatus} (${s.latency}ms)`
-                      : s.status === 'timeout' ? '逾時 (>8s)'
-                      : `失敗: ${s.error}`;
-
-                  return (
-                      <div
-                          key={api.key}
-                          className={`statistics__api-health-item statistics__api-health-item--${statusClass}`}
-                          onMouseEnter={() => setHoveredApi(api.key)}
-                          onMouseLeave={() => setHoveredApi(null)}
-                      >
-                          <span className="statistics__api-health-icon">{statusIcon}</span>
-                          <span className="statistics__api-health-name">{api.name}</span>
-
-                          {hoveredApi === api.key && (
-                              <div className="statistics__api-health-tooltip">
-                                  <div className="statistics__api-health-tooltip-title">{api.name}</div>
-                                  <div className="statistics__api-health-tooltip-desc">{api.desc}</div>
-                                  {api.url && <div className="statistics__api-health-tooltip-url">{api.method} {api.url}</div>}
-                                  <div className={`statistics__api-health-tooltip-status statistics__api-health-tooltip-status--${statusClass}`}>
-                                      {statusIcon} {statusText}
-                                  </div>
-                                  {s?.checkedAt && (
-                                      <div className="statistics__api-health-tooltip-time">
-                                          檢測時間：{s.checkedAt.toLocaleTimeString()}
-                                      </div>
-                                  )}
-                              </div>
-                          )}
-                      </div>
-                  );
-              })}
-          </div>
       </div>
 
       {/* ========================================================= */}
