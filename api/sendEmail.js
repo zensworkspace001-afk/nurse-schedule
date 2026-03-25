@@ -1,6 +1,9 @@
 // 檔案位置：api/sendEmail.js
 import { Resend } from 'resend';
 import admin from 'firebase-admin';
+import { sanitizeHtml } from './_lib/sanitize.js';
+import { checkRateLimit } from './_lib/rateLimit.js';
+import { checkCsrf } from './_lib/csrf.js';
 
 // 初始化 Firebase Admin (確保只初始化一次)
 if (!admin.apps.length) {
@@ -27,6 +30,12 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
+    // ★ CSRF 防護
+    const csrf = checkCsrf(req);
+    if (!csrf.allowed) {
+        return res.status(403).json({ error: '禁止：非法來源' });
+    }
+
     // ★★★ 資安守衛：雙軌驗證 (Firebase Token 或 Cron Secret) ★★★
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -46,15 +55,25 @@ export default async function handler(req, res) {
         }
     }
 
+    // ★ Rate Limiting：每人每分鐘最多 5 封信
+    const uid = isCronCall ? 'cron' : (req.headers.authorization.split('Bearer ')[1]).substring(0, 20);
+    const rateCheck = checkRateLimit(`email:${uid}`, 5);
+    if (!rateCheck.allowed) {
+        return res.status(429).json({ error: '請求過於頻繁，請稍後再試' });
+    }
+
     // 從前端傳來的資料中解構出 收件人、主旨、信件內容
     const { to, subject, html } = req.body;
+
+    // ★ HTML 清理：移除 script、事件屬性等危險內容
+    const safeHtml = sanitizeHtml(html);
 
     try {
         const data = await resend.emails.send({
             from: '護理排班系統 <onboarding@resend.dev>', // Resend 免費方案預設寄件地址
             to: [to],
             subject: subject,
-            html: html
+            html: safeHtml
         });
 
         // 成功寄出，回傳給前端

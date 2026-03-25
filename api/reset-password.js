@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { checkCsrf } from './_lib/csrf.js';
 
 // 1. 終極防呆：確保正確處理換行符號與不小心多加的雙引號
 let formatPrivateKey = process.env.FIREBASE_PRIVATE_KEY;
@@ -25,6 +26,12 @@ export default async function handler(req, res) {
   // 限制只接受 POST 請求
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '只允許 POST 請求' });
+  }
+
+  // ★ CSRF 防護
+  const csrf = checkCsrf(req);
+  if (!csrf.allowed) {
+    return res.status(403).json({ error: '禁止：非法來源' });
   }
 
   // 檢查請求是否帶有通行證 (Token)
