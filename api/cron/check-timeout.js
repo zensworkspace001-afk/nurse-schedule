@@ -68,7 +68,10 @@ export default async function handler(req, res) {
         const adminEmail = "zensworkspace001@gmail.com"; // 替換成護理長信箱
         const mailRes = await fetch(`https://${req.headers.host}/api/sendEmail`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`
+            },
             body: JSON.stringify({ 
                 to: adminEmail, 
                 subject: `🚨 AI 系統回報：已強制跳過逾時員工 ${activeStaffId}`, 

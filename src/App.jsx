@@ -422,9 +422,13 @@ const handleLogout = () => {
 // ★ 核心功能 1：寄送 Email 的共用小幫手
   const sendSystemEmail = async (toEmail, subject, htmlContent) => {
       try {
+          const idToken = await auth.currentUser?.getIdToken();
           await fetch('/api/sendEmail', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${idToken}`
+              },
               body: JSON.stringify({ to: toEmail, subject, html: htmlContent })
           });
       } catch (error) {
