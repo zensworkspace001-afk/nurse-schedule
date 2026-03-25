@@ -432,118 +432,92 @@
   background: #e0e0e0;
 }
 
-.statistics__api-health-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+/* --- 長條圖 SVG --- */
+.statistics__api-chart-svg {
+  width: 100%;
+  max-width: 850px;
+  display: block;
+  margin: 0 auto;
 }
 
-.statistics__api-health-item {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  font-size: 0.88rem;
-  font-weight: 600;
-  cursor: default;
-  border: 1.5px solid transparent;
-  transition: transform 0.15s, box-shadow 0.15s;
-}
-.statistics__api-health-item:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-}
-
-.statistics__api-health-item--ok {
-  background: #f0fdf4;
-  border-color: #86efac;
-  color: #166534;
-}
-.statistics__api-health-item--warn {
-  background: #fffbeb;
-  border-color: #fcd34d;
-  color: #92400e;
-}
-.statistics__api-health-item--error {
-  background: #fef2f2;
-  border-color: #fca5a5;
-  color: #991b1b;
-}
-.statistics__api-health-item--checking {
-  background: #f8fafc;
-  border-color: #cbd5e1;
-  color: #64748b;
-}
-
-.statistics__api-health-icon {
-  font-size: 0.9rem;
-}
-
-.statistics__api-health-name {
-  white-space: nowrap;
-}
-
-/* Tooltip */
+/* Tooltip (reused for bar chart hover) */
 .statistics__api-health-tooltip {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 50%;
-  transform: translateX(-50%);
   background: #1e293b;
   color: #f1f5f9;
   border-radius: 10px;
-  padding: 12px 16px;
-  min-width: 240px;
+  padding: 10px 14px;
+  min-width: 200px;
   z-index: 100;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   line-height: 1.5;
   pointer-events: none;
-}
-.statistics__api-health-tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 6px solid transparent;
-  border-top-color: #1e293b;
 }
 
 .statistics__api-health-tooltip-title {
   font-weight: 700;
-  font-size: 0.92rem;
-  margin-bottom: 4px;
+  font-size: 0.9rem;
+  margin-bottom: 3px;
 }
 .statistics__api-health-tooltip-desc {
   color: #94a3b8;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
 }
 .statistics__api-health-tooltip-url {
   font-family: monospace;
-  font-size: 0.78rem;
+  font-size: 0.75rem;
   color: #7dd3fc;
   background: rgba(255, 255, 255, 0.08);
-  padding: 3px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
-  margin-bottom: 6px;
   word-break: break-all;
 }
-.statistics__api-health-tooltip-status {
-  font-weight: 600;
-  margin-top: 4px;
-}
-.statistics__api-health-tooltip-status--ok { color: #4ade80; }
-.statistics__api-health-tooltip-status--warn { color: #fbbf24; }
-.statistics__api-health-tooltip-status--error { color: #f87171; }
-.statistics__api-health-tooltip-status--checking { color: #94a3b8; }
 
-.statistics__api-health-tooltip-time {
+/* --- 延遲歷史折線圖 --- */
+.statistics__api-history {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid #e2e8f0;
+}
+
+.statistics__api-history-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 0.75rem 0;
+}
+
+.statistics__api-history-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  margin-top: 0.5rem;
+  padding: 0 0.5rem;
+}
+
+.statistics__api-history-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
   color: #64748b;
-  font-size: 0.75rem;
-  margin-top: 4px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  opacity: 0.6;
+}
+.statistics__api-history-legend-item:hover,
+.statistics__api-history-legend-item--active {
+  opacity: 1;
+  font-weight: 600;
+  color: #334155;
+}
+
+.statistics__api-history-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
 }
 
 /* ==========================================================
