@@ -187,7 +187,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
   // =========================================================
   // -- ★ API 健康狀態監控 --
   const [apiHealthStatus, setApiHealthStatus] = useState({});
-  const [apiHealthHistory, setApiHealthHistory] = useState([]); // 歷史延遲紀錄 [{timestamp, results}]
   const [hoveredApi, setHoveredApi] = useState(null);
 
   const API_ENDPOINTS = [
@@ -250,7 +249,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
       await Promise.allSettled(checks);
       setApiHealthStatus(results);
-      setApiHealthHistory(prev => [...prev, { timestamp: new Date(), results: { ...results } }].slice(-20));
   };
 
   useEffect(() => {
@@ -724,131 +722,52 @@ let combinedData = "";
       </div>
 
       {/* ========================================================= */}
-      {/* 🔌 API 健康狀態監控 — 圖表版 */}
+      {/* 🔌 API 健康狀態監控 */}
       <div className="statistics__api-health">
           <div className="statistics__api-health-header">
               <h3 className="statistics__api-health-title">🔌 系統 API 健康狀態</h3>
               <button onClick={checkApiHealth} className="statistics__api-health-refresh-btn">🔄 重新檢測</button>
           </div>
+          <div className="statistics__api-health-grid">
+              {API_ENDPOINTS.map(api => {
+                  const s = apiHealthStatus[api.key];
+                  const statusClass = !s ? 'checking' : s.status === 'ok' ? 'ok' : s.status === 'warn' ? 'warn' : 'error';
+                  const statusIcon = !s ? '⏳' : s.status === 'ok' ? '🟢' : s.status === 'warn' ? '🟡' : '🔴';
+                  const statusText = !s ? '檢測中...'
+                      : s.status === 'ok' ? `正常 (${s.latency}ms)`
+                      : s.status === 'warn' ? `可連通 HTTP ${s.httpStatus} (${s.latency}ms)`
+                      : s.status === 'timeout' ? '逾時 (>8s)'
+                      : `失敗: ${s.error}`;
 
-          {/* --- 水平長條圖：即時延遲 --- */}
-          {(() => {
-              const barH = 32, gap = 8, labelW = 100, chartW = 700, padR = 70;
-              const svgW = labelW + chartW + padR;
-              const svgH = API_ENDPOINTS.length * (barH + gap) + gap;
-              const maxMs = Math.max(2000, ...API_ENDPOINTS.map(a => apiHealthStatus[a.key]?.latency || 0));
-              const statusColor = (s) => !s ? '#94a3b8' : s.status === 'ok' ? '#4ade80' : s.status === 'warn' ? '#fbbf24' : '#f87171';
+                  return (
+                      <div
+                          key={api.key}
+                          className={`statistics__api-health-item statistics__api-health-item--${statusClass}`}
+                          onMouseEnter={() => setHoveredApi(api.key)}
+                          onMouseLeave={() => setHoveredApi(null)}
+                      >
+                          <span className="statistics__api-health-icon">{statusIcon}</span>
+                          <span className="statistics__api-health-name">{api.name}</span>
 
-              return (
-                  <svg viewBox={`0 0 ${svgW} ${svgH}`} className="statistics__api-chart-svg">
-                      {/* 背景格線 */}
-                      {[0, 0.25, 0.5, 0.75, 1].map(r => {
-                          const x = labelW + chartW * r;
-                          return <g key={r}>
-                              <line x1={x} y1={0} x2={x} y2={svgH} stroke="#e2e8f0" strokeWidth="1" strokeDasharray={r === 0 ? '0' : '4 4'} />
-                              <text x={x} y={svgH - 2} fontSize="10" fill="#94a3b8" textAnchor="middle">{Math.round(maxMs * r)}ms</text>
-                          </g>;
-                      })}
-
-                      {API_ENDPOINTS.map((api, i) => {
-                          const s = apiHealthStatus[api.key];
-                          const y = gap + i * (barH + gap);
-                          const latency = s?.latency || 0;
-                          const barW = Math.max(2, (latency / maxMs) * chartW);
-                          const color = statusColor(s);
-                          const statusLabel = !s ? '...' : s.status === 'ok' ? `${latency}ms` : s.status === 'warn' ? `${s.httpStatus} ${latency}ms` : s.status === 'timeout' ? '>8s' : 'ERR';
-
-                          return (
-                              <g key={api.key}
-                                 onMouseEnter={() => setHoveredApi(api.key)}
-                                 onMouseLeave={() => setHoveredApi(null)}
-                                 style={{ cursor: 'pointer' }}
-                              >
-                                  {/* 名稱 */}
-                                  <text x={labelW - 8} y={y + barH / 2 + 4} fontSize="13" fill="#334155" textAnchor="end" fontWeight="600">{api.name}</text>
-                                  {/* 長條 */}
-                                  <rect x={labelW} y={y} width={barW} height={barH} rx={4} fill={color} opacity={hoveredApi === api.key ? 1 : 0.8}>
-                                      <animate attributeName="width" from="0" to={barW} dur="0.6s" fill="freeze" />
-                                  </rect>
-                                  {/* hover 高亮背景 */}
-                                  {hoveredApi === api.key && <rect x={labelW} y={y} width={chartW} height={barH} rx={4} fill={color} opacity={0.08} />}
-                                  {/* 延遲數值 */}
-                                  <text x={labelW + barW + 6} y={y + barH / 2 + 4} fontSize="12" fill="#64748b" fontWeight="500">{statusLabel}</text>
-
-                                  {/* hover tooltip — 顯示描述 + 歷史迷你折線 */}
-                                  {hoveredApi === api.key && (
-                                      <foreignObject x={labelW + Math.min(barW + 50, chartW - 220)} y={Math.max(0, y - 60)} width="240" height="80">
-                                          <div xmlns="http://www.w3.org/1999/xhtml" className="statistics__api-health-tooltip" style={{ position: 'relative', bottom: 'auto', left: 'auto' }}>
-                                              <div className="statistics__api-health-tooltip-title">{api.name}</div>
-                                              <div className="statistics__api-health-tooltip-desc">{api.desc}</div>
-                                              {api.url && <div className="statistics__api-health-tooltip-url">{api.method} {api.url}</div>}
-                                          </div>
-                                      </foreignObject>
+                          {hoveredApi === api.key && (
+                              <div className="statistics__api-health-tooltip">
+                                  <div className="statistics__api-health-tooltip-title">{api.name}</div>
+                                  <div className="statistics__api-health-tooltip-desc">{api.desc}</div>
+                                  {api.url && <div className="statistics__api-health-tooltip-url">{api.method} {api.url}</div>}
+                                  <div className={`statistics__api-health-tooltip-status statistics__api-health-tooltip-status--${statusClass}`}>
+                                      {statusIcon} {statusText}
+                                  </div>
+                                  {s?.checkedAt && (
+                                      <div className="statistics__api-health-tooltip-time">
+                                          檢測時間：{s.checkedAt.toLocaleTimeString()}
+                                      </div>
                                   )}
-                              </g>
-                          );
-                      })}
-                  </svg>
-              );
-          })()}
-
-          {/* --- 延遲歷史折線圖 (多次檢測紀錄) --- */}
-          {apiHealthHistory.length > 1 && (() => {
-              const svgW = 850, svgH = 220, pad = 50, padR = 20;
-              const cW = svgW - pad - padR, cH = svgH - pad - 30;
-              const allLatencies = apiHealthHistory.flatMap(h => API_ENDPOINTS.map(a => h.results[a.key]?.latency || 0));
-              const maxMs = Math.max(500, ...allLatencies);
-              const getX = (i) => pad + (i / Math.max(1, apiHealthHistory.length - 1)) * cW;
-              const getY = (ms) => 20 + cH - (ms / maxMs) * cH;
-              const lineColors = { gemini: '#8b5cf6', analyzeExcel: '#06b6d4', sendEmail: '#f59e0b', syncAccounts: '#10b981', resetPassword: '#ec4899', autoSettle: '#3b82f6', cronTimeout: '#6366f1', firestore: '#ef4444', taiwanCalendar: '#14b8a6' };
-
-              return (
-                  <div className="statistics__api-history">
-                      <h4 className="statistics__api-history-title">📊 延遲歷史趨勢 (最近 {apiHealthHistory.length} 次檢測)</h4>
-                      <svg viewBox={`0 0 ${svgW} ${svgH}`} className="statistics__api-chart-svg">
-                          {/* Y 軸格線 */}
-                          {[0, 0.25, 0.5, 0.75, 1].map(r => {
-                              const y = 20 + cH - cH * r;
-                              return <g key={r}>
-                                  <line x1={pad} y1={y} x2={svgW - padR} y2={y} stroke="#e2e8f0" strokeWidth="1" strokeDasharray="4 4" />
-                                  <text x={pad - 6} y={y + 4} fontSize="11" fill="#94a3b8" textAnchor="end">{Math.round(maxMs * r)}ms</text>
-                              </g>;
-                          })}
-
-                          {/* 各 API 的折線 */}
-                          {API_ENDPOINTS.map(api => {
-                              const pts = apiHealthHistory.map((h, i) => {
-                                  const lat = h.results[api.key]?.latency;
-                                  return lat != null ? `${getX(i)},${getY(lat)}` : null;
-                              }).filter(Boolean).join(' ');
-                              if (!pts) return null;
-                              return <polyline key={api.key} points={pts} fill="none" stroke={lineColors[api.key] || '#999'} strokeWidth="2" strokeLinejoin="round" opacity={hoveredApi === api.key ? 1 : 0.5} />;
-                          })}
-
-                          {/* X 軸時間標籤 */}
-                          {apiHealthHistory.map((h, i) => (
-                              <text key={i} x={getX(i)} y={svgH - 4} fontSize="10" fill="#94a3b8" textAnchor="middle">
-                                  {h.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                              </text>
-                          ))}
-                      </svg>
-
-                      {/* 圖例 */}
-                      <div className="statistics__api-history-legend">
-                          {API_ENDPOINTS.map(api => (
-                              <span key={api.key}
-                                  className={`statistics__api-history-legend-item ${hoveredApi === api.key ? 'statistics__api-history-legend-item--active' : ''}`}
-                                  onMouseEnter={() => setHoveredApi(api.key)}
-                                  onMouseLeave={() => setHoveredApi(null)}
-                              >
-                                  <span className="statistics__api-history-legend-dot" style={{ background: lineColors[api.key] || '#999' }}></span>
-                                  {api.name}
-                              </span>
-                          ))}
+                              </div>
+                          )}
                       </div>
-                  </div>
-              );
-          })()}
+                  );
+              })}
+          </div>
       </div>
 
       {/* ========================================================= */}

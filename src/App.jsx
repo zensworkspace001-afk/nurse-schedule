@@ -16,9 +16,8 @@ import './App.refactored.css';
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
-  // ★ 系統連線狀態指示燈 ★
-  const [apiStatus, setApiStatus] = useState({ color: 'green', reason: '尚未登入，等待檢測' });
-  const [serverStatus, setServerStatus] = useState({ color: 'green', reason: '尚未檢測' });
+  // ★ 系統連線狀態指示燈 (全端點) ★
+  const [endpointStatus, setEndpointStatus] = useState({});
 
 
 
@@ -113,39 +112,61 @@ const [historyYear, setHistoryYear] = useState(() => {
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
 
-  // ★ Server (Firebase) 健康檢查：寫入 timestamp 後讀回驗證 ★
-  useEffect(() => {
-    if (!currentUser) return; // 登入後才開始檢查
+  // ★ 全端點健康檢查 ★
+  const HEALTH_ENDPOINTS = [
+    { key: 'firestore', label: 'DB' },
+    { key: 'gemini', label: 'AI', url: '/api/gemini', method: 'POST' },
+    { key: 'email', label: 'Mail', url: '/api/sendEmail', method: 'POST' },
+    { key: 'settle', label: 'Settle', url: '/api/auto-settle', method: 'GET' },
+    { key: 'calendar', label: '假日', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
+  ];
 
-    const checkServerHealth = async () => {
-      const t0 = Date.now();
-      try {
-        const healthRef = doc(db, 'SystemHealth', 'ping');
-        const now = Date.now();
-        await setDoc(healthRef, { timestamp: now });
-        const snap = await getDoc(healthRef);
-        const ms = Date.now() - t0;
-        if (snap.exists() && snap.data().timestamp === now) {
-          if (ms < 2000) {
-            setServerStatus({ color: 'green', reason: `Firebase 讀寫正常 (${ms}ms)` });
-          } else if (ms < 5000) {
-            setServerStatus({ color: 'yellow', reason: `Firebase 回應緩慢 (${ms}ms)` });
-          } else {
-            setServerStatus({ color: 'red', reason: `Firebase 回應過慢 (${ms}ms)` });
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const checkAll = async () => {
+      const token = await auth.currentUser?.getIdToken?.().catch(() => null);
+      const results = {};
+
+      await Promise.allSettled(HEALTH_ENDPOINTS.map(async (ep) => {
+        const t0 = Date.now();
+        try {
+          if (ep.key === 'firestore') {
+            const healthRef = doc(db, 'SystemHealth', 'ping');
+            const now = Date.now();
+            await setDoc(healthRef, { timestamp: now });
+            const snap = await getDoc(healthRef);
+            const ms = Date.now() - t0;
+            if (snap.exists() && snap.data().timestamp === now) {
+              results[ep.key] = { color: ms < 2000 ? 'green' : ms < 5000 ? 'yellow' : 'red', reason: `Firebase (${ms}ms)` };
+            } else {
+              results[ep.key] = { color: 'yellow', reason: `Firebase 不一致 (${ms}ms)` };
+            }
+            return;
           }
-        } else {
-          setServerStatus({ color: 'yellow', reason: `Firebase 讀回資料不一致 (${ms}ms)` });
+          const controller = new AbortController();
+          const tid = setTimeout(() => controller.abort(), 8000);
+          const opts = { method: ep.method, signal: controller.signal, headers: {} };
+          const isExternal = ep.url.startsWith('http');
+          if (token && !isExternal) opts.headers['Authorization'] = `Bearer ${token}`;
+          if (ep.method === 'POST') { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify({ healthCheck: true }); }
+          const res = await fetch(ep.url, opts);
+          clearTimeout(tid);
+          const ms = Date.now() - t0;
+          results[ep.key] = { color: res.ok ? (ms < 3000 ? 'green' : 'yellow') : 'yellow', reason: `${ep.label} ${res.ok ? '正常' : 'HTTP ' + res.status} (${ms}ms)` };
+        } catch (err) {
+          const ms = Date.now() - t0;
+          results[ep.key] = { color: 'red', reason: `${ep.label} ${err.name === 'AbortError' ? '逾時' : '失敗'} (${ms}ms)` };
         }
-      } catch (err) {
-        const ms = Date.now() - t0;
-        setServerStatus({ color: 'red', reason: `Firebase 無法連線 (${ms}ms): ${err.message}` });
-      }
+      }));
+
+      setEndpointStatus(results);
     };
 
-    checkServerHealth();
-    const interval = setInterval(checkServerHealth, 60000); // 每 60 秒檢查一次
+    checkAll();
+    const interval = setInterval(checkAll, 60000);
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentUser, selectedYear]);
 
   // ★★★ 新增：自動抓取台灣國定假日 API ★★★
   const [publicHolidays, setPublicHolidays] = useState([]);
@@ -718,7 +739,7 @@ const handleSaveAndPublish = async () => {
   };
 
   if (!currentUser) {
-    return <LoginPanel onLogin={handleLoginTransition} onApiStatus={(color, reason) => setApiStatus({ color, reason })} staffData={staffData} />;
+    return <LoginPanel onLogin={handleLoginTransition} onApiStatus={() => {}} staffData={staffData} />;
   }
 
   return (
@@ -766,16 +787,19 @@ const handleSaveAndPublish = async () => {
             <h1 className="app__header-title">智能排班系統</h1>
           </div>
           <div className="app__header-right">
-            {/* ★ 系統連線狀態指示燈 ★ */}
+            {/* ★ 系統連線狀態指示燈 (全端點) ★ */}
             <div className="app__status-group">
-              <div className="app__status-item" title={apiStatus.reason}>
-                <span className={`app__status-dot app__status-dot--${apiStatus.color}`}></span>
-                <span className="app__status-label">API</span>
-              </div>
-              <div className="app__status-item" title={serverStatus.reason}>
-                <span className={`app__status-dot app__status-dot--${serverStatus.color}`}></span>
-                <span className="app__status-label">Server</span>
-              </div>
+              {HEALTH_ENDPOINTS.map(ep => {
+                const s = endpointStatus[ep.key];
+                const color = s ? s.color : 'gray';
+                const reason = s ? s.reason : '檢測中...';
+                return (
+                  <div key={ep.key} className="app__status-item" title={reason}>
+                    <span className={`app__status-dot app__status-dot--${color}`}></span>
+                    <span className="app__status-label">{ep.label}</span>
+                  </div>
+                );
+              })}
             </div>
             <span className="app__header-user"><Hand size={18} /> {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
             {currentUser.role === 'admin' && (
