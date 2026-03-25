@@ -112,6 +112,8 @@ const [historyYear, setHistoryYear] = useState(() => {
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
 
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
   // ★ 全端點健康檢查 ★
   const HEALTH_ENDPOINTS = [
     { key: 'firestore', label: 'DB' },
@@ -787,19 +789,36 @@ const handleSaveAndPublish = async () => {
             <h1 className="app__header-title">智能排班系統</h1>
           </div>
           <div className="app__header-right">
-            {/* ★ 系統連線狀態指示燈 (全端點) ★ */}
-            <div className="app__status-group">
-              {HEALTH_ENDPOINTS.map(ep => {
-                const s = endpointStatus[ep.key];
-                const color = s ? s.color : 'gray';
-                const reason = s ? s.reason : '檢測中...';
-                return (
-                  <div key={ep.key} className="app__status-item" title={reason}>
-                    <span className={`app__status-dot app__status-dot--${color}`}></span>
-                    <span className="app__status-label">{ep.label}</span>
+            {/* ★ 系統連線狀態 — 下拉選單 ★ */}
+            <div className="app__status-dropdown-wrapper">
+              <button className="app__status-trigger" onClick={() => setShowStatusDropdown(prev => !prev)}>
+                {HEALTH_ENDPOINTS.map(ep => {
+                  const s = endpointStatus[ep.key];
+                  const color = s ? s.color : 'gray';
+                  return <span key={ep.key} className={`app__status-dot app__status-dot--${color}`}></span>;
+                })}
+                <span className="app__status-label">API</span>
+              </button>
+              {showStatusDropdown && (
+                <>
+                  <div className="app__status-backdrop" onClick={() => setShowStatusDropdown(false)} />
+                  <div className="app__status-dropdown">
+                    <div className="app__status-dropdown-title">系統 API 健康狀態</div>
+                    {HEALTH_ENDPOINTS.map(ep => {
+                      const s = endpointStatus[ep.key];
+                      const color = s ? s.color : 'gray';
+                      const reason = s ? s.reason : '檢測中...';
+                      return (
+                        <div key={ep.key} className="app__status-dropdown-row">
+                          <span className={`app__status-dot app__status-dot--${color}`}></span>
+                          <span className="app__status-dropdown-label">{ep.label}</span>
+                          <span className="app__status-dropdown-reason">{reason}</span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </>
+              )}
             </div>
             <span className="app__header-user"><Hand size={18} /> {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
             {currentUser.role === 'admin' && (
