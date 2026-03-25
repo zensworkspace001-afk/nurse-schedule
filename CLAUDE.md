@@ -13,6 +13,8 @@ npm run preview      # Preview production build
 npm run electron:build  # Build desktop app → dist-electron/
 ```
 
+There are **no tests** configured in this project. No test runner or test files exist.
+
 Dev server proxies `/api/*` requests to `https://nurse-schedule-bachelor.vercel.app` (configured in `vite.config.js`), so local frontend connects to the production Vercel serverless backend.
 
 ## Environment Variables
@@ -94,3 +96,11 @@ Three-layer security: (1) frontend route guard on session token, (2) zero-trust 
 ## Deployment
 
 Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron and rewrites all `/api/*` routes plus SPA fallback to `index.html`.
+
+### Legacy `server/` Directory
+
+The `server/` folder contains a legacy local Express dev server (port 3001) backed by a JSON file (`db.json`). This is **not used in production** — it predates the Vercel serverless + Firebase architecture. Ignore it for new development.
+
+## Linting Notes
+
+ESLint flat config (`eslint.config.js`) has a custom `no-unused-vars` rule: variables starting with an uppercase letter or `_` are ignored (`varsIgnorePattern: '^[A-Z_]'`). This allows unused React component imports (e.g. icon components passed as props) and intentionally unused `_` variables.

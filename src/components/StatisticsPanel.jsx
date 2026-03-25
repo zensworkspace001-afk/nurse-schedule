@@ -220,7 +220,8 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
               const timeoutId = setTimeout(() => controller.abort(), 8000);
 
               const opts = { method: api.method, signal: controller.signal, headers: {} };
-              if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+              const isExternal = api.url.startsWith('http');
+              if (token && !isExternal) opts.headers['Authorization'] = `Bearer ${token}`;
               if (api.method === 'POST') opts.headers['Content-Type'] = 'application/json';
               // 發送最小 body 讓伺服器回應（不執行實際業務）
               if (api.method === 'POST') opts.body = JSON.stringify({ healthCheck: true });
