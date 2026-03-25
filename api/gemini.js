@@ -1,18 +1,39 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import admin from 'firebase-admin';
+
+// 初始化 Firebase Admin (確保只初始化一次)
+if (!admin.apps.length) {
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (privateKey) {
+    privateKey = privateKey.replace(/^"|"$/g, '');
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: privateKey,
+    }),
+  });
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: '只允許 POST 請求' });
   }
 
-  // ★★★ 新增：資安守衛 - 檢查是否有帶合法的 Token ★★★
+  // ★★★ 資安守衛：驗證 Firebase Token 真實性 ★★★
   const authHeader = req.headers.authorization;
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    console.warn('⚠️ 攔截到未經授權的 API 攻擊請求');
-    return res.status(401).json({ error: '未經授權：缺少登入憑證，拒絕提供 AI 服務' });
+    return res.status(401).json({ error: '未經授權：缺少登入憑證' });
   }
-  // (註：在最嚴格的商業環境中，這裡還會引入 firebase-admin 來解密驗證這串 Token 是否造假，
-  // 但目前只要檢查有攜帶登入後才拿得到的 Bearer Token，就足以擋掉 99% 的外部盲目攻擊腳本了。)
+  try {
+    const token = authHeader.split('Bearer ')[1];
+    await admin.auth().verifyIdToken(token);
+  } catch (err) {
+    console.warn('⚠️ 攔截到未經授權的 AI API 請求');
+    return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -32,6 +53,6 @@ export default async function handler(req, res) {
     
   } catch (error) {
     console.error('Gemini API 錯誤:', error);
-    return res.status(500).json({ error: error.message || 'AI 伺服器處理失敗' });
+    return res.status(500).json({ error: 'AI 伺服器處理失敗' });
   }
 }

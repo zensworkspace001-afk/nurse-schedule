@@ -39,8 +39,7 @@ export default async function handler(req, res) {
         
         // 4. 計算卡住的時間 (有沒有超過 24 小時？)
         const lastUpdated = turnData.updatedAt.toDate();
-        const now = new Date();
-        const hoursDiff = (now - lastUpdated) / (1000 * 60 * 60);
+        const hoursDiff = (new Date() - lastUpdated) / (1000 * 60 * 60);
 
         if (hoursDiff < 24) {
             return res.status(200).json({ message: `目前輪到 ${activeStaffId}，才過了 ${hoursDiff.toFixed(1)} 小時，繼續等待。` });
@@ -66,7 +65,8 @@ export default async function handler(req, res) {
         
         // 假設你有內部 API 可以直接呼叫發信
         const adminEmail = "zensworkspace001@gmail.com"; // 替換成護理長信箱
-        const mailRes = await fetch(`https://${req.headers.host}/api/sendEmail`, {
+        const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || 'nurse-schedule-bachelor.vercel.app';
+        const mailRes = await fetch(`https://${baseUrl}/api/sendEmail`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -86,6 +86,6 @@ export default async function handler(req, res) {
 
     } catch (error) {
         console.error("巡邏機器人發生錯誤:", error);
-        return res.status(500).json({ error: error.message });
+        return res.status(500).json({ error: '巡邏機器人發生錯誤' });
     }
 }

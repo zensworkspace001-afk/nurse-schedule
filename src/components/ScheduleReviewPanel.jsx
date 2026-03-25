@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Banknote, FileDown, Settings, X } from 'lucide-react';
-import { updateStaffSchedule, saveArchiveReport, backupScheduleToArchive } from '../api/database';
+import { auth, updateStaffSchedule, saveArchiveReport, backupScheduleToArchive } from '../api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from '../constants';
 import './ScheduleReviewPanel.css';
 
@@ -346,7 +346,10 @@ const handleExportExcel = async () => {
               ? `/api/auto-settle?targetDate=${testDate}` 
               : '/api/auto-settle?force=true';
           
-          const response = await fetch(url);
+          const idToken = await auth.currentUser.getIdToken();
+          const response = await fetch(url, {
+              headers: { 'Authorization': `Bearer ${idToken}` }
+          });
           const data = await response.json();
           
           if (response.ok) {

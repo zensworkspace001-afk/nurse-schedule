@@ -15,8 +15,24 @@ if (!admin.apps.length) {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: '只允許 POST 請求' });
 
+  // ★★★ 資安守衛：驗證 Firebase Token + 管理員身份 ★★★
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '未經授權：缺少登入憑證' });
+  }
   try {
-    const { staffList } = req.body; 
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    if (decodedToken.email !== 'admin@hospital.com') {
+      return res.status(403).json({ error: '權限不足：只有管理員能執行此操作' });
+    }
+  } catch (err) {
+    console.warn('⚠️ 攔截到未經授權的帳號同步請求');
+    return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
+  }
+
+  try {
+    const { staffList } = req.body;
     
     if (!staffList || !Array.isArray(staffList)) {
         return res.status(400).json({ error: '無效的名單格式' });
@@ -59,6 +75,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("API 崩潰:", error);
-    return res.status(500).json({ error: "伺服器發生錯誤", details: error.message });
+    return res.status(500).json({ error: "伺服器發生錯誤" });
   }
 }

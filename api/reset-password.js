@@ -67,6 +67,6 @@ export default async function handler(req, res) {
     if (error.code === 'auth/user-not-found') {
         return res.status(404).json({ error: '在驗證庫中找不到該員工，可能尚未啟用帳號。' });
     }
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: '伺服器內部錯誤' });
   }
 }

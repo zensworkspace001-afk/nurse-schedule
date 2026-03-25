@@ -153,9 +153,13 @@ const handleSave = async () => {
 
     // 2. 偷偷在背景呼叫 Vercel API，幫大家建帳號！
     try {
+        const token = await auth.currentUser.getIdToken();
         const response = await fetch('/api/sync-accounts', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
             body: JSON.stringify({ staffList: localStaff })
         });
 

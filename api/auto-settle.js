@@ -1,26 +1,50 @@
 import admin from 'firebase-admin';
 
-export default async function handler(req, res) {
-  try {
-    // 1. 初始化 Firebase Admin (保持原本的寫法)
-    if (!admin.apps.length) {
-      if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-        return res.status(500).json({ error: "❌ 找不到環境變數 FIREBASE_SERVICE_ACCOUNT" });
-      }
-      let serviceAccount;
-      try {
-        serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      } catch (e) {
-        return res.status(500).json({ error: "❌ JSON 格式解析失敗", details: e.message });
-      }
-      if (serviceAccount.private_key) {
-         serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-      }
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount)
-      });
+// 初始化 Firebase Admin (確保只初始化一次)
+if (!admin.apps.length) {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    let serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    if (serviceAccount.private_key) {
+       serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
     }
-    
+    admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+  } else {
+    let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+    if (privateKey) {
+      privateKey = privateKey.replace(/^"|"$/g, '');
+      privateKey = privateKey.replace(/\\n/g, '\n');
+    }
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: privateKey,
+      }),
+    });
+  }
+}
+
+export default async function handler(req, res) {
+  // ★★★ 資安守衛：雙軌驗證 (CRON_SECRET 或 Firebase Admin Token) ★★★
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '未經授權：缺少登入憑證' });
+  }
+  const token = authHeader.split('Bearer ')[1];
+  const isCronCall = token === process.env.CRON_SECRET;
+  if (!isCronCall) {
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(token);
+      if (decodedToken.email !== 'admin@hospital.com') {
+        return res.status(403).json({ error: '權限不足：只有管理員能執行此操作' });
+      }
+    } catch (err) {
+      console.warn('⚠️ 攔截到未經授權的結算請求');
+      return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
+    }
+  }
+
+  try {
     const db = admin.firestore();
 
     // ==========================================
@@ -95,6 +119,6 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error("❌ 伺服器崩潰:", error);
-    return res.status(500).json({ error: "❌ 伺服器執行時發生錯誤", details: error.message });
+    return res.status(500).json({ error: "伺服器執行時發生錯誤" });
   }
 }

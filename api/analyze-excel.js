@@ -1,5 +1,22 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import busboy from 'busboy';
+import admin from 'firebase-admin';
+
+// 初始化 Firebase Admin (確保只初始化一次)
+if (!admin.apps.length) {
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (privateKey) {
+    privateKey = privateKey.replace(/^"|"$/g, '');
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: privateKey,
+    }),
+  });
+}
 
 export const config = {
   api: { bodyParser: false },
@@ -7,6 +24,19 @@ export const config = {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: '只允許 POST' });
+
+  // ★★★ 資安守衛：驗證 Firebase Token ★★★
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: '未經授權：缺少登入憑證' });
+  }
+  try {
+    const token = authHeader.split('Bearer ')[1];
+    await admin.auth().verifyIdToken(token);
+  } catch (err) {
+    console.warn('⚠️ 攔截到未經授權的 Excel 分析請求');
+    return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
+  }
 
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -74,7 +104,7 @@ ${fileContent}
     // ★ 現在所有錯誤都能在這裡被接住並印出
     console.error("❌ analyze-excel 完整錯誤:", err);
     return res.status(500).json({
-      error: '伺服器錯誤：' + (err.message || '未知錯誤')
+      error: '伺服器錯誤'
     });
   }
 }
