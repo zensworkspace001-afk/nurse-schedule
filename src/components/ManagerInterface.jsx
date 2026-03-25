@@ -130,15 +130,17 @@ const ManagerInterface = ({
               } />
               
               <Route path="/publish" element={
-                <PublishPanel 
+                <PublishPanel
                    staffData={staffData}
-                   violations={violations} scheduleRisks={scheduleRisks} 
+                   violations={violations} scheduleRisks={scheduleRisks}
                    selectedYear={selectedYear} selectedMonth={selectedMonth}
-                   shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+                   shiftOptions={shiftOptions} setShiftOptions={setShiftOptions}
                    publicHolidays={publicHolidays}
-                   finalizedSchedule={finalizedSchedule} 
+                   finalizedSchedule={finalizedSchedule}
                    setFinalizedSchedule={setFinalizedSchedule}
                    onPushToHistory={onPushToHistory}
+                   calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
+                   healthStats={healthStats}
                 />
               } />
 

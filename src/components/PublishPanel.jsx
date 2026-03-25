@@ -1,12 +1,13 @@
 import React from 'react';
-import { Megaphone, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
+import { Megaphone, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles, Rocket } from 'lucide-react';
 import { updateStaffSchedule } from '../api/database';
 import './PublishPanel.css';
 
 const PublishPanel = ({
     staffData, violations, scheduleRisks,
     selectedYear, selectedMonth, shiftOptions,
-    publicHolidays, finalizedSchedule, setFinalizedSchedule,onPushToHistory // 👈 補上這行
+    publicHolidays, finalizedSchedule, setFinalizedSchedule, onPushToHistory,
+    calculateAndNotifyNextStaff, healthStats
 }) => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
@@ -127,6 +128,14 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
              </div>
 
            <div className="publish__header-actions">
+                 <button onClick={() => {
+                     if (!finalizedSchedule || Object.keys(finalizedSchedule).length === 0) return alert("⚠️ 尚無發布的班表，請先在排班工作桌發布！");
+                     if (!window.confirm("確定要啟動 AI 接力選班嗎？\n\n系統將自動計算最需要優先挑選的護理人員，並發送 Email 通知。")) return;
+                     if (typeof calculateAndNotifyNextStaff === 'function') {
+                         calculateAndNotifyNextStaff(finalizedSchedule, healthStats || [], selectedYear, selectedMonth);
+                         alert("🚀 AI 接力選班已啟動！正在背景發送通知...");
+                     }
+                 }} className="publish__btn publish__btn--launch"><Rocket size={14} /> 啟動 AI 接力選班</button>
                  <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all"><AlertTriangle size={14} /> 全部拔除釋出</button>
                  <button onClick={onPushToHistory} className="publish__btn publish__btn--archive">
                      <ArrowRight size={14} /> 結算並封存至歷史區

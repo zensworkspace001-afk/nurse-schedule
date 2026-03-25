@@ -228,7 +228,9 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   };
 
 
-  const filteredOptions = selectedShiftType === 'ALL' ? aiSlots : aiSlots.filter(opt => opt.shift === selectedShiftType);
+  // ★ 未認領的員工：只顯示未被選走的班表；已認領的員工：可查看全部
+  const visibleSlots = hasClaimed ? aiSlots : aiSlots.filter(opt => !opt.isClaimed);
+  const filteredOptions = selectedShiftType === 'ALL' ? visibleSlots : visibleSlots.filter(opt => opt.shift === selectedShiftType);
 
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
   const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = s); setPreviewSchedule(map); setCurrentStep(3); };

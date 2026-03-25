@@ -59,6 +59,15 @@
   background: #6c757d;
 }
 
+.publish__btn--launch {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  font-weight: bold;
+}
+.publish__btn--launch:hover {
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+}
+
 .publish__btn--unassign-all {
   padding: 0.5rem 1rem;
   background: #e74c3c;
