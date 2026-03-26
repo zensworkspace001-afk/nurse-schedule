@@ -73,6 +73,8 @@ Vercel serverless functions:
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
 | `cron/check-timeout.js` | Runs daily (Vercel Cron `0 0 * * *`); auto-advances agentic turn after 24h timeout |
 
+**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs).
+
 ### Firestore Schema
 
 ```
