@@ -458,121 +458,30 @@ const handleLogout = () => {
   };
 
   // ★ 核心功能 2：AI 動態決策下一位優先選班者
-  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth) => {
+  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth, finishedStaffId = null) => {
       try {
-          // 0. 從 Firestore 讀取最新員工資料，避免 stale closure
-          const staffSnap = await getDoc(doc(db, 'NurseApp', 'Staff'));
-          const freshStaffData = staffSnap.exists() ? (staffSnap.data().staffData || staffData) : staffData;
-
-          // 1. 抓取「已經選過」的黑名單 (已完賽標記)
-          const progressRef = doc(db, "SelectionProgress", `${currentYear}_${currentMonth}`);
-          const snap = await getDoc(progressRef);
-          const submittedList = snap.exists() ? (snap.data().submitted_staff || []) : [];
-
-          // 2. 篩選出「尚未選班」的活躍員工 (排除已在班表中的人 + 黑名單 + 無效員工)
-          const scheduleKeys = currentSchedule ? Object.keys(currentSchedule) : [];
-          const unassignedStaff = freshStaffData.filter(s =>
-              (s.is_active === true || String(s.is_active).toLowerCase() === 'true') &&
-              s.staff_id &&
-              s.staff_id !== 'admin' &&
-              !s.staff_id.startsWith('D') &&
-              (!s.leave_status || s.leave_status === 'None') &&
-              !submittedList.includes(s.staff_id) &&
-              !scheduleKeys.includes(s.staff_id)
-          );
-
-          // 3. 終止條件：所有人都選完了！
-          if (unassignedStaff.length === 0) {
-              const adminEmail = freshStaffData.find(s => s.staff_id === 'admin')?.email || 'admin@hospital.com';
-              await sendSystemEmail(adminEmail, `✅ ${currentMonth}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
-              return;
-          }
-
-          // 4. 準備大數據給 AI (給定尚未選班者的歷史健康度、OT、夜班餘額)
-          const scores = statsData.map(stat => stat.score || 100);
-          const average = scores.length > 0 ? Math.round(scores.reduce((sum, val) => sum + val, 0) / scores.length) : 100;
-
-          let aiPrompt = `【自動接力選班決策】\n團隊歷史平均健康度: ${average}分\n`;
-          
-          // ★ 新增：如果護理長有設定條件，強制寫入最高指導原則
-          if (priorityConfig && priorityConfig.relayInstruction) {
-              aiPrompt += `[管理員最高指導原則]：${priorityConfig.relayInstruction}\n\n`;
-          }
-
- aiPrompt += `尚未選班之候選人現況：\n`;
-          unassignedStaff.forEach(staff => {
-              // 1. 提取所有員工管理面板的特徵
-              const historyScore = statsData.find(s => s.staff_id === staff.staff_id)?.score || 100;
-              const gender = staff.gender || '女'; 
-              const level = staff.level || 'N0';
-              const isLeader = (staff.is_leader === true || staff.is_leader === 'True') ? '是' : '否';
-              const isPregnant = (staff.is_pregnant_or_nursing === true || staff.is_pregnant_or_nursing === 'True') ? '是' : '否';
-              const canNight = (staff.can_night_shift === false || staff.can_night_shift === 'false') ? '否' : '是';
-              const workHours = staff.special_status === 'BiWeekly' ? '雙週變形' : '標準';
-              const leaveStatus = staff.leave_status === 'None' ? '無' : staff.leave_status;
-              
-              // 2. 組合成超詳細的 AI 認知字串
-             // ✅ 替換為這行：
-aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${level} | 孕/哺乳:${isPregnant} | 組長:${isLeader} | 可上夜班:${canNight} | 工時制:${workHours} | 特殊狀態:${leaveStatus} | 年資:${staff.tenure_years || 0}年 | 歷史健康度(疲勞值):${historyScore}分 | 積假餘額:${staff.accumulated_ot} | 夜班結餘:${staff.night_shift_balance}\n`;
-          });
-
-         aiPrompt += `\n請根據上述數據與原則，選出「最符合條件、最需要優先選班」的 1 位員工。
-⚠️ 【最高系統原則】：若名單中有「孕/哺乳:是」的員工，無論其疲勞度為何，【必須】讓她們絕對優先選班，以確保她們能選到合法之日班班表！
-若無孕婦且無特殊指導原則，則預設找最疲勞者。
-請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
-          // 5. 呼叫 Gemini 進行決策
           const token = await auth.currentUser.getIdToken();
-          const response = await fetch('/api/gemini', {
+          const response = await fetch('/api/auto-relay', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ prompt: aiPrompt })
+              headers: { 
+                  'Content-Type': 'application/json', 
+                  'Authorization': `Bearer ${token}` 
+              },
+              body: JSON.stringify({ 
+                  year: currentYear, 
+                  month: currentMonth, 
+                  currentSchedule, 
+                  statsData,
+                  finishedStaffId
+              })
           });
+
           const data = await response.json();
-          if (!response.ok || !data.text) {
-              throw new Error(data.error || 'AI 回應異常');
+          if (!response.ok) {
+              throw new Error(data.error || 'AI 接力 API 異常');
           }
-          const text = data.text.replace(/```json|```/g, '').trim();
-          const decision = JSON.parse(text);
-
-          // ★ 關鍵驗證：確認 AI 回傳的 staff_id 確實存在於候選人名單中
-          const validCandidate = unassignedStaff.find(s => s.staff_id === decision.selected_staff_id);
-          if (!validCandidate) {
-              console.warn("⚠️ AI 回傳的 staff_id 不在候選名單中:", decision.selected_staff_id);
-              // 嘗試模糊匹配 (AI 可能回傳名字而非 ID)
-              const fuzzyMatch = unassignedStaff.find(s =>
-                  s.name === decision.selected_staff_id ||
-                  decision.selected_staff_id?.includes(s.staff_id) ||
-                  decision.selected_staff_id?.includes(s.name)
-              );
-              if (fuzzyMatch) {
-                  decision.selected_staff_id = fuzzyMatch.staff_id;
-              } else {
-                  // 若完全無法匹配，預設選第一位候選人
-                  decision.selected_staff_id = unassignedStaff[0].staff_id;
-                  decision.reason = `(系統自動修正) AI 回傳無效 ID，自動選擇第一位候選人：${unassignedStaff[0].name}`;
-              }
-          }
-
-          // 6. 寫入 AI Data Log 背景紀錄
-          await addDoc(collection(db, "AI_Decision_Logs"), {
-              timestamp: new Date(), year: currentYear, month: currentMonth,
-              selected_staff: decision.selected_staff_id, ai_logic: decision.reason, candidates_data: aiPrompt
-          });
-
-          // 7. 更新發球權狀態機
-          await setDoc(doc(db, "SelectionTurn", `${currentYear}_${currentMonth}`), {
-              active_staff_id: decision.selected_staff_id, updatedAt: new Date()
-          });
-
-          // 8. 抓取該員工 Email 並寄出通知
-          const targetStaff = freshStaffData.find(s => s.staff_id === decision.selected_staff_id);
-          if (targetStaff && targetStaff.email) {
-              await sendSystemEmail(
-                  targetStaff.email, 
-                  `🌟 ${targetStaff.name} 優先選班通知！現在輪到您了！`, 
-                  `<h3>親愛的 ${targetStaff.name}：</h3><p>系統已開放您的選班權限！</p><p><strong>🤖 系統判斷讓您先選的理由：</strong><br/>${decision.reason}</p><p>請盡速登入系統完成選班，以利下一位同仁進行，謝謝！</p>`
-              );
-          }
+          
+          if (import.meta.env.DEV) console.log("AI 接力成功:", data);
 
       } catch (error) {
           console.error("AI 決策接力失敗:", error);
@@ -638,15 +547,10 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
 // 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
         await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
         
-        // 🌟 ★★★ 關鍵修復：把該員工加入黑名單，並觸發 AI 找下一個人 ★★★
+        // 🌟 ★★★ 關鍵修復：呼叫後端 API 標記完成並自動找下一個人 ★★★
         try {
-            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
-            await setDoc(progressRef, {
-                submitted_staff: arrayUnion(result.staffId)
-            }, { merge: true });
-            
             // 背景呼叫 AI，不卡住畫面
-            await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
+            await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month, result.staffId);
         } catch (e) {
             console.error("交棒失敗:", e);
         }

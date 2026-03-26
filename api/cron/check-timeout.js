@@ -70,13 +70,33 @@ export default async function handler(req, res) {
         // B. 清空雷達
         await turnRef.set({ active_staff_id: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
-        // C. 呼叫你原本寫好的 Gemini 邏輯去選下一個人 (如果你的 Gemini 邏輯有寫成獨立的後端 API 的話，可以直接 fetch)
-        // 這裡為了簡化，我們先通知管理員，並讓後台準備啟動下一輪
-        
-        // 假設你有內部 API 可以直接呼叫發信
-        const adminEmail = "zensworkspace001@gmail.com"; // 替換成護理長信箱
+        // C. 呼叫自動接力引擎，選出下一位
         const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || 'nurse-schedule-bachelor.vercel.app';
-        const mailRes = await fetch(`https://${baseUrl}/api/sendEmail`, {
+        
+        // 抓取目前班表與統計數據 (為了給 AI 決策)
+        const scheduleSnap = await db.collection('Schedules').doc(`${currentYear}_${currentMonth}`).get();
+        const currentSchedule = scheduleSnap.exists ? (scheduleSnap.data().finalizedSchedule || {}) : {};
+        
+        // 這裡我們不帶 statsData，讓 API 自己去算或使用預設 (或者我們也可以從 NurseApp/Staff 抓)
+        
+        const relayRes = await fetch(`https://${baseUrl}/api/auto-relay`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${process.env.CRON_SECRET}`
+            },
+            body: JSON.stringify({ 
+                year: currentYear, 
+                month: currentMonth, 
+                currentSchedule 
+            })
+        });
+
+        const relayData = await relayRes.json();
+
+        // D. 通知管理員已強制跳過
+        const adminEmail = "zensworkspace001@gmail.com"; 
+        await fetch(`https://${baseUrl}/api/sendEmail`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -85,13 +105,13 @@ export default async function handler(req, res) {
             body: JSON.stringify({ 
                 to: adminEmail, 
                 subject: `🚨 AI 系統回報：已強制跳過逾時員工 ${activeStaffId}`, 
-                html: `<p>護理長您好：</p><p>員工 <b>${activeStaffId}</b> 已經超過 24 小時未選班。<br/>系統已自動將其跳過，請您登入系統點擊「啟動接力」將發球權交給下一位同仁。</p>` 
+                html: `<p>護理長您好：</p><p>員工 <b>${activeStaffId}</b> 已經超過 24 小時未選班。<br/>系統已自動將其跳過，並已自動啟動 AI 接力將發球權交給下一位同仁：<b>${relayData.selected_staff_id || '尋找中'}</b>。</p>` 
             })
         });
 
         return res.status(200).json({ 
             success: true, 
-            message: `已成功跳過 ${activeStaffId} 並通知管理員。` 
+            message: `已成功跳過 ${activeStaffId} 並自動交棒給 ${relayData.selected_staff_id}。` 
         });
 
     } catch (error) {
