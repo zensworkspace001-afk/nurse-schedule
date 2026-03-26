@@ -467,7 +467,7 @@ const handleLogout = () => {
 
           // 3. 終止條件：所有人都選完了！
           if (unassignedStaff.length === 0) {
-              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'your-admin-email@hospital.com';
+              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'admin@hospital.com';
               await sendSystemEmail(adminEmail, `✅ ${currentMonth}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
               return;
           }
@@ -541,6 +541,13 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
 
       } catch (error) {
           console.error("AI 決策接力失敗:", error);
+          // 通知管理員接力失敗，避免靜默卡住
+          try {
+              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'admin@hospital.com';
+              await sendSystemEmail(adminEmail, `⚠️ ${currentMonth}月 AI接力選班失敗`, `<h3>報告護理長：</h3><p>AI自動接力選班引擎發生錯誤，請登入系統手動啟動接力或指定下一位選班人員。</p><p><strong>錯誤訊息：</strong>${error.message || error}</p>`);
+          } catch (emailErr) {
+              console.error("通知管理員失敗:", emailErr);
+          }
       }
   };
 // ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★
@@ -607,25 +614,6 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
             await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
         } catch (e) {
             console.error("交棒失敗:", e);
-        }
-        // =========================================================
-        // 🌟 關鍵修復：員工送出後，將其鎖定，並立刻觸發接力棒交給下一個人！
-        // =========================================================
-        try {
-            // A. 把這名員工加入本月的「已完賽黑名單」，確保 AI 之後不會再選到他
-            const progressRef = doc(db, "SelectionProgress", `${publishedDate.year}_${publishedDate.month}`);
-            await setDoc(progressRef, {
-                submitted_staff: arrayUnion(result.staffId) 
-            }, { merge: true });
-
-            // B. 背景呼叫 AI 決策引擎 (尋找下一位最需要補血的人並寄信)
-            if (typeof calculateAndNotifyNextStaff === 'function') {
-                calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month);
-            } else {
-                console.warn("⚠️ 找不到 calculateAndNotifyNextStaff 函式，無法自動交棒。");
-            }
-        } catch (e) {
-            console.error("交棒處理失敗:", e);
         }
         // =========================================================
 
