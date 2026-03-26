@@ -135,11 +135,9 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
   // 👇👇👇 ★★★ 1. 把你的「雷達監聽與跳過邏輯」貼在這裡 ★★★ 👇👇👇
   const [activeTurn, setActiveTurn] = useState(null);
 
-  // 📡 即時監聽「目前輪到誰選班」
+  // 📡 即時監聽「目前輪到誰選班」(使用 props 的 selectedYear/Month，與員工端一致)
   useEffect(() => {
-      const y = Number(localStorage.getItem('selectedYear')) || 2026;
-      const m = Number(localStorage.getItem('selectedMonth')) || 2;
-      const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
+      const turnRef = doc(db, "SelectionTurn", `${selectedYear}_${selectedMonth}`);
 
       const unsub = onSnapshot(turnRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -149,7 +147,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
           }
       });
       return () => unsub();
-  }, []);
+  }, [selectedYear, selectedMonth]);
 
   // ⏭️ 強制跳過目前卡住的員工
   const handleForceSkip = async () => {
@@ -161,23 +159,20 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
       if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？\n\n這將剝奪他本回合的優先選班權，並立刻讓 AI 尋找下一位遞補者寄發 Email！`)) return;
 
       try {
-          const y = Number(localStorage.getItem('selectedYear')) || 2026;
-          const m = Number(localStorage.getItem('selectedMonth')) || 2;
-
           // 1. 將該名員工打入冷宮 (加入已送出黑名單)
-          const progressRef = doc(db, "SelectionProgress", `${y}_${m}`);
+          const progressRef = doc(db, "SelectionProgress", `${selectedYear}_${selectedMonth}`);
           await setDoc(progressRef, {
               submitted_staff: arrayUnion(targetStaffId)
           }, { merge: true });
 
           // 2. 清除雷達畫面
-          const turnRef = doc(db, "SelectionTurn", `${y}_${m}`);
+          const turnRef = doc(db, "SelectionTurn", `${selectedYear}_${selectedMonth}`);
           await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
 
           // 3. 呼叫 AI 找下一個人
           alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
           if (typeof calculateAndNotifyNextStaff === 'function') {
-              await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, y, m);
+              await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, selectedYear, selectedMonth);
           }
       } catch (error) {
           console.error("強制跳過失敗:", error);
@@ -710,11 +705,9 @@ let combinedData = "";
                              <button
                                 onClick={async () => {
                                    if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
-                                       const y = Number(localStorage.getItem('selectedYear')) || 2026;
-                                       const m = Number(localStorage.getItem('selectedMonth')) || 2;
                                        if (typeof calculateAndNotifyNextStaff === 'function') {
                                            alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
-                                           await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, y, m);
+                                           await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, selectedYear, selectedMonth);
                                        }
                                    }
                                 }}
