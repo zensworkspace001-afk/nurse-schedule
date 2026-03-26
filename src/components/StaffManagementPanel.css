@@ -2,6 +2,11 @@
    StaffManagementPanel — BEM-style CSS
    ========================================================================== */
 
+@keyframes panelFadeIn {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* --- Root container --- */
 .staff-mgmt {
   background: white;
@@ -9,6 +14,7 @@
   padding: 2rem;
   display: flex;
   flex-direction: column;
+  animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* --- Header bar --- */
@@ -141,6 +147,12 @@
   border: none;
   border-radius: 8px;
   cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.staff-mgmt__btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
 
 .staff-mgmt__btn--import {
@@ -167,8 +179,9 @@
 }
 
 .staff-mgmt__btn--save-clean {
-  background: #ccc;
-  cursor: not-allowed;
+  background: #27ae60;
+  cursor: default;
+  opacity: 0.85;
 }
 
 /* --- Table wrapper (scrollable area) --- */

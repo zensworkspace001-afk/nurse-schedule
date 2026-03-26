@@ -2,12 +2,18 @@
    ScheduleReviewPanel – BEM-styled external CSS
    ========================================================== */
 
+@keyframes panelFadeIn {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* --- Root container --- */
 .review {
   display: flex;
   gap: 20px;
   flex-direction: column;
   position: relative;
+  animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* --- Header / toolbar --- */
@@ -56,7 +62,7 @@
   border: 1px solid #ccc;
   font-weight: bold;
   text-align: center;
-  color: #f1f4f8;
+  color: #2c3e50;
 }
 
 .review__year-separator {
@@ -69,7 +75,7 @@
   border: 1px solid #ccc;
   font-weight: bold;
   cursor: pointer;
-  color: #f7f9fc;
+  color: #2c3e50;
 }
 
 .review__month-separator {

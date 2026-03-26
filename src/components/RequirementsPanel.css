@@ -2,6 +2,11 @@
    RequirementsPanel Styles
    ========================================================================== */
 
+@keyframes panelFadeIn {
+  0%   { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* --- Container --- */
 .requirements-panel {
   background: white;
@@ -10,6 +15,7 @@
   flex: 1; /* 🌟 讓人力需求面板撐滿剩餘高度 */
   display: flex;
   flex-direction: column;
+  animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* --- Title --- */
