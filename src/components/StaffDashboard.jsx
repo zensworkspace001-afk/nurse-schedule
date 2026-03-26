@@ -180,8 +180,11 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   // 防呆 4: AI 接力選班引擎鎖定 (最核心！)
   // 若引擎有指定人 (active_staff_id 有值)，且那個人不是我，我就不能選！
   // ★ 但已經認領過的員工不受此限制，允許他們查看自己的班表
-  if (!hasClaimed && activeTurn && activeTurn.active_staff_id && activeTurn.active_staff_id !== currentUser.id) {
-      const activeStaffName = staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id;
+  const activeStaffIdSafe = activeTurn?.active_staff_id ? String(activeTurn.active_staff_id).trim().toUpperCase() : null;
+  const currentUserIdSafe = currentUser?.id ? String(currentUser.id).trim().toUpperCase() : null;
+
+  if (!hasClaimed && activeStaffIdSafe && currentUserIdSafe && activeStaffIdSafe !== currentUserIdSafe) {
+      const activeStaffName = staffData.find(s => String(s.staff_id).trim().toUpperCase() === activeStaffIdSafe)?.name || activeTurn.active_staff_id;
       return (
           <div className="dashboard__guard">
               <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
