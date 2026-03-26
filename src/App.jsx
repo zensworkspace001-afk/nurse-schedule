@@ -163,7 +163,12 @@ const [historyYear, setHistoryYear] = useState(() => {
           const res = await fetch(ep.url, opts);
           clearTimeout(tid);
           const ms = Date.now() - t0;
-          results[ep.key] = { color: res.ok ? (ms < 3000 ? 'green' : 'yellow') : 'yellow', reason: `${ep.label} ${res.ok ? '正常' : 'HTTP ' + res.status} (${ms}ms)` };
+          if (res.ok) {
+            results[ep.key] = { color: ms < 3000 ? 'green' : 'yellow', reason: `${ep.label} 正常 (${ms}ms)` };
+          } else {
+            const body = await res.json().catch(() => ({}));
+            results[ep.key] = { color: 'red', reason: `${ep.label} 異常${body.error ? '：' + body.error : ''} (${ms}ms)` };
+          }
         } catch (err) {
           const ms = Date.now() - t0;
           results[ep.key] = { color: 'red', reason: `${ep.label} ${err.name === 'AbortError' ? '逾時' : '失敗'} (${ms}ms)` };

@@ -28,9 +28,16 @@ export const config = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: '只允許 POST' });
 
-  // ★ 健康檢查快速回應 (此 API 預期 multipart，JSON 請求必為健康檢查)
+  // ★ 健康檢查：實際測試 Gemini Flash 連線 (此 API 預期 multipart，JSON 請求必為健康檢查)
   if (req.headers['content-type']?.includes('application/json')) {
-    return res.status(200).json({ ok: true, service: 'analyze-excel' });
+    try {
+      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+      await model.countTokens('ping');
+      return res.status(200).json({ ok: true, service: 'analyze-excel' });
+    } catch (err) {
+      return res.status(503).json({ ok: false, service: 'analyze-excel', error: err.message });
+    }
   }
 
   // ★ CSRF 防護

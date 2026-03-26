@@ -25,9 +25,14 @@ if (!admin.apps.length) {
 }
 
 export default async function handler(req, res) {
-  // ★ 健康檢查快速回應
+  // ★ 健康檢查：實際測試 Firebase Admin + Firestore 連線
   if (req.query?.healthCheck === 'true') {
-    return res.status(200).json({ ok: true, service: 'auto-settle' });
+    try {
+      await admin.firestore().collection('NurseApp').doc('Settings').get();
+      return res.status(200).json({ ok: true, service: 'auto-settle' });
+    } catch (err) {
+      return res.status(503).json({ ok: false, service: 'auto-settle', error: err.message });
+    }
   }
 
   // ★★★ 資安守衛：雙軌驗證 (CRON_SECRET 或 Firebase Admin Token) ★★★

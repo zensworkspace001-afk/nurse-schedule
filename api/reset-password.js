@@ -28,9 +28,14 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: '只允許 POST 請求' });
   }
 
-  // ★ 健康檢查快速回應
+  // ★ 健康檢查：實際測試 Firebase Admin Auth 連線
   if (req.body?.healthCheck) {
-    return res.status(200).json({ ok: true, service: 'reset-password' });
+    try {
+      await admin.auth().listUsers(1);
+      return res.status(200).json({ ok: true, service: 'reset-password' });
+    } catch (err) {
+      return res.status(503).json({ ok: false, service: 'reset-password', error: err.message });
+    }
   }
 
   // ★ CSRF 防護

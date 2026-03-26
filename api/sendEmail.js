@@ -30,9 +30,14 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Method Not Allowed' });
     }
 
-    // ★ 健康檢查快速回應
+    // ★ 健康檢查：實際測試 Resend API 連線
     if (req.body?.healthCheck) {
-        return res.status(200).json({ ok: true, service: 'sendEmail' });
+        try {
+            await resend.apiKeys.list();
+            return res.status(200).json({ ok: true, service: 'sendEmail' });
+        } catch (err) {
+            return res.status(503).json({ ok: false, service: 'sendEmail', error: err.message });
+        }
     }
 
     // ★ CSRF 防護

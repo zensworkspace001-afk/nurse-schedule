@@ -13,9 +13,14 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
-    // ★ 健康檢查快速回應
+    // ★ 健康檢查：實際測試 Firestore 連線
     if (req.query?.healthCheck === 'true') {
-        return res.status(200).json({ ok: true, service: 'cron/check-timeout' });
+        try {
+            await db.collection('NurseApp').doc('Settings').get();
+            return res.status(200).json({ ok: true, service: 'cron/check-timeout' });
+        } catch (err) {
+            return res.status(503).json({ ok: false, service: 'cron/check-timeout', error: err.message });
+        }
     }
 
     // 2. 安全鎖：確保是 Vercel 的 Cron 系統來敲門，不是駭客亂點
