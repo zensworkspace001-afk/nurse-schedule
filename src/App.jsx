@@ -466,13 +466,17 @@ const handleLogout = () => {
           const snap = await getDoc(progressRef);
           const submittedList = snap.exists() ? (snap.data().submitted_staff || []) : [];
 
-          // 2. 篩選出「尚未選班」的活躍員工 (排除已在班表中的人 + 黑名單)
+          // 2. 篩選出「尚未選班」的活躍員工 (排除已在班表中的人 + 黑名單 + 無效員工)
           const scheduleKeys = currentSchedule ? Object.keys(currentSchedule) : [];
           const unassignedStaff = freshStaffData.filter(s =>
               s.is_active &&
+              s.staff_id &&
+              s.email &&
+              s.staff_id !== 'admin' &&
+              !s.staff_id.startsWith('D') &&
+              s.leave_status === 'None' &&
               !submittedList.includes(s.staff_id) &&
-              !scheduleKeys.includes(s.staff_id) &&
-              s.staff_id !== 'admin'
+              !scheduleKeys.includes(s.staff_id)
           );
 
           // 3. 終止條件：所有人都選完了！
