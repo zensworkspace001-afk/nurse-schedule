@@ -497,6 +497,9 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
               body: JSON.stringify({ prompt: aiPrompt })
           });
           const data = await response.json();
+          if (!response.ok || !data.text) {
+              throw new Error(data.error || 'AI 回應異常');
+          }
           const text = data.text.replace(/```json|```/g, '').trim();
           const decision = JSON.parse(text);
 

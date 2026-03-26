@@ -284,6 +284,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
             }
 
             const data = await response.json();
+            if (!data.text) throw new Error('AI 回應異常');
             const text = data.text.replace(/```json|```/g, '').trim();
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             if (!jsonMatch) throw new Error("JSON 格式錯誤");
