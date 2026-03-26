@@ -177,7 +177,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
           // 3. 呼叫 AI 找下一個人
           alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
           if (typeof calculateAndNotifyNextStaff === 'function') {
-              calculateAndNotifyNextStaff({}, healthStats, y, m);
+              await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, y, m);
           }
       } catch (error) {
           console.error("強制跳過失敗:", error);
