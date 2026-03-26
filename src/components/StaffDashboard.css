@@ -1,5 +1,5 @@
 /* ==========================================================================
-   StaffDashboard — BEM Stylesheet
+   StaffDashboard — BEM Stylesheet — Glassmorphism UI
    ========================================================================== */
 
 /* --- Lucide icon spin --- */
@@ -58,17 +58,20 @@
 .dashboard__loading {
   padding: 40px;
   text-align: center;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .dashboard__guard {
   padding: 3rem;
   text-align: center;
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   max-width: 500px;
   margin: 3rem auto;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -82,61 +85,61 @@
 }
 
 .dashboard__guard-title--inactive {
-  color: #c0392b;
+  color: #ff8a80;
   margin-bottom: 1rem;
 }
 
 .dashboard__guard-title--leave {
-  color: #f39c12;
+  color: #ffcc80;
   margin-bottom: 1rem;
 }
 
 .dashboard__guard-title--locked {
-  color: #2980b9;
+  color: #81d4fa;
   margin-bottom: 1rem;
   font-weight: bold;
 }
 
 .dashboard__guard-text {
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 1.1rem;
   line-height: 1.6;
 }
 
 .dashboard__guard-info {
-  color: #34495e;
+  color: rgba(255, 255, 255, 0.8);
   font-size: 1.1rem;
   line-height: 1.6;
   margin-bottom: 1.5rem;
-  background: #f8f9fa;
+  background: rgba(52, 152, 219, 0.15);
   padding: 15px;
   border-radius: 8px;
-  border-left: 4px solid #3498db;
+  border-left: 4px solid rgba(52, 152, 219, 0.6);
   text-align: left;
 }
 
 .dashboard__guard-highlight {
-  color: #e74c3c;
+  color: #ff8a80;
   font-weight: bold;
   font-size: 1.2rem;
 }
 
 .dashboard__guard-refresh-btn {
   padding: 12px 30px;
-  background: #667eea;
+  background: rgba(102, 126, 234, 0.5);
   color: white;
-  border: none;
+  border: 1px solid rgba(102, 126, 234, 0.4);
   border-radius: 50px;
   cursor: pointer;
   font-weight: bold;
   font-size: 1rem;
-  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
   transition: all 0.25s ease;
 }
 
 .dashboard__guard-refresh-btn:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.5);
+  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.4);
 }
 
 /* ==========================================================================
@@ -146,9 +149,12 @@
   padding: 2rem;
   max-width: 900px;
   margin: 0 auto;
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -319,14 +325,14 @@
   display: flex;
   justify-content: space-between;
   margin-bottom: 2rem;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 1rem;
   animation: dashFadeSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__step {
   font-weight: bold;
-  color: #ccc;
+  color: rgba(255, 255, 255, 0.35);
   padding: 6px 12px;
   border-radius: 20px;
   transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
@@ -334,8 +340,8 @@
 }
 
 .dashboard__step--active {
-  color: #667eea;
-  background: rgba(102, 126, 234, 0.08);
+  color: #81d4fa;
+  background: rgba(102, 126, 234, 0.15);
   animation: dashStepperPulse 2s ease 0.5s;
 }
 
@@ -356,75 +362,77 @@
 }
 
 .dashboard__greeting {
-  color: black;
+  color: #ffffff;
   font-weight: bold;
   margin: 0;
 }
 
 .dashboard__version-tag {
-  color: red;
+  color: #ff8a80;
 }
 
 .dashboard__pwd-btn {
-  background: #f8f9fa;
-  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   padding: 6px 12px;
   border-radius: 20px;
   cursor: pointer;
   font-size: 0.85rem;
-  color: #555;
+  color: rgba(255, 255, 255, 0.8);
   font-weight: bold;
   transition: all 0.25s ease;
 }
 
 .dashboard__pwd-btn:hover {
-  background: #e9ecef;
-  border-color: #adb5bd;
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.5);
   transform: translateY(-1px);
 }
 
 .dashboard__month-subtitle {
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 1rem;
   margin-top: 0;
 }
 
 .dashboard__month-highlight {
-  color: #667eea;
+  color: #81d4fa;
   font-weight: bold;
 }
 
 .dashboard__streak-info {
-  background: #e3f2fd;
+  background: rgba(52, 152, 219, 0.2);
+  border: 1px solid rgba(52, 152, 219, 0.3);
   padding: 10px;
   border-radius: 8px;
   display: inline-block;
   margin-bottom: 2rem;
   font-size: 0.9rem;
-  color: #0d47a1;
+  color: #81d4fa;
   margin-top: 1rem;
 }
 
 .dashboard__streak-warning {
-  color: red;
+  color: #ff8a80;
   font-weight: bold;
 }
 
 .dashboard__no-schedule {
   padding: 20px;
-  background: #fff3cd;
-  color: #856404;
+  background: rgba(255, 204, 0, 0.15);
+  color: #fff176;
   border-radius: 8px;
+  border: 1px solid rgba(255, 204, 0, 0.3);
 }
 
 /* --- Already claimed banner (step 1) --- */
 .dashboard__claimed-banner {
   padding: 25px;
-  background: #d4edda;
-  color: #155724;
+  background: rgba(39, 174, 96, 0.2);
+  color: #69f0ae;
   border-radius: 12px;
   margin-top: 20px;
-  border: 2px solid #c3e6cb;
+  border: 2px solid rgba(39, 174, 96, 0.4);
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
 }
 
@@ -439,21 +447,22 @@
 
 .dashboard__claimed-desc {
   margin-top: 10px;
-  color: #155724;
+  color: #69f0ae;
   font-weight: bold;
 }
 
 .dashboard__claimed-note {
   font-size: 0.9rem;
   margin-top: 5px;
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .dashboard__claimed-view-btn {
   margin-top: 15px;
   padding: 10px 25px;
-  background: #28a745;
+  background: rgba(40, 167, 69, 0.5);
   color: white;
-  border: none;
+  border: 1px solid rgba(40, 167, 69, 0.4);
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
@@ -461,7 +470,7 @@
 }
 
 .dashboard__claimed-view-btn:hover {
-  background: #218838;
+  background: rgba(40, 167, 69, 0.7);
   transform: translateY(-2px);
   box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
 }
@@ -469,7 +478,8 @@
 /* --- My Calendar (已認領班表月曆) --- */
 .dashboard__my-calendar {
   margin-top: 20px;
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
   padding: 15px;
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
@@ -481,7 +491,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: #155724;
+  color: #69f0ae;
 }
 
 .dashboard__my-calendar-grid {
@@ -494,7 +504,7 @@
   text-align: center;
   font-size: 0.75rem;
   font-weight: 600;
-  color: #555;
+  color: rgba(255, 255, 255, 0.6);
   padding: 4px 0;
 }
 
@@ -512,8 +522,8 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  background: #f0f0f0;
-  border: 1px solid #e0e0e0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   transition: transform 0.2s ease;
 }
 
@@ -524,7 +534,7 @@
 
 .dashboard__my-calendar-day {
   font-size: 0.7rem;
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .dashboard__my-calendar-shift {
@@ -533,47 +543,47 @@
 }
 
 .dashboard__my-calendar-cell--d {
-  background: #FFF8E1;
-  border-color: #FFD93D;
-  color: #b8860b;
+  background: rgba(255, 217, 61, 0.2);
+  border-color: rgba(255, 217, 61, 0.4);
+  color: #fff176;
 }
 
 .dashboard__my-calendar-cell--e {
-  background: #FCE4EC;
-  border-color: #FF6B9D;
-  color: #c2185b;
+  background: rgba(255, 107, 157, 0.2);
+  border-color: rgba(255, 107, 157, 0.4);
+  color: #f48fb1;
 }
 
 .dashboard__my-calendar-cell--n {
-  background: #E3F2FD;
-  border-color: #4D96FF;
-  color: #1565c0;
+  background: rgba(77, 150, 255, 0.2);
+  border-color: rgba(77, 150, 255, 0.4);
+  color: #81d4fa;
 }
 
 .dashboard__my-calendar-cell--off,
 .dashboard__my-calendar-cell--rg,
 .dashboard__my-calendar-cell--rc {
-  background: #f5f5f5;
-  border-color: #e0e0e0;
-  color: #999;
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* --- Unclaimed alert --- */
 .dashboard__unclaimed-alert {
-  background: #ffebee;
-  color: #c62828;
+  background: rgba(231, 76, 60, 0.2);
+  color: #ff8a80;
   padding: 15px;
   border-radius: 8px;
   margin-bottom: 25px;
   font-weight: bold;
-  border: 2px solid #ffcdd2;
+  border: 2px solid rgba(231, 76, 60, 0.4);
   animation: pulseAlert 2s infinite;
   font-size: 1.1rem;
 }
 
 .dashboard__shift-prompt {
   margin-bottom: 1rem;
-  color: #666;
+  color: rgba(255, 255, 255, 0.6);
   font-weight: bold;
 }
 
@@ -603,7 +613,7 @@
 
 .dashboard__shift-btn:hover:not(.dashboard__shift-btn--disabled) {
   transform: translateY(-4px) scale(1.05);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
 }
 
 .dashboard__shift-btn:active:not(.dashboard__shift-btn--disabled) {
@@ -615,15 +625,16 @@
 }
 
 .dashboard__shift-btn--all {
-  background: #95a5a6;
+  background: rgba(149, 165, 166, 0.5);
+  border: 1px solid rgba(149, 165, 166, 0.4);
 }
 
 /* ==========================================================================
    Step 2 — Schedule option list
    ========================================================================== */
 .dashboard__back-btn {
-  border: none;
-  background: #4a5568;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(74, 85, 104, 0.5);
   color: white;
   padding: 8px 16px;
   border-radius: 8px;
@@ -638,31 +649,31 @@
 }
 
 .dashboard__back-btn:hover {
-  background: #2d3748;
+  background: rgba(45, 55, 72, 0.6);
   transform: translateX(-3px);
 }
 
 .dashboard__step2-title {
-  color: black;
+  color: #ffffff;
   font-weight: bold;
   animation: dashFadeSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__step2-hint {
-  color: #666;
+  color: rgba(255, 255, 255, 0.5);
   font-size: 0.9rem;
   margin-bottom: 15px;
 }
 
 .dashboard__claimed-readonly {
   padding: 10px;
-  background: #d4edda;
-  color: #155724;
+  background: rgba(39, 174, 96, 0.2);
+  color: #69f0ae;
   border-radius: 8px;
   margin-bottom: 15px;
   font-weight: bold;
   text-align: center;
-  border: 1px solid #c3e6cb;
+  border: 1px solid rgba(39, 174, 96, 0.4);
 }
 
 .dashboard__options-grid {
@@ -676,8 +687,8 @@
 .dashboard__options-empty {
   padding: 40px;
   text-align: center;
-  color: #666;
-  background: #f9f9f9;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
 }
 
@@ -685,10 +696,10 @@
 .dashboard__shift-card {
   padding: 1.5rem;
   border-radius: 16px;
-  border: 1px solid #e2e8f0;
-  background: white;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
   cursor: pointer;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   animation: dashCardStagger 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -702,22 +713,23 @@
 
 .dashboard__shift-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .dashboard__shift-card--selected {
-  border: 3px solid #667eea;
+  border: 3px solid rgba(102, 126, 234, 0.6);
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 
 .dashboard__shift-card--claimed {
-  background: #f1f3f5;
+  background: rgba(255, 255, 255, 0.03);
   cursor: not-allowed;
   opacity: 0.7;
 }
 
 .dashboard__shift-card--invalid {
-  background: #fff5f5;
+  background: rgba(231, 76, 60, 0.1);
   cursor: not-allowed;
 }
 
@@ -731,22 +743,22 @@
 .dashboard__shift-card-title {
   font-weight: bold;
   font-size: 1.1rem;
-  color: #2d3748;
+  color: #ffffff;
 }
 
 .dashboard__shift-card-title--claimed {
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .dashboard__shift-card-locked {
-  color: #e67e22;
+  color: #ffcc80;
   font-size: 0.85rem;
   font-weight: bold;
   margin-top: 4px;
 }
 
 .dashboard__shift-card-warning {
-  color: #e53e3e;
+  color: #ff8a80;
   font-size: 0.9rem;
   font-weight: bold;
 }
@@ -764,7 +776,7 @@
 .dashboard__mini-calendar-weekday {
   text-align: center;
   font-size: 0.7rem;
-  color: #718096;
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 2px;
 }
 
@@ -779,7 +791,7 @@
 }
 
 .dashboard__mini-calendar-cell--light {
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .dashboard__mini-calendar-cell--dark {
@@ -790,7 +802,7 @@
    Step 3 — Preview / Confirm
    ========================================================================== */
 .dashboard__step3-title {
-  color: black;
+  color: #ffffff;
   font-weight: bold;
   text-align: center;
   margin-bottom: 20px;
@@ -808,7 +820,7 @@
 .dashboard__preview-weekday {
   text-align: center;
   font-weight: bold;
-  color: #555;
+  color: rgba(255, 255, 255, 0.6);
   padding-bottom: 5px;
 }
 
@@ -816,7 +828,7 @@
   padding: 8px 5px;
   text-align: center;
   border-radius: 8px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -831,7 +843,7 @@
 }
 
 .dashboard__preview-cell--light {
-  border: 1px solid #eee;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .dashboard__preview-day {
@@ -844,7 +856,7 @@
 }
 
 .dashboard__preview-day--light {
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .dashboard__preview-type {
@@ -857,7 +869,7 @@
 }
 
 .dashboard__preview-type--light {
-  color: #333;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .dashboard__confirm-area {
@@ -872,19 +884,20 @@
   border-radius: 20px;
   font-size: 1.1rem;
   font-weight: bold;
-  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 10px rgba(102, 126, 234, 0.3);
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
 }
 
 .dashboard__confirm-btn--active {
-  background: #667eea;
+  background: rgba(102, 126, 234, 0.6);
+  border: 1px solid rgba(102, 126, 234, 0.4);
   cursor: pointer;
 }
 
 .dashboard__confirm-btn--active:hover {
   transform: translateY(-2px) scale(1.03);
-  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.5);
+  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.4);
 }
 
 .dashboard__confirm-btn--active:active {
@@ -892,7 +905,7 @@
 }
 
 .dashboard__confirm-btn--processing {
-  background: #95a5a6;
+  background: rgba(149, 165, 166, 0.5);
   cursor: not-allowed;
 }
 
@@ -911,7 +924,7 @@
 }
 
 .dashboard__success-title {
-  color: #2d3748;
+  color: #ffffff;
   font-weight: 900;
   font-size: 2rem;
   margin-bottom: 1rem;
@@ -919,7 +932,7 @@
 }
 
 .dashboard__success-text {
-  color: #718096;
+  color: rgba(255, 255, 255, 0.6);
   margin-bottom: 2rem;
   font-size: 1.1rem;
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
@@ -928,21 +941,21 @@
 .dashboard__success-btn {
   margin-top: 10px;
   padding: 15px 40px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.6) 0%, rgba(118, 75, 162, 0.6) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.4);
   color: white;
-  border: none;
   border-radius: 50px;
   font-size: 1.2rem;
   font-weight: bold;
   cursor: pointer;
-  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both;
 }
 
 .dashboard__success-btn:hover {
   transform: translateY(-3px) scale(1.04);
-  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4);
 }
 
 .dashboard__success-btn:active {

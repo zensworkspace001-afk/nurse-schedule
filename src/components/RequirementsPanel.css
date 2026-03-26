@@ -1,5 +1,5 @@
 /* ==========================================================================
-   RequirementsPanel Styles
+   RequirementsPanel Styles — Glassmorphism UI
    ========================================================================== */
 
 @keyframes panelFadeIn {
@@ -9,27 +9,32 @@
 
 /* --- Container --- */
 .requirements-panel {
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 2rem;
-  flex: 1; /* 🌟 讓人力需求面板撐滿剩餘高度 */
+  flex: 1;
   display: flex;
   flex-direction: column;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* --- Title --- */
 .requirements-panel__title {
-  color: black;
+  color: #ffffff;
   margin-bottom: 1.5rem;
 }
 
 /* --- Settings Section --- */
 .requirements-panel__settings {
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.08);
   padding: 1.5rem;
   border-radius: 12px;
   margin-bottom: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 /* --- Bed Count Slider Group --- */
@@ -41,12 +46,13 @@
   font-weight: bold;
   display: block;
   margin-bottom: 0.5rem;
-  color: black;
+  color: rgba(255, 255, 255, 0.9);
   font-size: 1.1rem;
 }
 
 .requirements-panel__bed-count {
   font-size: 1.3rem;
+  color: #ffffff;
 }
 
 .requirements-panel__slider {
@@ -67,21 +73,24 @@
   padding: 1rem;
   border-radius: 8px;
   text-align: center;
-  color: black;
+  color: white;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-/* Shift card color variants */
+/* Shift card color variants — semi-transparent */
 .requirements-panel__shift-card--day {
-  background: #FFD93D;
+  background: rgba(255, 217, 61, 0.35);
+  border: 1px solid rgba(255, 217, 61, 0.5);
 }
 
 .requirements-panel__shift-card--evening {
-  background: #FF6B9D;
+  background: rgba(255, 107, 157, 0.35);
+  border: 1px solid rgba(255, 107, 157, 0.5);
 }
 
 .requirements-panel__shift-card--night {
-  background: #4D96FF;
+  background: rgba(77, 150, 255, 0.35);
+  border: 1px solid rgba(77, 150, 255, 0.5);
 }
 
 /* --- Shift Card Content --- */
@@ -106,11 +115,17 @@
   padding: 4px;
   text-align: center;
   border-radius: 6px;
-  border: 1px solid #ccc;
-  color: black;
-  background: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  background: rgba(0, 0, 0, 0.2);
   font-weight: bold;
   font-size: 1rem;
+}
+
+.requirements-panel__ratio-input:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
 }
 
 /* ==========================================================================
@@ -118,7 +133,7 @@
    ========================================================================== */
 @media screen and (max-width: 768px) {
   .requirements-panel {
-    padding: 1rem; /* 手機版減少外邊距 */
+    padding: 1rem;
   }
 
   .requirements-panel__settings {
@@ -126,7 +141,7 @@
   }
 
   .requirements-panel__shifts {
-    flex-direction: column; /* 讓三班制卡片垂直排列 */
+    flex-direction: column;
     gap: 1rem;
   }
 }

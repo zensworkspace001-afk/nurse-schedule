@@ -1,5 +1,5 @@
 /* ==========================================================
-   ScheduleReviewPanel – BEM-styled external CSS
+   ScheduleReviewPanel – BEM-styled — Glassmorphism UI
    ========================================================== */
 
 @keyframes panelFadeIn {
@@ -18,12 +18,16 @@
 
 /* --- Header / toolbar --- */
 .review__header {
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .review__header-left {
@@ -35,18 +39,18 @@
 .review__title {
   margin: 0;
   font-size: 1.5rem;
-  color: #2c3e50;
+  color: #ffffff;
 }
 
 /* --- Archive selector (year/month) --- */
 .review__archive-selector {
   display: flex;
   align-items: center;
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.08);
   padding: 5px 15px;
   border-radius: 8px;
-  border: 1px solid #ddd;
-  color: #34495e;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.9);
   font-weight: bold;
   font-size: 1rem;
 }
@@ -59,10 +63,11 @@
   width: 65px;
   padding: 4px;
   border-radius: 6px;
-  border: 1px solid #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   font-weight: bold;
   text-align: center;
-  color: #2c3e50;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .review__year-separator {
@@ -72,10 +77,11 @@
 .review__month-select {
   padding: 4px 8px;
   border-radius: 6px;
-  border: 1px solid #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   font-weight: bold;
   cursor: pointer;
-  color: #2c3e50;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.15);
 }
 
 .review__month-separator {
@@ -91,10 +97,10 @@
 
 /* --- Base salary field --- */
 .review__salary-field {
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.08);
   padding: 4px 10px;
   border-radius: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   gap: 5px;
@@ -103,16 +109,18 @@
 .review__salary-label {
   font-size: 0.9rem;
   font-weight: bold;
-  color: #34495e;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .review__salary-input {
   width: 80px;
   padding: 4px;
-  border: 1px solid #ccc;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 4px;
   text-align: center;
   font-weight: bold;
+  background: rgba(0, 0, 0, 0.15);
+  color: #ffffff;
 }
 
 /* --- Toolbar buttons --- */
@@ -125,23 +133,26 @@
 }
 
 .review__btn--manage {
-  background: #6c757d;
+  background: rgba(108, 117, 125, 0.6);
+  border: 1px solid rgba(108, 117, 125, 0.4);
 }
 
 .review__btn--settle {
-  background: #8e44ad;
+  background: rgba(142, 68, 173, 0.6);
+  border: 1px solid rgba(142, 68, 173, 0.4);
   font-weight: bold;
 }
 
 .review__btn--export {
-  background: #27ae60;
+  background: rgba(39, 174, 96, 0.6);
+  border: 1px solid rgba(39, 174, 96, 0.4);
   font-weight: bold;
 }
 
 .review__btn--test-api {
-  background: #34495e;
+  background: rgba(52, 73, 94, 0.6);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
   font-weight: bold;
-  border: 1px dashed #ccc;
 }
 
 /* ==========================================================
@@ -388,9 +399,11 @@
    ========================================================== */
 .review__options-panel {
   padding: 1rem;
-  background: white;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(15px);
+  -webkit-backdrop-filter: blur(15px);
   border-radius: 16px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .review__options-form {
@@ -402,7 +415,10 @@
 
 .review__options-input {
   padding: 5px;
-  color: black;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
 }
 
 .review__options-input--code {
@@ -422,9 +438,9 @@
 
 .review__options-add-btn {
   padding: 5px 15px;
-  background: #28a745;
+  background: rgba(40, 167, 69, 0.6);
   color: white;
-  border: none;
+  border: 1px solid rgba(40, 167, 69, 0.4);
   border-radius: 4px;
   cursor: pointer;
 }
@@ -434,18 +450,19 @@
   flex-wrap: wrap;
   gap: 10px;
   padding-top: 10px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .review__options-chip {
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.1);
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   display: flex;
   align-items: center;
   gap: 5px;
   font-size: 0.85rem;
+  color: #ffffff;
 }
 
 .review__options-chip-dot {
@@ -456,13 +473,13 @@
 }
 
 .review__options-chip-code {
-  color: #000000;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .review__options-chip-delete {
   border: none;
   background: transparent;
-  color: red;
+  color: #ff8a80;
   cursor: pointer;
   font-weight: bold;
   padding: 0 2px;
@@ -481,18 +498,22 @@
 /* --- Schedule table wrapper --- */
 .review__table-wrapper {
   flex: 3;
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .review__table-scroll {
   flex: 1;
   overflow: auto;
-  border: 1px solid #eee;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 8px;
 }
 
@@ -509,7 +530,8 @@
 }
 
 .review__table-header-row {
-  background: #34495e;
+  background: rgba(52, 73, 94, 0.7);
+  backdrop-filter: blur(10px);
   color: white;
 }
 
@@ -518,7 +540,7 @@
   min-width: 130px;
   position: sticky;
   left: 0;
-  background: #34495e;
+  background: rgba(52, 73, 94, 0.9);
   z-index: 20;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.15);
 }
@@ -526,9 +548,9 @@
 .review__table-th-health {
   padding: 8px;
   min-width: 50px;
-  background: #2c3e50;
+  background: rgba(44, 62, 80, 0.7);
   z-index: 10;
-  border-right: 2px solid #555;
+  border-right: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .review__table-th-day {
@@ -558,57 +580,59 @@
 
 /* --- Table body rows --- */
 .review__table-row {
-  border-bottom: 1px solid #eee;
-  background: white;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .review__table-row--virtual {
-  background: #fafafa;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .review__table-td-name {
   padding: 8px;
-  border-right: 1px solid #eee;
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
   position: sticky;
   left: 0;
-  background: white;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   z-index: 15;
-  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05);
+  box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
 }
 
 .review__table-td-name--virtual {
-  background: #f9f9f9;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .review__table-staff-name {
   font-weight: bold;
-  color: #2c3e50;
+  color: #ffffff;
 }
 
 .review__table-staff-name--virtual {
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .review__table-td-health {
   padding: 4px;
   text-align: center;
   font-weight: bold;
-  border-right: 2px solid #ddd;
+  border-right: 2px solid rgba(255, 255, 255, 0.1);
   cursor: help;
   font-size: 1.1rem;
 }
 
 .review__table-td-health--bg-default {
-  background: white;
+  background: rgba(255, 255, 255, 0.04);
 }
 
 .review__table-td-health--bg-virtual {
-  background: #fafafa;
+  background: rgba(255, 255, 255, 0.02);
 }
 
 .review__table-td-cell {
   padding: 0;
-  border-right: 1px solid #f0f0f0;
+  border-right: 1px solid rgba(255, 255, 255, 0.05);
   height: 40px;
 }
 
@@ -617,7 +641,7 @@
   height: 100%;
   padding: 0;
   border: none;
-  color: black;
+  color: white;
   font-weight: bold;
   text-align-last: center;
   cursor: pointer;
@@ -628,7 +652,7 @@
 .review__table-empty {
   padding: 40px;
   text-align: center;
-  color: #888;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* ==========================================================
@@ -645,20 +669,23 @@
 /* --- Violations panel --- */
 .review__violations {
   flex: 1;
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  border-left: 4px solid #e74c3c;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  border-left: 4px solid rgba(231, 76, 60, 0.7);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
 .review__violations-title {
   margin: 0 0 1rem 0;
   font-size: 1.1rem;
-  color: #c0392b;
+  color: #ff8a80;
 }
 
 .review__violations-body {
@@ -667,7 +694,7 @@
 }
 
 .review__violations-ok {
-  color: #27ae60;
+  color: #69f0ae;
   text-align: center;
   margin-top: 20px;
   font-weight: bold;
@@ -675,20 +702,20 @@
 
 .review__violations-item {
   padding: 8px;
-  background: #fff5f5;
+  background: rgba(231, 76, 60, 0.15);
   margin-bottom: 8px;
   border-radius: 8px;
-  border-left: 3px solid #e74c3c;
+  border-left: 3px solid rgba(231, 76, 60, 0.6);
   font-size: 0.85rem;
 }
 
 .review__violations-item-name {
   font-weight: bold;
-  color: #c0392b;
+  color: #ff8a80;
 }
 
 .review__violations-item-msg {
-  color: #444;
+  color: rgba(255, 255, 255, 0.7);
   margin-top: 4px;
   line-height: 1.4;
 }
@@ -696,20 +723,23 @@
 /* --- Risks panel --- */
 .review__risks {
   flex: 1;
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
-  border-left: 4px solid #f39c12;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  border-left: 4px solid rgba(243, 156, 18, 0.7);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
   overflow: hidden;
 }
 
 .review__risks-title {
   margin: 0 0 1rem 0;
   font-size: 1.1rem;
-  color: #d35400;
+  color: #ffcc80;
 }
 
 .review__risks-body {
@@ -718,7 +748,7 @@
 }
 
 .review__risks-ok {
-  color: #f39c12;
+  color: #ffcc80;
   text-align: center;
   margin-top: 20px;
   font-weight: bold;
@@ -726,7 +756,7 @@
 
 .review__risks-item {
   padding: 8px;
-  background: #fdf8e3;
+  background: rgba(243, 156, 18, 0.15);
   margin-bottom: 8px;
   border-radius: 8px;
   font-size: 0.85rem;
@@ -734,11 +764,11 @@
 
 .review__risks-item-name {
   font-weight: bold;
-  color: #8a6d3b;
+  color: #ffcc80;
 }
 
 .review__risks-item-tag {
-  color: #666;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* ==========================================================================
@@ -758,7 +788,7 @@
     text-align: center;
   }
   .review__body {
-    flex-direction: column; /* 手機上左右改上下 */
+    flex-direction: column;
   }
   .review__table-wrapper, .review__sidebar, .review__violations, .review__risks {
     padding: 1rem;

@@ -1,5 +1,5 @@
 /* ==========================================================
-   StatisticsPanel.css — BEM naming convention
+   StatisticsPanel.css — BEM — Glassmorphism UI
    ========================================================== */
 
 @keyframes panelFadeIn {
@@ -12,7 +12,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  flex: 1; /* 🌟 讓統計報表面板撐滿剩餘高度 */
+  flex: 1;
   animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -20,11 +20,14 @@
    1. Ratio Panel (衛福部三班護病比)
    ========================================================== */
 .statistics__ratio-panel {
-  background: white;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 2rem;
-  border-top: 6px solid #e67e22;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+  border-top: 6px solid rgba(230, 126, 34, 0.7);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .statistics__ratio-header {
@@ -38,7 +41,7 @@
 
 .statistics__ratio-title {
   margin-top: 0;
-  color: #d35400;
+  color: #ffcc80;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -48,15 +51,16 @@
 
 .statistics__ratio-badge {
   font-size: 0.9rem;
-  background: #e67e22;
+  background: rgba(230, 126, 34, 0.4);
   color: white;
   padding: 4px 10px;
   border-radius: 12px;
+  border: 1px solid rgba(230, 126, 34, 0.5);
 }
 
 .statistics__ratio-desc {
   margin: 0;
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.6);
   font-size: 1rem;
   line-height: 1.5;
   max-width: 800px;
@@ -64,10 +68,10 @@
 
 /* --- Parameter settings area --- */
 .statistics__ratio-settings {
-  background: #fdf2e9;
+  background: rgba(230, 126, 34, 0.15);
   padding: 15px 20px;
   border-radius: 12px;
-  border: 1px solid #fae5d3;
+  border: 1px solid rgba(230, 126, 34, 0.3);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -82,15 +86,15 @@
 
 .statistics__ratio-settings-label {
   font-weight: bold;
-  color: #d35400;
+  color: #ffcc80;
 }
 
 .statistics__ratio-settings-select {
   padding: 6px;
   border-radius: 6px;
-  border: 1px solid #e67e22;
-  background: white;
-  color: #d35400;
+  border: 1px solid rgba(230, 126, 34, 0.5);
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffcc80;
   font-weight: bold;
 }
 
@@ -103,29 +107,29 @@
 }
 
 .statistics__ratio-bed-label {
-  color: #555;
+  color: rgba(255, 255, 255, 0.7);
   font-weight: bold;
 }
 
 .statistics__ratio-bed-count {
   font-size: 1.2rem;
   font-weight: bold;
-  color: #8e44ad;
+  color: #ce93d8;
 }
 
 .statistics__ratio-bed-hint {
   font-size: 0.8rem;
-  color: #999;
+  color: rgba(255, 255, 255, 0.4);
 }
 
-/* --- Empty state (no ratio data) --- */
+/* --- Empty state --- */
 .statistics__ratio-empty {
   text-align: center;
   padding: 30px;
-  color: #95a5a6;
-  background: #f1f2f6;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
-  border: 2px dashed #ddd;
+  border: 2px dashed rgba(255, 255, 255, 0.15);
   font-size: 1.1rem;
 }
 
@@ -133,7 +137,7 @@
 .statistics__ratio-selector {
   margin-bottom: 15px;
   font-size: 1.1rem;
-  color: #2980b9;
+  color: #81d4fa;
   font-weight: bold;
   display: flex;
   align-items: center;
@@ -147,22 +151,22 @@
 .statistics__ratio-select {
   padding: 6px 15px;
   border-radius: 20px;
-  border: 2px solid #3498db;
-  color: #2980b9;
+  border: 2px solid rgba(52, 152, 219, 0.5);
+  color: #81d4fa;
   font-weight: bold;
-  background: #eaf2f8;
+  background: rgba(0, 0, 0, 0.2);
   cursor: pointer;
   font-size: 1rem;
   outline: none;
 }
 
 .statistics__ratio-select--shadow {
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 .statistics__ratio-current {
   font-size: 0.9rem;
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.5);
   margin-left: 10px;
 }
 
@@ -186,13 +190,13 @@
 }
 
 .statistics__ratio-card--pass {
-  background: #f0fdf4;
-  border: 2px solid #68d391;
+  background: rgba(39, 174, 96, 0.15);
+  border: 2px solid rgba(105, 240, 174, 0.4);
 }
 
 .statistics__ratio-card--violated {
-  background: #fff5f5;
-  border: 2px solid #fc8181;
+  background: rgba(231, 76, 60, 0.15);
+  border: 2px solid rgba(255, 138, 128, 0.4);
 }
 
 .statistics__ratio-card-title {
@@ -202,36 +206,36 @@
 }
 
 .statistics__ratio-card-title--pass {
-  color: #276749;
+  color: #69f0ae;
 }
 
 .statistics__ratio-card-title--violated {
-  color: #c53030;
+  color: #ff8a80;
 }
 
 .statistics__ratio-card-value {
   font-size: 3rem;
   font-weight: 900;
   margin-bottom: 15px;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.1);
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.2);
 }
 
 .statistics__ratio-card-value--pass {
-  color: #38a169;
+  color: #69f0ae;
 }
 
 .statistics__ratio-card-value--violated {
-  color: #e53e3e;
+  color: #ff8a80;
 }
 
 .statistics__ratio-card-avg {
   font-size: 1rem;
-  color: #4a5568;
+  color: rgba(255, 255, 255, 0.8);
   margin-bottom: 15px;
-  background: white;
+  background: rgba(255, 255, 255, 0.1);
   padding: 5px 15px;
   border-radius: 20px;
-  border: 1px solid #cbd5e0;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .statistics__ratio-card-status {
@@ -244,29 +248,31 @@
 }
 
 .statistics__ratio-card-status--pass {
-  background: #c6f6d5;
-  color: #276749;
+  background: rgba(39, 174, 96, 0.25);
+  color: #69f0ae;
 }
 
 .statistics__ratio-card-status--violated {
-  background: #fed7d7;
-  color: #c53030;
+  background: rgba(231, 76, 60, 0.25);
+  color: #ff8a80;
 }
 
 /* ==========================================================
    2. Chart section (趨勢圖)
    ========================================================== */
 .statistics__chart {
-  background: #fdfdfd;
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   padding: 1.5rem;
   border-radius: 16px;
-  border: 1px solid #e0e0e0;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .statistics__chart-title {
   margin-top: 0;
-  color: #34495e;
+  color: #ffffff;
   margin-bottom: 1.5rem;
   display: flex;
   align-items: center;
@@ -276,10 +282,10 @@
 .statistics__chart-empty {
   text-align: center;
   padding: 3rem;
-  color: #888;
-  background: #f8f9fa;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
-  border: 2px dashed #ddd;
+  border: 2px dashed rgba(255, 255, 255, 0.15);
 }
 
 .statistics__chart-wrapper {
@@ -306,43 +312,43 @@
 }
 
 .statistics__chart-toggle--health {
-  background: #e8f4f8;
-  border: 2px solid #3498db;
+  background: rgba(52, 152, 219, 0.2);
+  border: 2px solid rgba(52, 152, 219, 0.5);
 }
 
 .statistics__chart-toggle--health-off {
-  background: #f0f0f0;
-  border: 2px solid #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .statistics__chart-toggle--ratioD {
-  background: #fff9e6;
-  border: 2px solid #f1c40f;
+  background: rgba(241, 196, 15, 0.2);
+  border: 2px solid rgba(241, 196, 15, 0.5);
 }
 
 .statistics__chart-toggle--ratioD-off {
-  background: #f0f0f0;
-  border: 2px solid #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .statistics__chart-toggle--ratioE {
-  background: #fbeef3;
-  border: 2px solid #e84393;
+  background: rgba(232, 67, 147, 0.2);
+  border: 2px solid rgba(232, 67, 147, 0.5);
 }
 
 .statistics__chart-toggle--ratioE-off {
-  background: #f0f0f0;
-  border: 2px solid #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .statistics__chart-toggle--ratioN {
-  background: #eaf2f8;
-  border: 2px solid #34495e;
+  background: rgba(52, 73, 94, 0.3);
+  border: 2px solid rgba(52, 73, 94, 0.6);
 }
 
 .statistics__chart-toggle--ratioN-off {
-  background: #f0f0f0;
-  border: 2px solid #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid rgba(255, 255, 255, 0.15);
 }
 
 .statistics__chart-toggle-checkbox {
@@ -354,48 +360,47 @@
 }
 
 .statistics__chart-toggle-label--health {
-  color: #2980b9;
+  color: #81d4fa;
 }
 
 .statistics__chart-toggle-label--health-off {
-  color: #888;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .statistics__chart-toggle-label--ratioD {
-  color: #d4ac0d;
+  color: #fff176;
 }
 
 .statistics__chart-toggle-label--ratioD-off {
-  color: #888;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .statistics__chart-toggle-label--ratioE {
-  color: #d81b60;
+  color: #f48fb1;
 }
 
 .statistics__chart-toggle-label--ratioE-off {
-  color: #888;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .statistics__chart-toggle-label--ratioN {
-  color: #2c3e50;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 .statistics__chart-toggle-label--ratioN-off {
-  color: #888;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* --- SVG chart --- */
 .statistics__chart-svg {
   width: 100%;
   height: auto;
-  background: white;
+  background: rgba(0, 0, 0, 0.15);
   border-radius: 12px;
-  border: 1px solid #eee;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* SVG animation helpers — applied via inline style for dynamic transform */
 .statistics__chart-anim {
   transition: opacity 0.4s ease, transform 0.4s ease;
 }
@@ -404,18 +409,20 @@
    3. AI Center (智能 AI 決策與分析中心)
    ========================================================== */
 .statistics__ai-center {
-  background: linear-gradient(135deg, #f8f9fa 0%, #eef2f3 100%);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 2rem;
-  border: 1px solid #dcdde1;
-  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
 }
 
 .statistics__ai-center-title {
   display: flex;
   align-items: center;
   gap: 10px;
-  color: #2c3e50;
+  color: #ffffff;
   margin-top: 0;
   margin-bottom: 20px;
   font-size: 1.6rem;
@@ -438,11 +445,12 @@
    4. Radar section (接力排班雷達)
    ========================================================== */
 .statistics__radar {
-  background: white;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 1.5rem;
-  border-left: 5px solid #3498db;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+  border-left: 5px solid rgba(52, 152, 219, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
 
 .statistics__radar-layout {
@@ -460,7 +468,7 @@
 
 .statistics__radar-title {
   margin: 0 0 10px 0;
-  color: #2c3e50;
+  color: #ffffff;
   font-size: 1.2rem;
   display: flex;
   align-items: center;
@@ -469,7 +477,7 @@
 
 .statistics__radar-subtitle {
   margin: 0 0 15px 0;
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.5);
   font-size: 0.85rem;
 }
 
@@ -483,25 +491,25 @@
 }
 
 .statistics__radar-display--active {
-  background: #e8f8f5;
-  border: 1px solid #2ecc71;
+  background: rgba(46, 204, 113, 0.15);
+  border: 1px solid rgba(46, 204, 113, 0.4);
 }
 
 .statistics__radar-display--idle {
-  background: #f8f9fa;
-  border: 1px solid #ddd;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .statistics__radar-waiting-label {
   font-size: 0.8rem;
-  color: #7f8c8d;
+  color: rgba(255, 255, 255, 0.5);
   font-weight: bold;
   margin-bottom: 3px;
 }
 
 .statistics__radar-waiting-name {
   font-size: 1.1rem;
-  color: #27ae60;
+  color: #69f0ae;
   font-weight: bold;
   display: flex;
   align-items: center;
@@ -514,15 +522,15 @@
 
 .statistics__radar-idle-text {
   font-size: 1rem;
-  color: #95a5a6;
+  color: rgba(255, 255, 255, 0.4);
   font-weight: bold;
 }
 
 .statistics__radar-skip-btn {
   padding: 6px 12px;
-  background: #fff;
-  color: #e74c3c;
-  border: 2px solid #e74c3c;
+  background: rgba(231, 76, 60, 0.15);
+  color: #ff8a80;
+  border: 2px solid rgba(231, 76, 60, 0.4);
   border-radius: 8px;
   font-weight: bold;
   cursor: pointer;
@@ -536,7 +544,7 @@
 
 .statistics__radar-instruction-label {
   font-size: 0.85rem;
-  color: #2c3e50;
+  color: rgba(255, 255, 255, 0.8);
   font-weight: bold;
 }
 
@@ -545,9 +553,15 @@
   padding: 8px;
   margin-top: 5px;
   border-radius: 8px;
-  border: 1px solid #ddd;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   box-sizing: border-box;
   font-size: 0.9rem;
+  background: rgba(0, 0, 0, 0.15);
+  color: #ffffff;
+}
+
+.statistics__radar-instruction-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 /* --- Launch button area --- */
@@ -561,13 +575,13 @@
 .statistics__radar-launch-btn {
   padding: 12px 20px;
   border-radius: 8px;
-  border: none;
+  border: 1px solid rgba(52, 152, 219, 0.4);
   cursor: pointer;
   font-weight: bold;
-  background: #3498db;
+  background: rgba(52, 152, 219, 0.5);
   color: white;
   font-size: 1rem;
-  box-shadow: 0 4px 6px rgba(52, 152, 219, 0.3);
+  box-shadow: 0 4px 6px rgba(52, 152, 219, 0.2);
   white-space: nowrap;
 }
 
@@ -575,11 +589,12 @@
    5. Decision History (決策歷史)
    ========================================================== */
 .statistics__decision-history {
-  background: white;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 1.5rem;
-  border-left: 5px solid #2980b9;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+  border-left: 5px solid rgba(41, 128, 185, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -587,7 +602,7 @@
 
 .statistics__decision-history-title {
   margin-top: 0;
-  color: #2c3e50;
+  color: #ffffff;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -607,14 +622,14 @@
 .statistics__decision-history-empty {
   padding: 20px;
   text-align: center;
-  color: #95a5a6;
-  background: #f8f9fa;
+  color: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
 }
 
 .statistics__decision-history-item {
-  background: #fff;
-  border: 1px solid #ecf0f1;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   padding: 10px;
   border-radius: 10px;
 }
@@ -626,20 +641,20 @@
 }
 
 .statistics__decision-history-item-staff {
-  color: #e67e22;
+  color: #ffcc80;
   font-size: 0.9rem;
 }
 
 .statistics__decision-history-item-time {
   font-size: 0.75rem;
-  color: #95a5a6;
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .statistics__decision-history-item-logic {
   font-size: 0.85rem;
-  color: #34495e;
+  color: rgba(255, 255, 255, 0.8);
   line-height: 1.4;
-  background: #f8f9fa;
+  background: rgba(0, 0, 0, 0.1);
   padding: 8px;
   border-radius: 6px;
 }
@@ -648,11 +663,12 @@
    6. Chat section (跨月數據分析精靈)
    ========================================================== */
 .statistics__chat {
-  background: white;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 12px;
   padding: 1.5rem;
-  border-top: 5px solid #8e44ad;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.02);
+  border-top: 5px solid rgba(142, 68, 173, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   display: flex;
   flex-direction: column;
 }
@@ -665,7 +681,7 @@
 }
 
 .statistics__chat-title {
-  color: #8e44ad;
+  color: #ce93d8;
   margin: 0;
   font-size: 1.2rem;
   display: flex;
@@ -676,9 +692,9 @@
 .statistics__chat-clear-btn {
   font-size: 0.75rem;
   padding: 4px 10px;
-  background: #fff;
-  color: #e74c3c;
-  border: 1px solid #e74c3c;
+  background: rgba(231, 76, 60, 0.15);
+  color: #ff8a80;
+  border: 1px solid rgba(231, 76, 60, 0.4);
   border-radius: 12px;
   cursor: pointer;
   font-weight: bold;
@@ -686,10 +702,10 @@
 
 /* --- Status indicator --- */
 .statistics__chat-status {
-  background: #f8f9fa;
+  background: rgba(255, 255, 255, 0.05);
   padding: 10px;
   border-radius: 8px;
-  border: 1px dashed #dcdde1;
+  border: 1px dashed rgba(255, 255, 255, 0.15);
   margin-bottom: 15px;
   display: flex;
   align-items: center;
@@ -706,23 +722,23 @@
 
 .statistics__chat-status-text--active {
   font-size: 0.85rem;
-  color: #27ae60;
+  color: #69f0ae;
   font-weight: bold;
 }
 
 .statistics__chat-status-text--inactive {
   font-size: 0.85rem;
-  color: #e74c3c;
+  color: #ff8a80;
   font-weight: bold;
 }
 
 /* --- Chat conversation area --- */
 .statistics__chat-conversation {
   flex: 1;
-  background: #f8f9fa;
+  background: rgba(0, 0, 0, 0.1);
   border-radius: 10px;
   padding: 12px;
-  border: 1px solid #e1e2e6;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   display: flex;
   flex-direction: column;
   min-height: 350px;
@@ -757,25 +773,25 @@
   text-align: left;
   font-size: 0.9rem;
   line-height: 1.4;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .statistics__chat-msg-bubble--user {
-  background: #8e44ad;
+  background: rgba(142, 68, 173, 0.5);
+  border: 1px solid rgba(142, 68, 173, 0.4);
   color: white;
-  border: none;
 }
 
 .statistics__chat-msg-bubble--assistant {
-  background: white;
-  color: #2c3e50;
-  border: 1px solid #dcdde1;
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .statistics__chat-msg-bubble--analyzing {
-  background: white;
-  border: 1px solid #dcdde1;
-  color: #888;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
   font-style: italic;
   font-size: 0.85rem;
 }
@@ -790,8 +806,14 @@
   flex: 1;
   padding: 10px;
   border-radius: 8px;
-  border: 1px solid #dcdde1;
+  border: 1px solid rgba(255, 255, 255, 0.2);
   font-size: 0.95rem;
+  background: rgba(0, 0, 0, 0.15);
+  color: #ffffff;
+}
+
+.statistics__chat-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .statistics__chat-send-btn {
@@ -803,12 +825,13 @@
 }
 
 .statistics__chat-send-btn--enabled {
-  background: #8e44ad;
+  background: rgba(142, 68, 173, 0.6);
+  border: 1px solid rgba(142, 68, 173, 0.4);
   cursor: pointer;
 }
 
 .statistics__chat-send-btn--disabled {
-  background: #bdc3c7;
+  background: rgba(255, 255, 255, 0.1);
   cursor: not-allowed;
 }
 
@@ -823,9 +846,9 @@
 .statistics__ranking-title {
   font-size: 0.85rem;
   font-weight: bold;
-  color: #666;
+  color: rgba(255, 255, 255, 0.5);
   margin-bottom: 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   padding-bottom: 4px;
 }
 
@@ -837,12 +860,12 @@
 }
 
 .statistics__ranking-name {
-  color: black;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .statistics__ranking-id {
   font-size: 0.75rem;
-  color: #333;
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .statistics__ranking-value {
