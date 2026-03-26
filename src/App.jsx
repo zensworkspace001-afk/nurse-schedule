@@ -308,11 +308,14 @@ const [historyYear, setHistoryYear] = useState(() => {
         setHistorySchedule(data?.finalizedSchedule || {});
     });
     
-    const unsubReports = subscribeToArchiveReports((data) => {
-        setAccumulatedReports(data);
-    });
+    let unsubReports = null;
+    if (currentUser?.role === 'admin') {
+        unsubReports = subscribeToArchiveReports((data) => {
+            setAccumulatedReports(data);
+        });
+    }
 
-    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports(); setIsCloudLoaded(false); };
+    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports?.(); setIsCloudLoaded(false); };
     
   }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
   // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
