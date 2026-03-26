@@ -2,6 +2,22 @@
    App.refactored.css — NurseSchedulingSystem (Flat Glassmorphism UI)
    ============================================ */
 
+/* --- Page entrance keyframes --- */
+@keyframes appFadeIn {
+  0%   { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes appSlideDown {
+  0%   { opacity: 0; transform: translateY(-20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes appSlideUp {
+  0%   { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
 /* --- Root layout --- */
 .app {
   min-height: 100vh;
@@ -14,6 +30,7 @@
   overflow-x: hidden; /* 防止色塊造成水平捲動 */
   display: flex;
   flex-direction: column;
+  animation: appFadeIn 0.6s ease both;
 }
 
 /* ==========================================================================
@@ -157,6 +174,7 @@
   justify-content: space-between;
   align-items: center;
   box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  animation: appSlideDown 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
 }
 
 .app__header-left {
@@ -396,6 +414,7 @@
   flex: 1;
   display: flex;
   flex-direction: column;
+  animation: appSlideUp 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.25s both;
 }
 
 /* --- Modal overlay --- */
