@@ -27,6 +27,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const [aiSlots, setAiSlots] = useState([]);
   const [previewSchedule, setPreviewSchedule] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   // ★ 新增：嚴格判定該名員工是否已經存在於本月班表中
   const hasClaimed = currentSchedule && Object.keys(currentSchedule).includes(currentUser.id);
   // ★★★ 新增：即時監聽 AI 接力選班雷達狀態 ★★★
@@ -474,10 +475,10 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
       )}
 
       {currentStep === 4 && (
-        <div className="dashboard__success">
+        <div className={`dashboard__success${isExiting ? ' dashboard__success--exiting' : ''}`}>
           <h2 className="dashboard__success-title"><PartyPopper size={24} /> 認領成功！</h2>
           <p className="dashboard__success-text">您的班表已成功送出，系統已更新。<br/>(您選擇的月份：{targetYear}年 {targetMonth}月)</p>
-          <button onClick={() => window.location.reload()} className="dashboard__success-btn">回首頁</button>
+          <button onClick={() => { setIsExiting(true); setTimeout(() => window.location.reload(), 500); }} className="dashboard__success-btn">回首頁</button>
         </div>
       )}
     </div>

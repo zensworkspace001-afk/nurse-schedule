@@ -41,6 +41,11 @@
   100% { opacity: 1; transform: scale(1); }
 }
 
+@keyframes dashFadeOut {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.96) translateY(-10px); }
+}
+
 @keyframes dashStepperPulse {
   0%   { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
   70%  { box-shadow: 0 0 0 6px rgba(102, 126, 234, 0); }
@@ -898,6 +903,11 @@
   text-align: center;
   padding: 4rem 2rem;
   animation: dashFadeSlideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: all 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dashboard__success--exiting {
+  animation: dashFadeOut 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__success-title {
