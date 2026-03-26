@@ -25,6 +25,28 @@
   100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
 }
 
+@keyframes dashFadeSlideIn {
+  0%   { opacity: 0; transform: translateY(18px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes dashCardStagger {
+  0%   { opacity: 0; transform: translateY(12px) scale(0.97); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes dashSuccessPop {
+  0%   { opacity: 0; transform: scale(0.8); }
+  50%  { transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes dashStepperPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.4); }
+  70%  { box-shadow: 0 0 0 6px rgba(102, 126, 234, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+}
+
 /* ==========================================================================
    Guard / Fallback screens (loading, inactive, leave, turn-lock)
    ========================================================================== */
@@ -42,6 +64,7 @@
   max-width: 500px;
   margin: 3rem auto;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__guard-icon {
@@ -103,6 +126,12 @@
   font-weight: bold;
   font-size: 1rem;
   box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+  transition: all 0.25s ease;
+}
+
+.dashboard__guard-refresh-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.5);
 }
 
 /* ==========================================================================
@@ -287,15 +316,22 @@
   margin-bottom: 2rem;
   border-bottom: 1px solid #eee;
   padding-bottom: 1rem;
+  animation: dashFadeSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__step {
   font-weight: bold;
   color: #ccc;
+  padding: 6px 12px;
+  border-radius: 20px;
+  transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  font-size: 0.9rem;
 }
 
 .dashboard__step--active {
   color: #667eea;
+  background: rgba(102, 126, 234, 0.08);
+  animation: dashStepperPulse 2s ease 0.5s;
 }
 
 /* ==========================================================================
@@ -303,6 +339,7 @@
    ========================================================================== */
 .dashboard__step1 {
   text-align: center;
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__header-row {
@@ -332,6 +369,13 @@
   font-size: 0.85rem;
   color: #555;
   font-weight: bold;
+  transition: all 0.25s ease;
+}
+
+.dashboard__pwd-btn:hover {
+  background: #e9ecef;
+  border-color: #adb5bd;
+  transform: translateY(-1px);
 }
 
 .dashboard__month-subtitle {
@@ -376,6 +420,7 @@
   border-radius: 12px;
   margin-top: 20px;
   border: 2px solid #c3e6cb;
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s both;
 }
 
 .dashboard__claimed-title {
@@ -407,6 +452,13 @@
   border-radius: 8px;
   cursor: pointer;
   font-weight: bold;
+  transition: all 0.25s ease;
+}
+
+.dashboard__claimed-view-btn:hover {
+  background: #218838;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3);
 }
 
 /* --- My Calendar (已認領班表月曆) --- */
@@ -415,6 +467,7 @@
   background: rgba(255, 255, 255, 0.6);
   border-radius: 12px;
   padding: 15px;
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
 }
 
 .dashboard__my-calendar-title {
@@ -456,6 +509,12 @@
   gap: 2px;
   background: #f0f0f0;
   border: 1px solid #e0e0e0;
+  transition: transform 0.2s ease;
+}
+
+.dashboard__my-calendar-cell:hover {
+  transform: scale(1.1);
+  z-index: 1;
 }
 
 .dashboard__my-calendar-day {
@@ -528,6 +587,22 @@
   color: white;
   font-size: 1.2rem;
   cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: dashCardStagger 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard__shift-btn:nth-child(1) { animation-delay: 0.05s; }
+.dashboard__shift-btn:nth-child(2) { animation-delay: 0.1s; }
+.dashboard__shift-btn:nth-child(3) { animation-delay: 0.15s; }
+.dashboard__shift-btn:nth-child(4) { animation-delay: 0.2s; }
+
+.dashboard__shift-btn:hover:not(.dashboard__shift-btn--disabled) {
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.dashboard__shift-btn:active:not(.dashboard__shift-btn--disabled) {
+  transform: translateY(-1px) scale(0.98);
 }
 
 .dashboard__shift-btn--disabled {
@@ -554,11 +629,18 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  transition: all 0.25s ease;
+}
+
+.dashboard__back-btn:hover {
+  background: #2d3748;
+  transform: translateX(-3px);
 }
 
 .dashboard__step2-title {
   color: black;
   font-weight: bold;
+  animation: dashFadeSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__step2-hint {
@@ -602,11 +684,25 @@
   background: white;
   cursor: pointer;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: dashCardStagger 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dashboard__shift-card:nth-child(1) { animation-delay: 0.03s; }
+.dashboard__shift-card:nth-child(2) { animation-delay: 0.08s; }
+.dashboard__shift-card:nth-child(3) { animation-delay: 0.13s; }
+.dashboard__shift-card:nth-child(4) { animation-delay: 0.18s; }
+.dashboard__shift-card:nth-child(5) { animation-delay: 0.23s; }
+.dashboard__shift-card:nth-child(6) { animation-delay: 0.28s; }
+
+.dashboard__shift-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
 }
 
 .dashboard__shift-card--selected {
   border: 3px solid #667eea;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
 }
 
 .dashboard__shift-card--claimed {
@@ -693,6 +789,7 @@
   font-weight: bold;
   text-align: center;
   margin-bottom: 20px;
+  animation: dashFadeSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__preview-grid {
@@ -720,6 +817,12 @@
   align-items: center;
   justify-content: center;
   min-height: 60px;
+  animation: dashCardStagger 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: transform 0.2s ease;
+}
+
+.dashboard__preview-cell:hover {
+  transform: scale(1.08);
 }
 
 .dashboard__preview-cell--light {
@@ -765,11 +868,22 @@
   font-size: 1.1rem;
   font-weight: bold;
   box-shadow: 0 4px 10px rgba(102, 126, 234, 0.4);
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.2s both;
 }
 
 .dashboard__confirm-btn--active {
   background: #667eea;
   cursor: pointer;
+}
+
+.dashboard__confirm-btn--active:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 18px rgba(102, 126, 234, 0.5);
+}
+
+.dashboard__confirm-btn--active:active {
+  transform: translateY(0) scale(0.98);
 }
 
 .dashboard__confirm-btn--processing {
@@ -783,6 +897,7 @@
 .dashboard__success {
   text-align: center;
   padding: 4rem 2rem;
+  animation: dashFadeSlideIn 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .dashboard__success-title {
@@ -790,12 +905,14 @@
   font-weight: 900;
   font-size: 2rem;
   margin-bottom: 1rem;
+  animation: dashSuccessPop 0.6s cubic-bezier(0.22, 1, 0.36, 1) 0.15s both;
 }
 
 .dashboard__success-text {
   color: #718096;
   margin-bottom: 2rem;
   font-size: 1.1rem;
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.3s both;
 }
 
 .dashboard__success-btn {
@@ -809,6 +926,17 @@
   font-weight: bold;
   cursor: pointer;
   box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.45s both;
+}
+
+.dashboard__success-btn:hover {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.5);
+}
+
+.dashboard__success-btn:active {
+  transform: translateY(0) scale(0.97);
 }
 
 /* ==========================================================================
