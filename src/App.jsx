@@ -128,8 +128,8 @@ const [historyYear, setHistoryYear] = useState(() => {
     { key: 'sendEmail', label: 'Email 服務', desc: 'Resend 電子郵件發送', url: '/api/sendEmail', method: 'POST' },
     { key: 'syncAccounts', label: '帳號同步', desc: '批次建立 Firebase Auth 帳號', url: '/api/sync-accounts', method: 'POST' },
     { key: 'resetPassword', label: '密碼重設', desc: '管理員重設員工密碼', url: '/api/reset-password', method: 'POST' },
-    { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle', method: 'GET' },
-    { key: 'cronTimeout', label: 'Cron 逾時', desc: '每日自動推進選班逾時', url: '/api/cron/check-timeout', method: 'GET' },
+    { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle?healthCheck=true', method: 'GET' },
+    { key: 'cronTimeout', label: 'Cron 逾時', desc: '每日自動推進選班逾時', url: '/api/cron/check-timeout?healthCheck=true', method: 'GET' },
     { key: 'calendar', label: '國定假日', desc: '台灣國定假日 API', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
   ];
 
@@ -144,15 +144,13 @@ const [historyYear, setHistoryYear] = useState(() => {
         const t0 = Date.now();
         try {
           if (ep.key === 'firestore') {
-            const healthRef = doc(db, 'SystemHealth', 'ping');
-            const now = Date.now();
-            await setDoc(healthRef, { timestamp: now });
-            const snap = await getDoc(healthRef);
+            const settingsRef = doc(db, 'NurseApp', 'Settings');
+            const snap = await getDoc(settingsRef);
             const ms = Date.now() - t0;
-            if (snap.exists() && snap.data().timestamp === now) {
-              results[ep.key] = { color: ms < 2000 ? 'green' : ms < 5000 ? 'yellow' : 'red', reason: `Firebase (${ms}ms)` };
+            if (snap.exists()) {
+              results[ep.key] = { color: ms < 2000 ? 'green' : ms < 5000 ? 'yellow' : 'red', reason: `Firebase 正常 (${ms}ms)` };
             } else {
-              results[ep.key] = { color: 'yellow', reason: `Firebase 不一致 (${ms}ms)` };
+              results[ep.key] = { color: 'yellow', reason: `Firebase 無資料 (${ms}ms)` };
             }
             return;
           }

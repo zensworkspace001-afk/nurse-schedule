@@ -28,6 +28,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: '只允許 POST 請求' });
   }
 
+  // ★ 健康檢查快速回應
+  if (req.body?.healthCheck) {
+    return res.status(200).json({ ok: true, service: 'reset-password' });
+  }
+
   // ★ CSRF 防護
   const csrf = checkCsrf(req);
   if (!csrf.allowed) {

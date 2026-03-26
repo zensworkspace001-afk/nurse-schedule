@@ -28,6 +28,11 @@ export const config = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: '只允許 POST' });
 
+  // ★ 健康檢查快速回應 (此 API 預期 multipart，JSON 請求必為健康檢查)
+  if (req.headers['content-type']?.includes('application/json')) {
+    return res.status(200).json({ ok: true, service: 'analyze-excel' });
+  }
+
   // ★ CSRF 防護
   const csrf = checkCsrf(req);
   if (!csrf.allowed) {

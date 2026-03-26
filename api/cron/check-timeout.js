@@ -13,6 +13,11 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 export default async function handler(req, res) {
+    // ★ 健康檢查快速回應
+    if (req.query?.healthCheck === 'true') {
+        return res.status(200).json({ ok: true, service: 'cron/check-timeout' });
+    }
+
     // 2. 安全鎖：確保是 Vercel 的 Cron 系統來敲門，不是駭客亂點
     if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: 'Unauthorized' });
