@@ -118,8 +118,17 @@ const [historyYear, setHistoryYear] = useState(() => {
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
 
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+  const [closingStatusDropdown, setClosingStatusDropdown] = useState(false);
   const [simulateFailMode, setSimulateFailMode] = useState(false);
   const statusTriggerRef = React.useRef(null);
+
+  const handleCloseStatusDropdown = React.useCallback(() => {
+    setClosingStatusDropdown(true);
+    setTimeout(() => {
+      setShowStatusDropdown(false);
+      setClosingStatusDropdown(false);
+    }, 200);
+  }, []);
 
   // ★ 全端點健康檢查 ★
   const HEALTH_ENDPOINTS = [
@@ -882,7 +891,7 @@ const handleSaveAndPublish = async () => {
           <div className="app__header-right">
             {/* ★ 系統連線狀態 — 下拉選單 ★ */}
             <div className="app__status-dropdown-wrapper">
-              <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => setShowStatusDropdown(prev => !prev)}>
+              <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => showStatusDropdown ? handleCloseStatusDropdown() : setShowStatusDropdown(true)}>
                 {(() => {
                   const colors = simulateFailMode
                     ? ['red', 'red', 'red', 'green', 'yellow', 'green', 'red', 'green', 'green']
@@ -894,8 +903,8 @@ const handleSaveAndPublish = async () => {
               </button>
               {showStatusDropdown && (
                 <>
-                  <div className="app__status-backdrop" onClick={() => setShowStatusDropdown(false)} />
-                  <div className="app__status-dropdown" style={(() => {
+                  <div className="app__status-backdrop" onClick={handleCloseStatusDropdown} />
+                  <div className={`app__status-dropdown${closingStatusDropdown ? ' app__status-dropdown--closing' : ''}`} style={(() => {
                     const rect = statusTriggerRef.current?.getBoundingClientRect();
                     return rect ? { top: rect.bottom + 8, right: window.innerWidth - rect.right } : {};
                   })()}>
