@@ -64,14 +64,16 @@
 .dashboard__guard {
   padding: 3rem;
   text-align: center;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   max-width: 500px;
   margin: 3rem auto;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -149,12 +151,14 @@
   padding: 2rem;
   max-width: 900px;
   margin: 0 auto;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -197,9 +201,9 @@
 
 .dashboard__pwd-modal {
   background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   padding: 2rem;
   border-radius: 20px;
   width: 90%;
@@ -247,6 +251,7 @@
 .dashboard__pwd-title {
   margin-top: 0;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: 300;
   letter-spacing: 0.5px;
 }
@@ -332,7 +337,7 @@
 
 .dashboard__step {
   font-weight: bold;
-  color: rgba(255, 255, 255, 0.35);
+  color: rgba(255, 255, 255, 0.55);
   padding: 6px 12px;
   border-radius: 20px;
   transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
@@ -363,6 +368,7 @@
 
 .dashboard__greeting {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: bold;
   margin: 0;
 }
@@ -478,7 +484,7 @@
 /* --- My Calendar (已認領班表月曆) --- */
 .dashboard__my-calendar {
   margin-top: 20px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 12px;
   padding: 15px;
@@ -522,7 +528,7 @@
   align-items: center;
   justify-content: center;
   gap: 2px;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.10);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: transform 0.2s ease;
 }
@@ -564,8 +570,8 @@
 .dashboard__my-calendar-cell--rg,
 .dashboard__my-calendar-cell--rc {
   background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.4);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 /* --- Unclaimed alert --- */
@@ -655,6 +661,7 @@
 
 .dashboard__step2-title {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: bold;
   animation: dashFadeSlideIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -697,7 +704,7 @@
   padding: 1.5rem;
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.15);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.10);
   cursor: pointer;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
@@ -744,6 +751,7 @@
   font-weight: bold;
   font-size: 1.1rem;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .dashboard__shift-card-title--claimed {
@@ -803,6 +811,7 @@
    ========================================================================== */
 .dashboard__step3-title {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: bold;
   text-align: center;
   margin-bottom: 20px;
@@ -925,6 +934,7 @@
 
 .dashboard__success-title {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: 900;
   font-size: 2rem;
   margin-bottom: 1rem;

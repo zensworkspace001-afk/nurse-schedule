@@ -18,16 +18,18 @@
 
 /* --- Header / toolbar --- */
 .review__header {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .review__header-left {
@@ -40,13 +42,14 @@
   margin: 0;
   font-size: 1.5rem;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* --- Archive selector (year/month) --- */
 .review__archive-selector {
   display: flex;
   align-items: center;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   padding: 5px 15px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -97,7 +100,7 @@
 
 /* --- Base salary field --- */
 .review__salary-field {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   padding: 4px 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.2);
@@ -190,8 +193,8 @@
 
 .review__modal-content {
   background: rgba(30, 40, 55, 0.85);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   padding: 2rem;
   border-radius: 20px;
@@ -244,6 +247,7 @@
 .review__modal-title {
   margin: 0 0 10px 0;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: 300;
   letter-spacing: 0.5px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
@@ -359,7 +363,7 @@
 .review__settlement-confirm {
   margin-top: 20px;
   text-align: center;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   padding: 15px;
   border-radius: 12px;
   border: 1px dashed rgba(255, 255, 255, 0.3);
@@ -399,9 +403,9 @@
    ========================================================== */
 .review__options-panel {
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.15);
 }
@@ -498,16 +502,18 @@
 /* --- Schedule table wrapper --- */
 .review__table-wrapper {
   flex: 3;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
 .review__table-scroll {
@@ -531,7 +537,7 @@
 
 .review__table-header-row {
   background: rgba(52, 73, 94, 0.7);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
   color: white;
 }
 
@@ -580,7 +586,7 @@
 
 /* --- Table body rows --- */
 .review__table-row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -590,12 +596,12 @@
 
 .review__table-td-name {
   padding: 8px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
   position: sticky;
   left: 0;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 15;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
 }
@@ -669,16 +675,18 @@
 /* --- Violations panel --- */
 .review__violations {
   flex: 1;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   border-left: 4px solid rgba(231, 76, 60, 0.7);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
 
@@ -723,16 +731,18 @@
 /* --- Risks panel --- */
 .review__risks {
   flex: 1;
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
   border-left: 4px solid rgba(243, 156, 18, 0.7);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   overflow: hidden;
 }
 

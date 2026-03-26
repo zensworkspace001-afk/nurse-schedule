@@ -17,9 +17,9 @@
    Root container
    ---------------------------------------------------------------------------- */
 .schedule-panel {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 2rem;
@@ -27,7 +27,9 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -45,7 +47,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   z-index: 100;
@@ -174,9 +176,9 @@
 
 /* --- Modal box --- */
 .schedule-panel__modal-box {
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.2);
   padding: 2rem;
   border-radius: 20px;
@@ -213,6 +215,7 @@
 
 .schedule-panel__modal-title--instruction {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .schedule-panel__modal-title--overwrite {
@@ -252,7 +255,7 @@
 }
 
 .schedule-panel__modal-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .schedule-panel__modal-textarea:focus {
@@ -275,7 +278,7 @@
 
 /* --- Modal buttons --- */
 .schedule-panel__btn {
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.55);
   border-radius: 20px;
   font-weight: 500;
   cursor: pointer;
@@ -298,8 +301,8 @@
 .schedule-panel__btn--confirm {
   padding: 10px 20px;
   background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
@@ -326,7 +329,7 @@
 .schedule-panel__btn--archive:disabled {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.15);
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
   cursor: not-allowed;
 }
 
@@ -346,7 +349,7 @@
 
 .schedule-panel__btn--keep {
   padding: 12px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 20px;
@@ -381,6 +384,7 @@
 
 .schedule-panel__title {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: bold;
   margin: 0;
 }
@@ -491,7 +495,7 @@
 .schedule-panel__option-panel {
   margin-bottom: 1rem;
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -594,7 +598,7 @@
 .schedule-panel__chat {
   margin-bottom: 1rem;
   padding: 1rem;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.10);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border-radius: 16px;
@@ -665,7 +669,7 @@
 }
 
 .schedule-panel__chat-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .schedule-panel__chat-input:focus {
@@ -693,7 +697,7 @@
 .schedule-panel__chat-send-btn:disabled {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
   cursor: not-allowed;
 }
 
@@ -723,7 +727,7 @@
 
 .schedule-panel__header-row {
   background: rgba(102, 126, 234, 0.6);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
   color: white;
 }
 
@@ -758,7 +762,7 @@
 
 /* --- Table body rows --- */
 .schedule-panel__row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -779,12 +783,12 @@
 /* --- Staff name cell (sticky first column) --- */
 .schedule-panel__staff-cell {
   padding: 8px;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
   position: sticky;
   left: 0;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 15;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
 }
@@ -812,7 +816,7 @@
 }
 
 .schedule-panel__staff-id--virtual {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .schedule-panel__staff-id--real {
@@ -857,18 +861,18 @@
 }
 
 .schedule-panel__stats-row {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.10);
 }
 
 .schedule-panel__stats-label {
   padding: 8px;
   position: sticky;
   left: 0;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(8px);
   z-index: 5;
   font-weight: bold;
-  border-right: 1px solid rgba(255, 255, 255, 0.08);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
   color: rgba(255, 255, 255, 0.9);
 }
 

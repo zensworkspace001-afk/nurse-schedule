@@ -9,28 +9,31 @@
 
 /* --- Container --- */
 .requirements-panel {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 2rem;
   flex: 1;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 /* --- Title --- */
 .requirements-panel__title {
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   margin-bottom: 1.5rem;
 }
 
 /* --- Settings Section --- */
 .requirements-panel__settings {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.12);
   padding: 1.5rem;
   border-radius: 12px;
   margin-bottom: 2rem;

@@ -9,15 +9,17 @@
 
 /* --- Root container --- */
 .staff-mgmt {
-  background: rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.25);
   border-radius: 16px;
   padding: 2rem;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.1);
   animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -32,6 +34,7 @@
 .staff-mgmt__title {
   margin: 0;
   color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .staff-mgmt__actions {
@@ -86,7 +89,7 @@
 }
 
 .staff-mgmt__search-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
 }
 
 .staff-mgmt__search-input:focus {
@@ -218,8 +221,8 @@
   position: sticky;
   top: 0;
   background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 1;
 }
 
@@ -244,8 +247,8 @@
 .staff-mgmt__th--sticky {
   position: sticky;
   background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .staff-mgmt__td--sticky {
@@ -258,7 +261,7 @@
 }
 
 .staff-mgmt__row:hover .staff-mgmt__td--sticky {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .staff-mgmt__row--inactive .staff-mgmt__td--sticky {
@@ -267,17 +270,17 @@
 
 /* --- Table rows --- */
 .staff-mgmt__row {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
   background: rgba(255, 255, 255, 0.04);
   transition: background 0.15s ease;
 }
 
 .staff-mgmt__row:nth-child(even) {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.10);
 }
 
 .staff-mgmt__row:hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 .staff-mgmt__row--inactive {
@@ -369,7 +372,7 @@
 /* --- Streak display (consecutive work days) --- */
 .staff-mgmt__streak-empty {
   text-align: center;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.55);
   font-size: 0.85rem;
 }
 

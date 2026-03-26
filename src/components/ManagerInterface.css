@@ -31,10 +31,10 @@
 
 /* --- Tab bar (底板保留原樣，稍作優化以襯托玻璃) --- */
 .manager__tabs {
-  background: rgba(0, 0, 0, 0.15); /* 🌟 UI範本：深色半透明基底 */
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(15px);
-  -webkit-backdrop-filter: blur(15px);
+  background: rgba(0, 0, 0, 0.2); /* 🌟 UI範本：深色半透明基底 */
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border-radius: 20px;
   padding: 0.5rem;
   display: flex;
