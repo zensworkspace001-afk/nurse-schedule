@@ -457,17 +457,21 @@ const handleLogout = () => {
   // ★ 核心功能 2：AI 動態決策下一位優先選班者
   const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth) => {
       try {
+          // 0. 從 Firestore 讀取最新員工資料，避免 stale closure
+          const staffSnap = await getDoc(doc(db, 'NurseApp', 'Staff'));
+          const freshStaffData = staffSnap.exists() ? (staffSnap.data().staffData || staffData) : staffData;
+
           // 1. 抓取「已經選過」的黑名單 (已完賽標記)
           const progressRef = doc(db, "SelectionProgress", `${currentYear}_${currentMonth}`);
           const snap = await getDoc(progressRef);
           const submittedList = snap.exists() ? (snap.data().submitted_staff || []) : [];
 
           // 2. 篩選出「尚未選班」的活躍員工
-          const unassignedStaff = staffData.filter(s => s.is_active && !submittedList.includes(s.staff_id));
+          const unassignedStaff = freshStaffData.filter(s => s.is_active && !submittedList.includes(s.staff_id));
 
           // 3. 終止條件：所有人都選完了！
           if (unassignedStaff.length === 0) {
-              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'admin@hospital.com';
+              const adminEmail = freshStaffData.find(s => s.staff_id === 'admin')?.email || 'admin@hospital.com';
               await sendSystemEmail(adminEmail, `✅ ${currentMonth}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
               return;
           }
@@ -518,6 +522,25 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
           const text = data.text.replace(/```json|```/g, '').trim();
           const decision = JSON.parse(text);
 
+          // ★ 關鍵驗證：確認 AI 回傳的 staff_id 確實存在於候選人名單中
+          const validCandidate = unassignedStaff.find(s => s.staff_id === decision.selected_staff_id);
+          if (!validCandidate) {
+              console.warn("⚠️ AI 回傳的 staff_id 不在候選名單中:", decision.selected_staff_id);
+              // 嘗試模糊匹配 (AI 可能回傳名字而非 ID)
+              const fuzzyMatch = unassignedStaff.find(s =>
+                  s.name === decision.selected_staff_id ||
+                  decision.selected_staff_id?.includes(s.staff_id) ||
+                  decision.selected_staff_id?.includes(s.name)
+              );
+              if (fuzzyMatch) {
+                  decision.selected_staff_id = fuzzyMatch.staff_id;
+              } else {
+                  // 若完全無法匹配，預設選第一位候選人
+                  decision.selected_staff_id = unassignedStaff[0].staff_id;
+                  decision.reason = `(系統自動修正) AI 回傳無效 ID，自動選擇第一位候選人：${unassignedStaff[0].name}`;
+              }
+          }
+
           // 6. 寫入 AI Data Log 背景紀錄
           await addDoc(collection(db, "AI_Decision_Logs"), {
               timestamp: new Date(), year: currentYear, month: currentMonth,
@@ -530,7 +553,7 @@ aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${gender} | 職級:${lev
           });
 
           // 8. 抓取該員工 Email 並寄出通知
-          const targetStaff = staffData.find(s => s.staff_id === decision.selected_staff_id);
+          const targetStaff = freshStaffData.find(s => s.staff_id === decision.selected_staff_id);
           if (targetStaff && targetStaff.email) {
               await sendSystemEmail(
                   targetStaff.email, 

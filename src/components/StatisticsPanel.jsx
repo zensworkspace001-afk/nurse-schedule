@@ -708,13 +708,13 @@ let combinedData = "";
 
                          <div className="statistics__radar-actions">
                              <button
-                                onClick={() => {
+                                onClick={async () => {
                                    if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
                                        const y = Number(localStorage.getItem('selectedYear')) || 2026;
                                        const m = Number(localStorage.getItem('selectedMonth')) || 2;
                                        if (typeof calculateAndNotifyNextStaff === 'function') {
-                                           calculateAndNotifyNextStaff({}, healthStats, y, m);
                                            alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
+                                           await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, y, m);
                                        }
                                    }
                                 }}
