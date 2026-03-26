@@ -131,7 +131,7 @@ export default async function handler(req, res) {
         // 6. 呼叫 Gemini (使用穩定的 2.0-flash)
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ 
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-pro',
             systemInstruction: '你是護理排班系統的 AI 助手。根據提供的員工數據、疲勞度與歷史紀錄，協助進行排班決策。必須回覆有效的 JSON 格式。'
         });
 
