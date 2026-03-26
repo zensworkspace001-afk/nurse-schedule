@@ -92,6 +92,9 @@ export default async function handler(req, res) {
     
   } catch (error) {
     console.error('Gemini API 錯誤:', error);
+    if (error.message?.includes('429') || error.message?.includes('quota') || error.message?.includes('spending')) {
+      return res.status(429).json({ error: 'AI API 配額已用盡，請聯繫管理員檢查 Google AI Studio 帳單設定' });
+    }
     return res.status(500).json({ error: 'AI 伺服器處理失敗' });
   }
 }
