@@ -246,30 +246,30 @@
 /* --- Sticky columns (工號 + 姓名) --- */
 .staff-mgmt__th--sticky {
   position: sticky;
-  background: rgba(120, 130, 155, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 3;
 }
 
 .staff-mgmt__td--sticky {
   position: sticky;
-  background: rgba(95, 105, 130, 0.95);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(255, 255, 255, 0.10);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   z-index: 2;
 }
 
 .staff-mgmt__row:nth-child(even) .staff-mgmt__td--sticky {
-  background: rgba(105, 115, 140, 0.95);
+  background: rgba(255, 255, 255, 0.15);
 }
 
 .staff-mgmt__row:hover .staff-mgmt__td--sticky {
-  background: rgba(120, 130, 155, 0.95);
+  background: rgba(255, 255, 255, 0.25);
 }
 
 .staff-mgmt__row--inactive .staff-mgmt__td--sticky {
-  background: rgba(80, 88, 110, 0.95);
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* --- Table rows --- */
