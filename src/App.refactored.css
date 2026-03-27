@@ -562,6 +562,68 @@
   }
 }
 
+/* --- 首次改密碼 Modal：高對比文字 --- */
+.app__modal--force-pwd .app__modal-title {
+  color: #ffffff;
+  font-weight: 600;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+}
+
+.app__modal--force-pwd-desc {
+  font-size: 13px;
+  color: #ffd666;
+  margin: 0 0 16px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.app__modal--force-pwd .app__modal-label {
+  color: #ffffff;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.app__modal--force-pwd .app__modal-input {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+}
+
+.app__modal--force-pwd .app__modal-input:focus {
+  border-color: #ffd666;
+  box-shadow: 0 0 8px rgba(255, 214, 102, 0.3);
+}
+
+.app__modal--force-pwd .app__modal-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.app__modal--force-pwd .app__modal-msg--error {
+  color: #ff7875;
+  background: rgba(255, 77, 79, 0.25);
+  border: 1px solid rgba(255, 77, 79, 0.5);
+  font-weight: 500;
+}
+
+.app__modal--force-pwd .app__modal-msg--success {
+  color: #95de64;
+  background: rgba(82, 196, 26, 0.25);
+  border: 1px solid rgba(82, 196, 26, 0.5);
+  font-weight: 500;
+}
+
+.app__modal--force-pwd .app__modal-submit-btn {
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border: 1px solid rgba(255, 214, 102, 0.6);
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.app__modal--force-pwd .app__modal-submit-btn:hover {
+  background: rgba(255, 214, 102, 0.4);
+  color: #fff;
+}
+
 .app__modal-overlay--force-pwd-closing {
   animation: forcePwdOverlayOut 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }

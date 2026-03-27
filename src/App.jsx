@@ -801,7 +801,7 @@ const handleSaveAndPublish = async () => {
         <div className={`app__modal-overlay app__modal-overlay--force-pwd${closingForceChangePwd ? ' app__modal-overlay--force-pwd-closing' : ''}`}>
             <div className={`app__modal app__modal--force-pwd${closingForceChangePwd ? ' app__modal--force-pwd-closing' : ''}`}>
                 <h3 className="app__modal-title"><Lock size={20} /> 首次登入：請修改預設密碼</h3>
-                <p style={{ fontSize: '13px', color: '#666', margin: '0 0 16px' }}>
+                <p className="app__modal--force-pwd-desc">
                     系統偵測到您正在使用預設密碼，為保護帳號安全，請立即設定新密碼。
                 </p>
                 <form onSubmit={handleForceChangePwd} className="app__modal-form">
