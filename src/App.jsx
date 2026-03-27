@@ -623,7 +623,14 @@ const handleSaveAndPublish = async () => {
         console.error("發布至雲端失敗:", e);
     }
     
-    alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。`);
+    alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。\n\n🚀 系統正在背景啟動 AI 接力選班...`);
+
+    // ★★★ 發布後自動啟動第一棒 AI 接力選班 ★★★
+    try {
+        await calculateAndNotifyNextStaff(newFinalized, healthStats, selectedYear, selectedMonth);
+    } catch (e) {
+        console.error("發布後自動接力啟動失敗:", e);
+    }
   };
 
 // ★★★ 資安升級：首次登入強制改密碼 Handler ★★★
