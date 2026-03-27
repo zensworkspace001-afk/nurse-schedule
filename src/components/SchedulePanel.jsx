@@ -285,9 +285,15 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 
             const data = await response.json();
             if (!data.text) throw new Error('AI 回應異常');
-            const text = data.text.replace(/```json|```/g, '').trim();
-            const jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error("JSON 格式錯誤");
+            // 魯棒性清洗：移除 thinking 標籤、markdown 程式碼區塊
+            let text = data.text
+                .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
+                .replace(/```json/gi, '').replace(/```/g, '')
+                .trim();
+            // 嘗試精確匹配含 "patterns" 的 JSON 物件
+            const patternsMatch = text.match(/\{[^{}]*"patterns"\s*:\s*\[[\s\S]*?\][^{}]*\}/);
+            const jsonMatch = patternsMatch || text.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) throw new Error("JSON 格式錯誤，AI 未回傳有效 JSON");
             const parsed = JSON.parse(jsonMatch[0]);
 
             if (parsed.patterns && Array.isArray(parsed.patterns)) {
@@ -347,8 +353,9 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
             }
         } catch (e) {
             console.error(e);
+            setGeminiMessages(prev => [...prev, { role: 'assistant', content: `⚠️ 第 ${attempts} 次嘗試失敗：${e.message}` }]);
             if (attempts >= MAX_RETRIES) {
-                setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 系統錯誤: " + e.message }]);
+                setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 已重試 5 次仍無法生成合規班表，請調整條件後再試。" }]);
                 break;
             }
         }
