@@ -33,6 +33,7 @@ const NurseSchedulingSystem = () => {
 
   // ★★★ 資安升級：首次登入強制改密碼 ★★★
   const [showForceChangePwd, setShowForceChangePwd] = useState(false);
+  const [closingForceChangePwd, setClosingForceChangePwd] = useState(false);
   const [forceChangePwdData, setForceChangePwdData] = useState({ new: '', confirm: '' });
   const [forceChangePwdMsg, setForceChangePwdMsg] = useState({ type: '', text: '' });
 
@@ -654,12 +655,18 @@ const handleSaveAndPublish = async () => {
               await reauthenticateWithCredential(user, credential);
               await updatePassword(user, forceChangePwdData.new);
               setForceChangePwdMsg({ type: 'success', text: '✅ 密碼修改成功！' });
+              // 先顯示成功訊息 1s，再啟動淡出動畫
               setTimeout(() => {
-                  setShowForceChangePwd(false);
-                  setForceChangePwdData({ new: '', confirm: '' });
-                  setForceChangePwdMsg({ type: '', text: '' });
-                  setCurrentUser(prev => ({ ...prev, forcePasswordChange: false }));
-              }, 1500);
+                  setClosingForceChangePwd(true);
+                  // 等淡出動畫播完 (0.7s) 再卸載 DOM
+                  setTimeout(() => {
+                      setShowForceChangePwd(false);
+                      setClosingForceChangePwd(false);
+                      setForceChangePwdData({ new: '', confirm: '' });
+                      setForceChangePwdMsg({ type: '', text: '' });
+                      setCurrentUser(prev => ({ ...prev, forcePasswordChange: false }));
+                  }, 700);
+              }, 1000);
           }
       } catch (error) {
           if (import.meta.env.DEV) console.error("強制改密碼失敗:", error);
@@ -791,8 +798,8 @@ const handleSaveAndPublish = async () => {
 
       {/* ★★★ 資安升級：首次登入強制改密碼 Modal (不可關閉) ★★★ */}
       {showForceChangePwd && (
-        <div className="app__modal-overlay app__modal-overlay--force-pwd">
-            <div className="app__modal app__modal--force-pwd">
+        <div className={`app__modal-overlay app__modal-overlay--force-pwd${closingForceChangePwd ? ' app__modal-overlay--force-pwd-closing' : ''}`}>
+            <div className={`app__modal app__modal--force-pwd${closingForceChangePwd ? ' app__modal--force-pwd-closing' : ''}`}>
                 <h3 className="app__modal-title"><Lock size={20} /> 首次登入：請修改預設密碼</h3>
                 <p style={{ fontSize: '13px', color: '#666', margin: '0 0 16px' }}>
                     系統偵測到您正在使用預設密碼，為保護帳號安全，請立即設定新密碼。
