@@ -493,6 +493,7 @@ const handleLogout = () => {
           } catch (emailErr) {
               console.error("通知管理員失敗:", emailErr);
           }
+          throw error;
       }
   };
 // ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★

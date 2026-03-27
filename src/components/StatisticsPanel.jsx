@@ -705,9 +705,17 @@ let combinedData = "";
                              <button
                                 onClick={async () => {
                                    if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
-                                       if (typeof calculateAndNotifyNextStaff === 'function') {
+                                       if (typeof calculateAndNotifyNextStaff !== 'function') {
+                                           alert("❌ 接力功能未就緒，請重新整理頁面後再試。");
+                                           return;
+                                       }
+                                       try {
                                            alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
                                            await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, selectedYear, selectedMonth);
+                                           alert("✅ AI 接力啟動成功！已通知第一位選班人員。");
+                                       } catch (err) {
+                                           console.error("啟動接力失敗:", err);
+                                           alert(`❌ 啟動失敗：${err.message || err}\n\n請確認網路連線正常且已登入。`);
                                        }
                                    }
                                 }}
