@@ -513,6 +513,55 @@
   100% { opacity: 0; transform: scale(0.9) translateY(20px); }
 }
 
+/* --- 首次登入改密碼 Modal：柔和毛玻璃動畫 --- */
+.app__modal-overlay--force-pwd {
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  animation: forcePwdOverlayIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes forcePwdOverlayIn {
+  0% {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+}
+
+.app__modal--force-pwd {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(30px);
+  -webkit-backdrop-filter: blur(30px);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  animation: forcePwdModalIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation-delay: 0.15s;
+  opacity: 0;
+}
+
+@keyframes forcePwdModalIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.9) translateY(40px);
+    filter: blur(8px);
+  }
+  60% {
+    opacity: 1;
+    filter: blur(0px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0px);
+  }
+}
+
 .app__modal-close-btn {
   position: absolute;
   top: 15px;

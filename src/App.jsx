@@ -791,8 +791,8 @@ const handleSaveAndPublish = async () => {
 
       {/* ★★★ 資安升級：首次登入強制改密碼 Modal (不可關閉) ★★★ */}
       {showForceChangePwd && (
-        <div className="app__modal-overlay">
-            <div className="app__modal">
+        <div className="app__modal-overlay app__modal-overlay--force-pwd">
+            <div className="app__modal app__modal--force-pwd">
                 <h3 className="app__modal-title"><Lock size={20} /> 首次登入：請修改預設密碼</h3>
                 <p style={{ fontSize: '13px', color: '#666', margin: '0 0 16px' }}>
                     系統偵測到您正在使用預設密碼，為保護帳號安全，請立即設定新密碼。
