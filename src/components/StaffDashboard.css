@@ -251,8 +251,8 @@
 .dashboard__pwd-title {
   margin-top: 0;
   color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  font-weight: 300;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  font-weight: 600;
   letter-spacing: 0.5px;
 }
 
@@ -265,7 +265,9 @@
 
 .dashboard__pwd-label {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.9);
+  color: #ffffff;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   margin-bottom: 5px;
   display: block;
 }
@@ -274,52 +276,59 @@
   width: 100%;
   padding: 12px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
   box-sizing: border-box;
   transition: all 0.3s ease;
 }
 
 .dashboard__pwd-input:focus {
   outline: none;
-  background: rgba(0, 0, 0, 0.25);
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+  border-color: #ffd666;
+  box-shadow: 0 0 8px rgba(255, 214, 102, 0.3);
+}
+
+.dashboard__pwd-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .dashboard__pwd-msg {
   padding: 12px;
   border-radius: 12px;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .dashboard__pwd-msg--error {
-  color: #ffffff;
-  background: rgba(231, 76, 60, 0.25);
-  border: 1px solid rgba(231, 76, 60, 0.4);
+  color: #ff7875;
+  background: rgba(255, 77, 79, 0.25);
+  border: 1px solid rgba(255, 77, 79, 0.5);
 }
 
 .dashboard__pwd-msg--success {
-  color: #ffffff;
-  background: rgba(46, 204, 113, 0.25);
-  border: 1px solid rgba(46, 204, 113, 0.4);
+  color: #95de64;
+  background: rgba(82, 196, 26, 0.25);
+  border: 1px solid rgba(82, 196, 26, 0.5);
 }
 
 .dashboard__pwd-submit-btn {
   padding: 14px;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border: 1px solid rgba(255, 214, 102, 0.6);
   border-radius: 20px;
-  font-weight: 500;
+  font-weight: 700;
   cursor: pointer;
   margin-top: 10px;
   transition: all 0.3s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .dashboard__pwd-submit-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 214, 102, 0.4);
+  color: #fff;
   transform: translateY(-1px);
 }
 

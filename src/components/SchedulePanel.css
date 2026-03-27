@@ -209,33 +209,37 @@
   align-items: center;
   gap: 10px;
   font-size: 1.3rem;
-  font-weight: 300;
+  font-weight: 600;
   letter-spacing: 0.5px;
 }
 
 .schedule-panel__modal-title--instruction {
   color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 
 .schedule-panel__modal-title--overwrite {
-  color: #ff8a80;
+  color: #ff7875;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 
 /* --- Modal description --- */
 .schedule-panel__modal-desc {
-  color: rgba(255, 255, 255, 0.85);
+  color: #ffffff;
   line-height: 1.6;
   margin-bottom: 15px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .schedule-panel__modal-desc--overwrite {
+  color: #ffd666;
   margin-bottom: 20px;
 }
 
 .schedule-panel__modal-hint {
   font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 /* --- Modal textarea --- */
@@ -244,9 +248,9 @@
   height: 100px;
   padding: 14px;
   border-radius: 12px;
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
   resize: vertical;
   margin-bottom: 20px;
   font-size: 1rem;
@@ -255,14 +259,14 @@
 }
 
 .schedule-panel__modal-textarea::placeholder {
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .schedule-panel__modal-textarea:focus {
   outline: none;
-  background: rgba(0, 0, 0, 0.25);
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.35);
+  border-color: #ffd666;
+  box-shadow: 0 0 8px rgba(255, 214, 102, 0.3);
 }
 
 /* --- Modal actions --- */
@@ -289,8 +293,9 @@
 .schedule-panel__btn--cancel {
   padding: 10px 20px;
   background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.7);
-  border-color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.8);
+  border-color: rgba(255, 255, 255, 0.35);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .schedule-panel__btn--cancel:hover {
@@ -300,15 +305,20 @@
 
 .schedule-panel__btn--confirm {
   padding: 10px 20px;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border-color: rgba(255, 214, 102, 0.6);
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
 }
 
 .schedule-panel__btn--confirm:hover {
-  background: rgba(255, 255, 255, 0.3);
-  border-color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 214, 102, 0.4);
+  color: #fff;
+  border-color: rgba(255, 214, 102, 0.8);
   transform: translateY(-1px);
 }
 

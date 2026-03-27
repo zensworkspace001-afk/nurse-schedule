@@ -247,10 +247,10 @@
 .review__modal-title {
   margin: 0 0 10px 0;
   color: #ffffff;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  font-weight: 300;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  font-weight: 600;
   letter-spacing: 0.5px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.25);
   padding-bottom: 10px;
 }
 
@@ -266,6 +266,8 @@
 .review__settlement-thead {
   background: rgba(255, 255, 255, 0.1);
   color: white;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  font-weight: 600;
 }
 
 .review__settlement-th {
@@ -275,26 +277,31 @@
 .review__settlement-th--night {
   padding: 10px;
   background: rgba(142, 68, 173, 0.4);
+  color: #d7aefb;
 }
 
 .review__settlement-th--overtime {
   padding: 10px;
   background: rgba(231, 76, 60, 0.4);
+  color: #ff7875;
 }
 
 .review__settlement-th--leave {
   padding: 10px;
   background: rgba(149, 165, 166, 0.3);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .review__settlement-th--deduction {
   padding: 10px;
   background: rgba(127, 140, 141, 0.3);
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .review__settlement-th--salary {
   padding: 10px;
   background: rgba(39, 174, 96, 0.4);
+  color: #95de64;
 }
 
 .review__settlement-row {
@@ -308,20 +315,23 @@
 .review__settlement-name {
   font-weight: bold;
   color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .review__settlement-id {
   font-size: 0.8rem;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .review__settlement-work {
-  color: rgba(255, 255, 255, 0.9);
+  color: #ffffff;
+  font-weight: 500;
 }
 
 .review__settlement-holiday {
   font-size: 0.8rem;
-  color: #f5b041;
+  color: #ffd666;
+  font-weight: 500;
 }
 
 .review__settlement-night-count {
@@ -337,25 +347,27 @@
 
 .review__settlement-ot-detail {
   font-size: 0.85rem;
-  color: #ff8a80;
+  color: #ff7875;
   margin-top: 4px;
+  font-weight: 500;
 }
 
 .review__settlement-empty {
   padding: 20px;
-  color: rgba(255, 255, 255, 0.5);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .review__settlement-salary {
   font-weight: bold;
-  color: #69f0ae;
+  color: #95de64;
   font-size: 1.1rem;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 }
 
 .review__settlement-level-bonus {
   font-size: 0.75rem;
-  font-weight: 400;
-  color: #81d4fa;
+  font-weight: 500;
+  color: #91d5ff;
   margin-top: 2px;
 }
 
@@ -372,30 +384,35 @@
 .review__settlement-confirm-hint {
   margin-bottom: 10px;
   font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: #ffd666;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
 .review__settlement-confirm-btn {
   padding: 12px 30px;
-  background: rgba(46, 204, 113, 0.25);
-  color: white;
-  border: 1px solid rgba(46, 204, 113, 0.5);
+  background: rgba(82, 196, 26, 0.25);
+  color: #95de64;
+  border: 1px solid rgba(82, 196, 26, 0.5);
   border-radius: 20px;
   cursor: pointer;
   font-size: 1.1rem;
-  font-weight: 500;
+  font-weight: 700;
   transition: all 0.3s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .review__settlement-confirm-btn:hover {
-  background: rgba(46, 204, 113, 0.4);
+  background: rgba(82, 196, 26, 0.4);
+  color: #fff;
   transform: translateY(-1px);
 }
 
 .review__settlement-confirm-warning {
   margin-top: 8px;
   font-size: 0.8rem;
-  color: #ff8a80;
+  color: #ff7875;
+  font-weight: 500;
 }
 
 /* ==========================================================

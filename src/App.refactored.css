@@ -682,8 +682,9 @@
 .app__modal-title {
   margin-top: 0;
   color: #ffffff;
-  font-weight: 300;
+  font-weight: 600;
   text-align: center;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
 }
 
 /* --- Modal form --- */
@@ -696,7 +697,9 @@
 
 .app__modal-label {
   font-size: 0.9rem;
-  color: rgba(255, 255, 255, 0.9);
+  color: #ffffff;
+  font-weight: 500;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   margin-bottom: 5px;
   display: block;
 }
@@ -706,16 +709,21 @@
   width: 100%;
   padding: 12px;
   border-radius: 8px;
-  background: rgba(0, 0, 0, 0.15);
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
   box-sizing: border-box;
 }
 
 .app__modal-input:focus {
   outline: none;
-  border-color: rgba(255, 255, 255, 0.8);
-  background: rgba(0, 0, 0, 0.25);
+  border-color: #ffd666;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 8px rgba(255, 214, 102, 0.3);
+}
+
+.app__modal-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
 }
 
 /* --- Modal message --- */
@@ -723,35 +731,38 @@
   padding: 10px;
   border-radius: 8px;
   font-size: 0.9rem;
+  font-weight: 500;
 }
 
 .app__modal-msg--error {
-  color: #ffcccc;
-  background: rgba(231, 76, 60, 0.4);
-  border: 1px solid rgba(231, 76, 60, 0.6);
+  color: #ff7875;
+  background: rgba(255, 77, 79, 0.25);
+  border: 1px solid rgba(255, 77, 79, 0.5);
 }
 
 .app__modal-msg--success {
-  color: #ccffcc;
-  background: rgba(39, 174, 96, 0.4);
-  border: 1px solid rgba(39, 174, 96, 0.6);
+  color: #95de64;
+  background: rgba(82, 196, 26, 0.25);
+  border: 1px solid rgba(82, 196, 26, 0.5);
 }
 
 /* --- Modal submit button --- */
 .app__modal-submit-btn {
   padding: 14px;
-  background: rgba(255, 255, 255, 0.2);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.6);
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border: 1px solid rgba(255, 214, 102, 0.6);
   border-radius: 20px;
-  font-weight: bold;
+  font-weight: 700;
   cursor: pointer;
   margin-top: 10px;
   transition: all 0.3s;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
 .app__modal-submit-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 214, 102, 0.4);
+  color: #fff;
 }
 
 /* ==========================================================================
