@@ -296,8 +296,8 @@ let combinedData = "";
               body: formData
           });
 
-          if (!response.ok) throw new Error("伺服器分析失敗");
           const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "伺服器分析失敗");
           setAiMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
 
       } catch (error) {
@@ -807,7 +807,7 @@ let combinedData = "";
                           <input
                               value={aiInput}
                               onChange={(e) => setAiInput(e.target.value)}
-                              onKeyPress={(e) => e.key === 'Enter' && handleAskAI()}
+                              onKeyDown={(e) => e.key === 'Enter' && handleAskAI()}
                               placeholder={hasData ? "問我請假趨勢..." : "等待資料..."}
                               disabled={!hasData || isAnalyzing}
                               className="statistics__chat-input"
