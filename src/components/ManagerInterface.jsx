@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { motion, useMotionValue, animate } from 'framer-motion';
 import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
@@ -34,101 +35,204 @@ const ManagerInterface = ({
   const location = useLocation();
   const currentPath = location.pathname;
 
-  // Ref 用於取得每個按鈕的實際大小與位置，以便滑塊能精準跟隨
   const tabRefs = useRef([]);
-  const [gliderStyle, setGliderStyle] = useState({ transform: 'translate(0px, 0px)', width: 0, height: 0, opacity: 0 });
-
+  const tabsContainerRef = useRef(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
-  useEffect(() => {
-    // 找出目前路由對應的 tab index，若在根目錄則預設為 0
+  /* ─── Blob measurements for each tab ─── */
+  const [blobRects, setBlobRects] = useState([]);
+
+  /* ─── Motion values for the goo indicator ─── */
+  const indicatorX = useMotionValue(0);
+  const indicatorY = useMotionValue(0);
+  const indicatorW = useMotionValue(0);
+  const indicatorH = useMotionValue(0);
+
+  /* Measure all tabs and update blob positions */
+  const measureTabs = useCallback(() => {
+    const container = tabsContainerRef.current;
+    if (!container) return;
+    const containerRect = container.getBoundingClientRect();
+
+    const rects = tabRefs.current.map((el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return {
+        x: r.left - containerRect.left,
+        y: r.top - containerRect.top,
+        w: r.width,
+        h: r.height,
+      };
+    });
+    setBlobRects(rects);
+    return rects;
+  }, []);
+
+  /* Animate indicator to the active tab */
+  const animateToTab = useCallback((rects) => {
     let activeIndex = tabs.findIndex(t => t.path === currentPath);
     if (activeIndex === -1 && currentPath === '/') activeIndex = 0;
-    
-    const currentTab = tabRefs.current[activeIndex];
-    
-    // 加一點延遲確保 DOM 已渲染
+    if (activeIndex === -1) return;
+
+    const measured = rects || blobRects;
+    const target = measured[activeIndex];
+    if (!target) return;
+
+    const springConfig = { type: 'spring', stiffness: 170, damping: 20, mass: 1.1 };
+    animate(indicatorX, target.x, springConfig);
+    animate(indicatorY, target.y, springConfig);
+    animate(indicatorW, target.w, springConfig);
+    animate(indicatorH, target.h, springConfig);
+  }, [currentPath, blobRects, indicatorX, indicatorY, indicatorW, indicatorH]);
+
+  /* Re-measure + animate on route change or menu toggle */
+  useEffect(() => {
     const timer = setTimeout(() => {
-        if (currentTab) {
-          setGliderStyle({
-            transform: `translate(${currentTab.offsetLeft}px, ${currentTab.offsetTop}px)`,
-            width: currentTab.offsetWidth,
-            height: currentTab.offsetHeight,
-            opacity: 1,
-          });
-        }
-    }, 50);
+      const rects = measureTabs();
+      if (rects) animateToTab(rects);
+    }, 60);
     return () => clearTimeout(timer);
-  }, [currentPath, isMobileMenuOpen]);
+  }, [currentPath, isMobileMenuOpen, measureTabs, animateToTab]);
+
+  /* Also re-measure on window resize */
+  useEffect(() => {
+    const handleResize = () => {
+      const rects = measureTabs();
+      if (rects) animateToTab(rects);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [measureTabs, animateToTab]);
 
   return (
     <div className="manager">
 
       {/* 🌟 手機版漢堡選單按鈕 */}
-      <button 
-        className="manager__mobile-menu-btn" 
+      <button
+        className="manager__mobile-menu-btn"
         onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
       >
         {isMobileMenuOpen ? <><X size={16} /> 關閉選單</> : <><Menu size={16} /> 開啟導覽選單</>}
       </button>
 
-      <div className={`manager__tabs ${isMobileMenuOpen ? 'manager__tabs--open' : ''}`}>
-        {/* 🌟 背景滑動毛玻璃游標 */}
-        <div className="manager__glider" style={gliderStyle}></div>
+      {/* ═══ Tab bar with liquid goo effect ═══ */}
+      <div className={`manager__tabs-wrapper ${isMobileMenuOpen ? 'manager__tabs-wrapper--open' : ''}`}>
+        {/* SVG Goo Filter Definition */}
+        <svg className="manager__goo-svg" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <filter id="tab-goo">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+              <feColorMatrix
+                in="blur"
+                mode="matrix"
+                values="1 0 0 0 0
+                        0 1 0 0 0
+                        0 0 1 0 0
+                        0 0 0 18 -7"
+                result="goo"
+              />
+              <feBlend in="SourceGraphic" in2="goo" />
+            </filter>
+          </defs>
+        </svg>
 
-        {tabs.map((tab, index) => (
-          <NavLink
-            key={tab.id}
-            to={tab.path}
-            ref={(el) => (tabRefs.current[index] = el)}
-            onClick={() => setIsMobileMenuOpen(false)} // 點擊後自動收起
-            className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'requirements') ? ' manager__tab--active' : ''}`}
-            style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <tab.icon size={16} /> {tab.label}
-          </NavLink>
-        ))}
+        {/* LAYER 1: Goo-filtered blobs — no text */}
+        <div className="manager__goo-layer" ref={tabsContainerRef}>
+          {/* Static pill blobs for each tab slot */}
+          {blobRects.map((rect, i) =>
+            rect ? (
+              <div
+                key={i}
+                className="manager__tab-blob"
+                style={{
+                  left: rect.x,
+                  top: rect.y,
+                  width: rect.w,
+                  height: rect.h,
+                }}
+              />
+            ) : null
+          )}
+
+          {/* Animated goo indicator */}
+          <motion.div
+            className="manager__goo-indicator"
+            style={{
+              x: indicatorX,
+              y: indicatorY,
+              width: indicatorW,
+              height: indicatorH,
+            }}
+          />
+        </div>
+
+        {/* LAYER 2: Glass overlay + clickable text labels — NOT filtered */}
+        <div className={`manager__tabs ${isMobileMenuOpen ? 'manager__tabs--open' : ''}`}>
+          {tabs.map((tab, index) => (
+            <NavLink
+              key={tab.id}
+              to={tab.path}
+              ref={(el) => (tabRefs.current[index] = el)}
+              onClick={() => setIsMobileMenuOpen(false)}
+              className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'requirements') ? ' manager__tab--active' : ''}`}
+              style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <tab.icon size={16} /> {tab.label}
+            </NavLink>
+          ))}
+        </div>
+
+        {/* LAYER 3: Glass shine overlay on the indicator — NOT filtered */}
+        <motion.div
+          className="manager__indicator-shine"
+          style={{
+            x: indicatorX,
+            y: indicatorY,
+            width: indicatorW,
+            height: indicatorH,
+          }}
+        />
       </div>
-      
+
       <div className="manager__content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Routes>
               <Route path="/" element={<Navigate to="/requirements" replace />} />
-              
+
               <Route path="/requirements" element={
                 <RequirementsPanel
                   requirements={requirements} setRequirements={setRequirements}
                   bedConfig={bedConfig} setBedConfig={setBedConfig}
-                  onGenerateSchedule={onGenerateSchedule} 
+                  onGenerateSchedule={onGenerateSchedule}
                   onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
                   selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
                 />
               } />
-              
+
               <Route path="/staff" element={
                 <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
               } />
-              
+
               <Route path="/schedule" element={
                 <SchedulePanel
                   schedule={schedule} staffData={staffData} violations={violations}
-                  requirements={requirements} onGenerateSchedule={onGenerateSchedule} 
+                  requirements={requirements} onGenerateSchedule={onGenerateSchedule}
                   onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
                   selectedYear={selectedYear} selectedMonth={selectedMonth}
                   setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
-                  shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+                  shiftOptions={shiftOptions} setShiftOptions={setShiftOptions}
                   finalizedSchedule={finalizedSchedule}
-                  setHistoryYear={setHistoryYear} 
-                  setHistoryMonth={setHistoryMonth} 
+                  setHistoryYear={setHistoryYear}
+                  setHistoryMonth={setHistoryMonth}
                   setHistorySchedule={setHistorySchedule}
                   historyYear={historyYear}
                   historyMonth={historyMonth}
                   historySchedule={historySchedule}
-                  onManualRefresh={onManualRefresh} 
-                  publicHolidays={publicHolidays}        
-                  setFinalizedSchedule={setFinalizedSchedule} 
+                  onManualRefresh={onManualRefresh}
+                  publicHolidays={publicHolidays}
+                  setFinalizedSchedule={setFinalizedSchedule}
                 />
               } />
-              
+
               <Route path="/publish" element={
                 <PublishPanel
                    staffData={staffData}
@@ -145,9 +249,9 @@ const ManagerInterface = ({
               } />
 
               <Route path="/review" element={
-                <ScheduleReviewPanel 
+                <ScheduleReviewPanel
                    staffData={staffData} setStaffData={setStaffData}
-                   shiftOptions={shiftOptions} setShiftOptions={setShiftOptions} 
+                   shiftOptions={shiftOptions} setShiftOptions={setShiftOptions}
                    publicHolidays={publicHolidays}
                    onUpdateHealthStats={onUpdateHealthStats}
                    bedConfig={bedConfig}
@@ -158,9 +262,9 @@ const ManagerInterface = ({
                    levelBonus={levelBonus} setLevelBonus={setLevelBonus}
                 />
               } />
-              
+
               <Route path="/statistics" element={
-                <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig} 
+                <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig}
                     healthStats={healthStats}
                     accumulatedReports={accumulatedReports}
                     setAccumulatedReports={setAccumulatedReports}
