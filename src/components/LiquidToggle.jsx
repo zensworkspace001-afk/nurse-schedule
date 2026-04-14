@@ -25,9 +25,9 @@ function yForIndex(i) {
 
 /* ─── Color themes per state ─── */
 const THEMES = {
-  sleep:    { bg: '#3b82f6', glow: 'rgba(59,130,246,0.55)',  glowWide: 'rgba(59,130,246,0.18)' },
-  dnd:      { bg: '#ef4444', glow: 'rgba(239,68,68,0.55)',   glowWide: 'rgba(239,68,68,0.18)' },
-  personal: { bg: '#f59e0b', glow: 'rgba(245,158,11,0.55)',  glowWide: 'rgba(245,158,11,0.18)' },
+  sleep:    { bg: 'rgba(59,130,246,0.7)',  glow: 'rgba(59,130,246,0.35)',  glowWide: 'rgba(59,130,246,0.1)' },
+  dnd:      { bg: 'rgba(239,68,68,0.7)',   glow: 'rgba(239,68,68,0.35)',   glowWide: 'rgba(239,68,68,0.1)' },
+  personal: { bg: 'rgba(245,158,11,0.7)',  glow: 'rgba(245,158,11,0.35)',  glowWide: 'rgba(245,158,11,0.1)' },
 };
 
 /* ─── Pill blob (used for buttons AND indicator in the goo layer) ─── */
@@ -110,14 +110,14 @@ export default function LiquidToggle() {
       <svg className="lt__svg" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <filter id="goo">
-            <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="8" result="blur" />
             <feColorMatrix
               in="blur"
               mode="matrix"
               values="1 0 0 0 0
                       0 1 0 0 0
                       0 0 1 0 0
-                      0 0 0 22 -9"
+                      0 0 0 18 -7"
               result="goo"
             />
             {/* blend the goo back so edges stay smooth */}
@@ -136,7 +136,7 @@ export default function LiquidToggle() {
               y={PAD + i * SLOT_H}
               width={BTN_W}
               height={BTN_H}
-              color="rgba(255,255,255,0.07)"
+              color="rgba(255,255,255,0.05)"
               className="lt-blob--btn"
               style={{ position: 'absolute', left: PAD }}
             />
