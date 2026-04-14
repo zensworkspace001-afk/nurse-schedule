@@ -14,7 +14,7 @@ const CONFIG = {
   /** max connection distance (px) */
   linkDist: 140,
   /** line opacity at distance 0 */
-  linkAlpha: 0.18,
+  linkAlpha: 0.08,
   /** base particle radius range */
   radiusMin: 1,
   radiusMax: 2.5,
@@ -44,7 +44,7 @@ function createParticle(w, h) {
     vy: rand(-CONFIG.speedMax, CONFIG.speedMax) || CONFIG.speedMin,
     r: rand(CONFIG.radiusMin, CONFIG.radiusMax),
     color: c,
-    alpha: rand(0.3, 0.7),
+    alpha: rand(0.12, 0.35),
   };
 }
 
