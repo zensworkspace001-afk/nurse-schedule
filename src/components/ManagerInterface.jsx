@@ -36,7 +36,6 @@ const ManagerInterface = ({
   const currentPath = location.pathname;
 
   const tabRefs = useRef([]);
-  const tabsContainerRef = useRef(null);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   /* ─── Blob measurements for each tab ─── */
@@ -48,18 +47,20 @@ const ManagerInterface = ({
   const indicatorW = useMotionValue(0);
   const indicatorH = useMotionValue(0);
 
-  /* Measure all tabs and update blob positions */
+  /* Measure all tabs relative to the wrapper (common parent of all layers) */
+  const wrapperRef = useRef(null);
+
   const measureTabs = useCallback(() => {
-    const container = tabsContainerRef.current;
-    if (!container) return;
-    const containerRect = container.getBoundingClientRect();
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const wrapperRect = wrapper.getBoundingClientRect();
 
     const rects = tabRefs.current.map((el) => {
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return {
-        x: r.left - containerRect.left,
-        y: r.top - containerRect.top,
+        x: r.left - wrapperRect.left,
+        y: r.top - wrapperRect.top,
         w: r.width,
         h: r.height,
       };
@@ -116,7 +117,7 @@ const ManagerInterface = ({
       </button>
 
       {/* ═══ Tab bar with liquid goo effect ═══ */}
-      <div className={`manager__tabs-wrapper ${isMobileMenuOpen ? 'manager__tabs-wrapper--open' : ''}`}>
+      <div ref={wrapperRef} className={`manager__tabs-wrapper ${isMobileMenuOpen ? 'manager__tabs-wrapper--open' : ''}`}>
         {/* SVG Goo Filter Definition */}
         <svg className="manager__goo-svg" xmlns="http://www.w3.org/2000/svg">
           <defs>
@@ -137,7 +138,7 @@ const ManagerInterface = ({
         </svg>
 
         {/* LAYER 1: Goo-filtered blobs — no text */}
-        <div className="manager__goo-layer" ref={tabsContainerRef}>
+        <div className="manager__goo-layer">
           {/* Static pill blobs for each tab slot */}
           {blobRects.map((rect, i) =>
             rect ? (

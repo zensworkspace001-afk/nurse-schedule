@@ -67,6 +67,8 @@
 /* Animated goo indicator — the liquid blob that moves */
 .manager__goo-indicator {
   position: absolute;
+  top: 0;
+  left: 0;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.22);
   will-change: transform;
@@ -96,6 +98,8 @@
    ═══════════════════════════════════════ */
 .manager__indicator-shine {
   position: absolute;
+  top: 0;
+  left: 0;
   border-radius: 16px;
   pointer-events: none;
   z-index: 3;
