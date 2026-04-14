@@ -11,6 +11,7 @@ import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } 
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
+import ParticleBackground from './components/ParticleBackground';
 import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
@@ -760,6 +761,8 @@ const handleSaveAndPublish = async () => {
 
   return (
     <div className="app">
+      {/* 🌟 Canvas 粒子動態背景 */}
+      <ParticleBackground />
       {/* 🌟 背景動畫色塊 (與登入頁面相同) */}
       <div className="app__blob app__blob--1"></div>
       <div className="app__blob app__blob--2"></div>
