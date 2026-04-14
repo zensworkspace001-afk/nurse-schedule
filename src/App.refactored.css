@@ -21,8 +21,8 @@
 /* --- Root layout --- */
 .app {
   min-height: 100vh;
-  /* 🌟 與登入頁面完全相同的深冷色調漸層背景 */
-  background: linear-gradient(135deg, #879ca8 0%, #4a5c6a 100%);
+  /* 🌟 背景由 Three.js aurora shader 提供，此處設為透明以透出 */
+  background: transparent;
   padding: 2rem;
   font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   color: #ffffff;
