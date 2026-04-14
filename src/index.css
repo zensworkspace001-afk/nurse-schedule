@@ -41,6 +41,12 @@ button {
   cursor: pointer;
 }
 
+/* Fix transparent native dropdown popups on Windows */
+select option {
+  background: #1a2332;
+  color: #ffffff;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;
