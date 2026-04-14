@@ -241,7 +241,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const filteredOptions = selectedShiftType === 'ALL' ? visibleSlots : visibleSlots.filter(opt => opt.shift === selectedShiftType);
 
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
-  const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = s); setPreviewSchedule(map); setCurrentStep(3); };
+  const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = { type: s, time: '' }); setPreviewSchedule(map); setCurrentStep(3); };
 const handleFinalSubmit = async () => { // 🌟 1. 加上 async
     if (hasClaimed) {
         alert("⚠️ 您已經認領過班表，無法重複認領！");
@@ -457,7 +457,8 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
               {['日','一','二','三','四','五','六'].map(d=><div key={d} className="dashboard__preview-weekday">{d}</div>)}
               {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
               {Object.keys(previewSchedule).map(d => {
-                  const type = previewSchedule[d];
+                  const cell = previewSchedule[d];
+                  const type = (typeof cell === 'object') ? cell.type : cell;
                   const shiftColors = { 'D': '#FFD93D', 'E': '#FF6B9D', 'N': '#4D96FF', 'RG': '#2ecc71', 'RC': '#d5f5e3', 'OFF': '#E8E8E8', '空班': '#E8E8E8', '支援': '#D4AC0D' };
                   const bgColor = shiftColors[type] || '#fff';
                   const isDarkBg = ['D', 'E', 'N', 'RG', '支援'].includes(type);

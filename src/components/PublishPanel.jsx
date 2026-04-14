@@ -27,9 +27,9 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
 
 
       try {
-          await updateStaffSchedule(historyYear, historyMonth, newSchedule);
+          await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
       } catch (e) {
-          console.error("同步歷史班表失敗", e);
+          console.error("同步發布班表失敗", e);
       }
   };
 

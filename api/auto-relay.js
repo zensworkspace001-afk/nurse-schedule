@@ -60,7 +60,7 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: '未經授權' });
     }
 
-    const { year, month, currentSchedule, statsData, finishedStaffId } = req.body;
+    const { year, month, currentSchedule, statsData, finishedStaffId, resetRelay } = req.body;
     if (!year || !month) {
         return res.status(400).json({ error: '缺少必要參數 year/month' });
     }
@@ -68,7 +68,17 @@ export default async function handler(req, res) {
     try {
         console.log(`🤖 [自動接力引擎] 正在處理 ${year}/${month} 的選班決策...`);
 
-        // 0. 如果有指定剛完成的員工，先將其加入黑名單 (SelectionProgress)
+        // 0-a. 若為全新發布 (resetRelay)，先清除舊的進度與輪次資料
+        if (resetRelay) {
+            console.log(`🔄 重置接力狀態：清除 SelectionProgress 與 SelectionTurn`);
+            await Promise.all([
+                db.collection('SelectionProgress').doc(`${year}_${month}`).delete().catch(() => {}),
+                db.collection('SelectionTurn').doc(`${year}_${month}`).delete().catch(() => {}),
+                db.collection('SelectionTurn').doc('latest').delete().catch(() => {})
+            ]);
+        }
+
+        // 0-b. 如果有指定剛完成的員工，先將其加入黑名單 (SelectionProgress)
         if (finishedStaffId) {
             console.log(`📌 標記員工 ${finishedStaffId} 為已完成選班`);
             const progressRef = db.collection('SelectionProgress').doc(`${year}_${month}`);

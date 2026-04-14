@@ -460,21 +460,22 @@ const handleLogout = () => {
   };
 
   // ★ 核心功能 2：AI 動態決策下一位優先選班者
-  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth, finishedStaffId = null) => {
+  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth, finishedStaffId = null, resetRelay = false) => {
       try {
           const token = await auth.currentUser.getIdToken();
           const response = await fetch('/api/auto-relay', {
               method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json', 
-                  'Authorization': `Bearer ${token}` 
+              headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ 
-                  year: currentYear, 
-                  month: currentMonth, 
-                  currentSchedule, 
+              body: JSON.stringify({
+                  year: currentYear,
+                  month: currentMonth,
+                  currentSchedule,
                   statsData,
-                  finishedStaffId
+                  finishedStaffId,
+                  resetRelay
               })
           });
 
@@ -630,7 +631,7 @@ const handleSaveAndPublish = async () => {
 
     // ★★★ 發布後自動啟動第一棒 AI 接力選班 ★★★
     try {
-        await calculateAndNotifyNextStaff(newFinalized, healthStats, selectedYear, selectedMonth);
+        await calculateAndNotifyNextStaff(newFinalized, healthStats, selectedYear, selectedMonth, null, true);
     } catch (e) {
         console.error("發布後自動接力啟動失敗:", e);
     }
