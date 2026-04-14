@@ -990,6 +990,18 @@
     margin: 0;
     border-radius: 12px;
   }
+  .dashboard__guard {
+    padding: 1.5rem;
+    margin: 1.5rem auto;
+    max-width: 100%;
+  }
+  .dashboard__guard-icon svg {
+    width: 36px;
+    height: 36px;
+  }
+  .dashboard__guard-info {
+    font-size: 0.95rem;
+  }
   .dashboard__header {
     flex-direction: column;
     align-items: flex-start;
