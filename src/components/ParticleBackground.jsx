@@ -223,12 +223,13 @@ export default function ParticleBackground() {
     function onMouseLeave() { mouse3D.set(9999, 9999, 0); }
 
     /* ─── Animation ─── */
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
     let animId;
 
     function animate() {
       animId = requestAnimationFrame(animate);
-      const t = clock.getElapsedTime();
+      timer.update();
+      const t = timer.getElapsed();
       const pos = particleGeo.attributes.position.array;
 
       // Update aurora time
