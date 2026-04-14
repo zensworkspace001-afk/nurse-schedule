@@ -64,10 +64,10 @@
 .dashboard__guard {
   padding: 3rem;
   text-align: center;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 16px;
   max-width: 500px;
   margin: 3rem auto;
@@ -151,10 +151,10 @@
   padding: 2rem;
   max-width: 900px;
   margin: 0 auto;
-  background: rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 16px;
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.12),
