@@ -30,15 +30,19 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const [isExiting, setIsExiting] = useState(false);
   // ★ 新增：嚴格判定該名員工是否已經存在於本月班表中
   const hasClaimed = currentSchedule && Object.keys(currentSchedule).includes(currentUser.id);
-  // ★★★ 新增：即時監聽 AI 接力選班雷達狀態 ★★★
+  // ★★★ 修正：改為監聽 SelectionTurn/latest，避免年月不一致導致讀到舊資料 ★★★
   const [activeTurn, setActiveTurn] = useState(null);
   useEffect(() => {
-      const turnRef = doc(db, "SelectionTurn", `${targetYear}_${targetMonth}`);
-      const unsub = onSnapshot(turnRef, (docSnap) => {
+      const latestRef = doc(db, "SelectionTurn", "latest");
+      const unsub = onSnapshot(latestRef, (docSnap) => {
           if (docSnap.exists()) {
               setActiveTurn(docSnap.data());
           } else {
-              setActiveTurn(null);
+              // fallback：若 latest 不存在，嘗試讀取原始年月文件
+              const turnRef = doc(db, "SelectionTurn", `${targetYear}_${targetMonth}`);
+              onSnapshot(turnRef, (fallbackSnap) => {
+                  setActiveTurn(fallbackSnap.exists() ? fallbackSnap.data() : null);
+              });
           }
       });
       return () => unsub();

@@ -102,6 +102,11 @@ export default async function handler(req, res) {
         if (unassignedStaff.length === 0) {
             const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'zensworkspace001@gmail.com';
             await sendSystemEmail(adminEmail, `✅ ${month}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
+            // 清除 latest 指標
+            await db.collection('SelectionTurn').doc('latest').set({
+                active_staff_id: null, year, month,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            });
             return res.status(200).json({ message: "所有員工皆已完成選班。" });
         }
 
@@ -163,10 +168,15 @@ export default async function handler(req, res) {
         const finalStaffId = unassignedStaff.find(s => s.staff_id === decision.selected_staff_id) ? decision.selected_staff_id : unassignedStaff[0].staff_id;
         
         // 更新 SelectionTurn (Admin SDK 繞過 Firestore Rules)
-        await db.collection('SelectionTurn').doc(`${year}_${month}`).set({
-            active_staff_id: finalStaffId, 
+        const turnData = {
+            active_staff_id: finalStaffId,
+            year, month,
             updatedAt: admin.firestore.FieldValue.serverTimestamp()
-        });
+        };
+        await Promise.all([
+            db.collection('SelectionTurn').doc(`${year}_${month}`).set(turnData),
+            db.collection('SelectionTurn').doc('latest').set(turnData)
+        ]);
 
         // 寫入 Log
         await db.collection("AI_Decision_Logs").add({

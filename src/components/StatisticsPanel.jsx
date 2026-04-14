@@ -135,11 +135,10 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
   // 👇👇👇 ★★★ 1. 把你的「雷達監聽與跳過邏輯」貼在這裡 ★★★ 👇👇👇
   const [activeTurn, setActiveTurn] = useState(null);
 
-  // 📡 即時監聽「目前輪到誰選班」(使用 props 的 selectedYear/Month，與員工端一致)
+  // 📡 即時監聽「目前輪到誰選班」（改用 latest 指標，與員工端一致）
   useEffect(() => {
-      const turnRef = doc(db, "SelectionTurn", `${selectedYear}_${selectedMonth}`);
-
-      const unsub = onSnapshot(turnRef, (docSnap) => {
+      const latestRef = doc(db, "SelectionTurn", "latest");
+      const unsub = onSnapshot(latestRef, (docSnap) => {
           if (docSnap.exists()) {
               setActiveTurn(docSnap.data());
           } else {
@@ -165,9 +164,14 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
               submitted_staff: arrayUnion(targetStaffId)
           }, { merge: true });
 
-          // 2. 清除雷達畫面
+          // 2. 清除雷達畫面（同步更新 latest 指標）
           const turnRef = doc(db, "SelectionTurn", `${selectedYear}_${selectedMonth}`);
-          await setDoc(turnRef, { active_staff_id: null, updatedAt: new Date() });
+          const latestRef = doc(db, "SelectionTurn", "latest");
+          const clearData = { active_staff_id: null, updatedAt: new Date() };
+          await Promise.all([
+              setDoc(turnRef, clearData),
+              setDoc(latestRef, { ...clearData, year: selectedYear, month: selectedMonth })
+          ]);
 
           // 3. 呼叫 AI 找下一個人
           alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
