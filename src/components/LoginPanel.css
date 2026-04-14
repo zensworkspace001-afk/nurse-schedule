@@ -24,53 +24,137 @@
 }
 
 /* ==========================================================================
-   Animated Background Blobs (會動的色塊)
+   Animated Background Blobs — 動態色塊 (morphing + drifting + pulsing)
    ========================================================================== */
 .login-panel__blob {
   position: absolute;
-  filter: blur(80px);
+  filter: blur(90px);
   z-index: 1;
-  opacity: 0.8;
-  animation: floatBlobs 15s infinite ease-in-out alternate;
+  opacity: 0;
+  animation:
+    blobMorph 20s infinite ease-in-out alternate,
+    blobFadeIn 1.5s ease forwards;
 }
 
+/* ─── Blob 1: 粉紅，左上角 ─── */
 .login-panel__blob--1 {
+  width: 500px;
+  height: 500px;
+  background: radial-gradient(circle, #ff4785 0%, #ff6b9d 50%, transparent 70%);
+  top: -15%;
+  left: -10%;
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  animation:
+    blobMorph1 18s infinite ease-in-out alternate,
+    blobPulse 8s infinite ease-in-out,
+    blobFadeIn 1.2s ease forwards;
+}
+
+/* ─── Blob 2: 青藍，右下角 ─── */
+.login-panel__blob--2 {
+  width: 450px;
+  height: 450px;
+  background: radial-gradient(circle, #00d2ff 0%, #00a8cc 50%, transparent 70%);
+  bottom: -10%;
+  right: -8%;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation:
+    blobMorph2 22s infinite ease-in-out alternate,
+    blobPulse 10s infinite ease-in-out,
+    blobFadeIn 1.5s 0.3s ease forwards;
+}
+
+/* ─── Blob 3: 紫色，中左 ─── */
+.login-panel__blob--3 {
   width: 400px;
   height: 400px;
-  background: #ff4785;
-  top: -100px;
-  left: -100px;
-  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
-  animation-delay: 0s;
+  background: radial-gradient(circle, #7b2cbf 0%, #9b59b6 50%, transparent 70%);
+  bottom: 15%;
+  left: 15%;
+  border-radius: 50% 50% 40% 60% / 40% 60% 50% 50%;
+  animation:
+    blobMorph3 25s infinite ease-in-out alternate,
+    blobPulse 12s infinite ease-in-out,
+    blobFadeIn 1.8s 0.6s ease forwards;
 }
 
-.login-panel__blob--2 {
+/* ─── Blob 4: 暖橘，右上 (新增) ─── */
+.login-panel__blob--4 {
   width: 350px;
   height: 350px;
-  background: #00d2ff;
-  bottom: -50px;
-  right: -50px;
-  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
-  animation-duration: 18s;
-  animation-delay: -2s;
+  background: radial-gradient(circle, #f59e0b 0%, #f97316 50%, transparent 70%);
+  top: 10%;
+  right: 15%;
+  border-radius: 45% 55% 60% 40% / 55% 45% 50% 50%;
+  filter: blur(100px);
+  animation:
+    blobMorph4 20s infinite ease-in-out alternate,
+    blobPulse 9s infinite ease-in-out,
+    blobFadeIn 2s 0.9s ease forwards;
 }
 
-.login-panel__blob--3 {
-  width: 300px;
-  height: 300px;
-  background: #7b2cbf;
-  bottom: 20%;
-  left: 20%;
-  border-radius: 50%;
-  animation-duration: 20s;
-  animation-delay: -5s;
+/* ─── Keyframes: 入場淡入 ─── */
+@keyframes blobFadeIn {
+  to { opacity: 0.7; }
 }
 
-@keyframes floatBlobs {
-  0% { transform: translate(0, 0) scale(1) rotate(0deg); }
-  33% { transform: translate(30px, -50px) scale(1.1) rotate(90deg); }
-  66% { transform: translate(-20px, 20px) scale(0.9) rotate(180deg); }
-  100% { transform: translate(0, 0) scale(1) rotate(360deg); }
+/* ─── Keyframes: 呼吸脈動 ─── */
+@keyframes blobPulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.8; }
+}
+
+/* ─── Keyframes: 各自獨立的漂浮 + 形變 ─── */
+@keyframes blobMorph1 {
+  0%   { transform: translate(0, 0) scale(1) rotate(0deg);
+         border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+  25%  { transform: translate(60px, -40px) scale(1.15) rotate(45deg);
+         border-radius: 50% 50% 40% 60% / 60% 40% 50% 50%; }
+  50%  { transform: translate(30px, 50px) scale(0.9) rotate(120deg);
+         border-radius: 60% 40% 50% 50% / 40% 60% 40% 60%; }
+  75%  { transform: translate(-40px, 20px) scale(1.05) rotate(200deg);
+         border-radius: 45% 55% 65% 35% / 55% 45% 55% 45%; }
+  100% { transform: translate(0, 0) scale(1) rotate(360deg);
+         border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%; }
+}
+
+@keyframes blobMorph2 {
+  0%   { transform: translate(0, 0) scale(1) rotate(0deg);
+         border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+  25%  { transform: translate(-50px, 30px) scale(1.1) rotate(-60deg);
+         border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+  50%  { transform: translate(-20px, -60px) scale(0.85) rotate(-140deg);
+         border-radius: 40% 60% 40% 60% / 60% 40% 60% 40%; }
+  75%  { transform: translate(40px, -20px) scale(1.1) rotate(-240deg);
+         border-radius: 55% 45% 35% 65% / 45% 55% 65% 35%; }
+  100% { transform: translate(0, 0) scale(1) rotate(-360deg);
+         border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%; }
+}
+
+@keyframes blobMorph3 {
+  0%   { transform: translate(0, 0) scale(1) rotate(0deg);
+         border-radius: 50% 50% 40% 60% / 40% 60% 50% 50%; }
+  25%  { transform: translate(40px, 50px) scale(1.2) rotate(80deg);
+         border-radius: 60% 40% 50% 50% / 50% 50% 40% 60%; }
+  50%  { transform: translate(-50px, -30px) scale(0.85) rotate(160deg);
+         border-radius: 45% 55% 55% 45% / 60% 40% 55% 45%; }
+  75%  { transform: translate(20px, -40px) scale(1.05) rotate(260deg);
+         border-radius: 55% 45% 45% 55% / 45% 55% 50% 50%; }
+  100% { transform: translate(0, 0) scale(1) rotate(360deg);
+         border-radius: 50% 50% 40% 60% / 40% 60% 50% 50%; }
+}
+
+@keyframes blobMorph4 {
+  0%   { transform: translate(0, 0) scale(1) rotate(0deg);
+         border-radius: 45% 55% 60% 40% / 55% 45% 50% 50%; }
+  25%  { transform: translate(-30px, -50px) scale(1.1) rotate(-70deg);
+         border-radius: 55% 45% 45% 55% / 45% 55% 55% 45%; }
+  50%  { transform: translate(50px, 30px) scale(0.9) rotate(-150deg);
+         border-radius: 40% 60% 55% 45% / 55% 45% 40% 60%; }
+  75%  { transform: translate(-20px, 40px) scale(1.15) rotate(-250deg);
+         border-radius: 50% 50% 50% 50% / 50% 50% 50% 50%; }
+  100% { transform: translate(0, 0) scale(1) rotate(-360deg);
+         border-radius: 45% 55% 60% 40% / 55% 45% 50% 50%; }
 }
 
 @keyframes loginCardIn {

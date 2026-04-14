@@ -86,6 +86,7 @@ try {
       <div className="login-panel__blob login-panel__blob--1"></div>
       <div className="login-panel__blob login-panel__blob--2"></div>
       <div className="login-panel__blob login-panel__blob--3"></div>
+      <div className="login-panel__blob login-panel__blob--4"></div>
 
       <div className="login-panel__card">
         <h2 className="login-panel__title">護理排班系統 <span className="login-panel__badge"><Shield size={12} /> 安全版</span></h2>
