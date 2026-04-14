@@ -332,6 +332,28 @@
   transform: translateY(-1px);
 }
 
+.dashboard__pwd-submit-btn--loading {
+  cursor: not-allowed;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+.dashboard__pwd-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 214, 102, 0.25);
+  border-top-color: #ffd666;
+  border-radius: 50%;
+  animation: pwdSpin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes pwdSpin {
+  to { transform: rotate(360deg); }
+}
+
 /* ==========================================================================
    Stepper
    ========================================================================== */

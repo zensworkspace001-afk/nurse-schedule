@@ -31,12 +31,14 @@ const NurseSchedulingSystem = () => {
   const [closingAdminPwdModal, setClosingAdminPwdModal] = useState(false);
   const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
+  const [isAdminPwdSubmitting, setIsAdminPwdSubmitting] = useState(false);
 
   // ★★★ 資安升級：首次登入強制改密碼 ★★★
   const [showForceChangePwd, setShowForceChangePwd] = useState(false);
   const [closingForceChangePwd, setClosingForceChangePwd] = useState(false);
   const [forceChangePwdData, setForceChangePwdData] = useState({ new: '', confirm: '' });
   const [forceChangePwdMsg, setForceChangePwdMsg] = useState({ type: '', text: '' });
+  const [isForcePwdSubmitting, setIsForcePwdSubmitting] = useState(false);
 
   const closeAdminPwdModal = () => {
     setClosingAdminPwdModal(true);
@@ -650,18 +652,17 @@ const handleSaveAndPublish = async () => {
       if (!strongPasswordRegex.test(forceChangePwdData.new)) {
           return setForceChangePwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
       }
+      setIsForcePwdSubmitting(true);
       try {
           const user = auth.currentUser;
           if (user) {
-              // 用預設密碼重新驗證
               const credential = EmailAuthProvider.credential(user.email, '123456');
               await reauthenticateWithCredential(user, credential);
               await updatePassword(user, forceChangePwdData.new);
+              setIsForcePwdSubmitting(false);
               setForceChangePwdMsg({ type: 'success', text: '✅ 密碼修改成功！' });
-              // 先顯示成功訊息 1s，再啟動淡出動畫
               setTimeout(() => {
                   setClosingForceChangePwd(true);
-                  // 等淡出動畫播完 (0.7s) 再卸載 DOM
                   setTimeout(() => {
                       setShowForceChangePwd(false);
                       setClosingForceChangePwd(false);
@@ -678,6 +679,8 @@ const handleSaveAndPublish = async () => {
           } else {
               setForceChangePwdMsg({ type: 'error', text: '修改失敗，請聯絡系統管理員。' });
           }
+      } finally {
+          setIsForcePwdSubmitting(false);
       }
   };
 
@@ -685,7 +688,6 @@ const handleSaveAndPublish = async () => {
   const handleAdminPasswordSubmit = async (e) => {
       e.preventDefault();
 
-      // 1. 基本防呆與強度檢查
       if (adminPwdData.new !== adminPwdData.confirm) {
           return setAdminPwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
       }
@@ -694,17 +696,16 @@ const handleSaveAndPublish = async () => {
           return setAdminPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
       }
 
+      setIsAdminPwdSubmitting(true);
       try {
           const user = auth.currentUser;
 
           if (user) {
-              // ★ 核心修補：先用「舊密碼」向 Firebase 進行重新驗證 (防護 Session 劫持)
               const credential = EmailAuthProvider.credential(user.email, adminPwdData.old);
               await reauthenticateWithCredential(user, credential);
-
-              // 驗證通過後，正式更新密碼
               await updatePassword(user, adminPwdData.new);
 
+              setIsAdminPwdSubmitting(false);
               setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
 
               setTimeout(() => {
@@ -720,7 +721,6 @@ const handleSaveAndPublish = async () => {
               setAdminPwdMsg({ type: 'error', text: '找不到登入狀態，請重新登入。' });
           }
       } catch (error) {
-          // 在 Production 環境隱藏詳細錯誤碼，避免資安外洩
           if (import.meta.env.DEV) {
               console.error("修改密碼失敗:", error);
           }
@@ -732,6 +732,8 @@ const handleSaveAndPublish = async () => {
           } else {
               setAdminPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
           }
+      } finally {
+          setIsAdminPwdSubmitting(false);
       }
   };
 
@@ -795,7 +797,9 @@ const handleSaveAndPublish = async () => {
                             {adminPwdMsg.text}
                         </div>
                     )}
-                    <button type="submit" className="app__modal-submit-btn">儲存修改</button>
+                    <button type="submit" disabled={isAdminPwdSubmitting} className={`app__modal-submit-btn${isAdminPwdSubmitting ? ' app__modal-submit-btn--loading' : ''}`}>
+                        {isAdminPwdSubmitting ? <><span className="app__modal-spinner" /> 驗證中...</> : '儲存修改'}
+                    </button>
                 </form>
             </div>
         </div>
@@ -823,7 +827,9 @@ const handleSaveAndPublish = async () => {
                             {forceChangePwdMsg.text}
                         </div>
                     )}
-                    <button type="submit" className="app__modal-submit-btn">確認修改密碼</button>
+                    <button type="submit" disabled={isForcePwdSubmitting} className={`app__modal-submit-btn${isForcePwdSubmitting ? ' app__modal-submit-btn--loading' : ''}`}>
+                        {isForcePwdSubmitting ? <><span className="app__modal-spinner" /> 驗證中...</> : '確認修改密碼'}
+                    </button>
                 </form>
             </div>
         </div>

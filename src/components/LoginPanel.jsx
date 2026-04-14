@@ -107,8 +107,8 @@ try {
 
           {error && <div className="login-panel__error"><AlertCircle size={14} /> {error}</div>}
 
-          <button type="submit" disabled={isLoggingIn} className={`login-panel__button ${isLoggingIn ? 'login-panel__button--disabled' : 'login-panel__button--active'}`}>
-              {isLoggingIn ? '驗證中...' : <><LogIn size={16} /> 登入系統</>}
+          <button type="submit" disabled={isLoggingIn} className={`login-panel__button ${isLoggingIn ? 'login-panel__button--loading' : 'login-panel__button--active'}`}>
+              {isLoggingIn ? <><span className="login-panel__spinner" /> 驗證中...</> : <><LogIn size={16} /> 登入系統</>}
           </button>
         </form>
       </div>

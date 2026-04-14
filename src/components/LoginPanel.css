@@ -276,11 +276,27 @@
   transform: translateY(-1px);
 }
 
-.login-panel__button--disabled {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(255, 255, 255, 0.2);
+.login-panel__button--loading {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
   cursor: not-allowed;
-  opacity: 0.6;
+  pointer-events: none;
+}
+
+.login-panel__spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: loginSpin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+@keyframes loginSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* ==========================================================================

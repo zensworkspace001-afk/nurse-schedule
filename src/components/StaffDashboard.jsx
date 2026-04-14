@@ -15,6 +15,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const [closingPwdModal, setClosingPwdModal] = useState(false);
   const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
+  const [isPwdSubmitting, setIsPwdSubmitting] = useState(false);
 
   const closePwdModalAnimated = () => {
     setClosingPwdModal(true);
@@ -117,12 +118,14 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
       if (!strongPasswordRegex.test(pwdData.new)) return setPwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
 
+      setIsPwdSubmitting(true);
       try {
           const user = auth.currentUser;
           if (user) {
               const credential = EmailAuthProvider.credential(user.email, pwdData.old);
               await reauthenticateWithCredential(user, credential);
               await updatePassword(user, pwdData.new);
+              setIsPwdSubmitting(false);
               setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
               setTimeout(() => {
                   setClosingPwdModal(true);
@@ -145,6 +148,8 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
           } else {
               setPwdMsg({ type: 'error', text: '修改失敗：' + error.message });
           }
+      } finally {
+          setIsPwdSubmitting(false);
       }
   };
 
@@ -301,7 +306,9 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
                             {pwdMsg.text}
                         </div>
                     )}
-                    <button type="submit" className="dashboard__pwd-submit-btn">儲存修改</button>
+                    <button type="submit" disabled={isPwdSubmitting} className={`dashboard__pwd-submit-btn${isPwdSubmitting ? ' dashboard__pwd-submit-btn--loading' : ''}`}>
+                        {isPwdSubmitting ? <><span className="dashboard__pwd-spinner" /> 驗證中...</> : '儲存修改'}
+                    </button>
                 </form>
             </div>
         </div>
