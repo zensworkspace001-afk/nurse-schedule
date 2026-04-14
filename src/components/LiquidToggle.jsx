@@ -1,129 +1,223 @@
-import { useState, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useCallback } from 'react';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import './LiquidToggle.css';
 
 /* ─── Option definitions ─── */
 const OPTIONS = [
-  { id: 'sleep',    label: 'Sleep',           icon: '🌙', theme: 'sleep' },
-  { id: 'dnd',      label: 'Do Not Disturb',  icon: '🔕', theme: 'dnd' },
-  { id: 'personal', label: 'Personal',        icon: '👤', theme: 'personal' },
+  { id: 'sleep',    label: 'Sleep',           icon: '🌙' },
+  { id: 'dnd',      label: 'Do Not Disturb',  icon: '🔕' },
+  { id: 'personal', label: 'Personal',        icon: '👤' },
 ];
 
-/* Height of each button + gap between them */
-const BTN_H   = 56;
-const GAP     = 6;
-const STEP    = BTN_H + GAP;
-const PAD_TOP = 10; // track padding
+/* ─── Layout constants ─── */
+const BTN_W       = 220;
+const BTN_H       = 60;
+const GAP         = 8;
+const PAD         = 12;
+const SLOT_H      = BTN_H + GAP;
+const INDICATOR_H = 52;
+const INDICATOR_W = BTN_W - 12;
 
-/* ─── Helpers ─── */
+/* Vertical center of the indicator inside slot i */
 function yForIndex(i) {
-  return PAD_TOP + i * STEP;
+  return PAD + i * SLOT_H + (BTN_H - INDICATOR_H) / 2;
 }
 
-/* ─── Component ─── */
+/* ─── Color themes per state ─── */
+const THEMES = {
+  sleep:    { bg: '#3b82f6', glow: 'rgba(59,130,246,0.55)',  glowWide: 'rgba(59,130,246,0.18)' },
+  dnd:      { bg: '#ef4444', glow: 'rgba(239,68,68,0.55)',   glowWide: 'rgba(239,68,68,0.18)' },
+  personal: { bg: '#f59e0b', glow: 'rgba(245,158,11,0.55)',  glowWide: 'rgba(245,158,11,0.18)' },
+};
+
+/* ─── Pill blob (used for buttons AND indicator in the goo layer) ─── */
+function Blob({ y, width, height, color, className, style }) {
+  return (
+    <motion.div
+      className={`lt-blob ${className || ''}`}
+      style={{
+        width,
+        height,
+        borderRadius: height / 2,
+        background: color,
+        y,
+        ...style,
+      }}
+    />
+  );
+}
+
+/* ═══════════════════════════════════════
+   Main Component
+   ═══════════════════════════════════════ */
 export default function LiquidToggle() {
   const [active, setActive] = useState(0);
-  const trackRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
 
-  /* Drag handling — vertical only, snap to nearest slot */
-  const handleDragEnd = (_e, info) => {
-    const currentY = yForIndex(active) + info.offset.y;
+  /* Motion value for the indicator Y — drives both the goo blob and the glass overlay */
+  const indicatorY = useMotionValue(yForIndex(0));
+
+  /* Derived: which slot is closest right now (for live color transitions while dragging) */
+  const closestIndex = useTransform(indicatorY, (y) => {
     let nearest = 0;
     let minDist = Infinity;
     for (let i = 0; i < OPTIONS.length; i++) {
-      const dist = Math.abs(currentY - yForIndex(i));
-      if (dist < minDist) {
-        minDist = dist;
-        nearest = i;
-      }
+      const d = Math.abs(y - yForIndex(i));
+      if (d < minDist) { minDist = d; nearest = i; }
     }
-    setActive(nearest);
+    return nearest;
+  });
+
+  /* Animate indicator to a slot */
+  const goToSlot = useCallback((i) => {
+    setActive(i);
+    animate(indicatorY, yForIndex(i), {
+      type: 'spring',
+      stiffness: 160,
+      damping: 18,
+      mass: 1.3,
+    });
+  }, [indicatorY]);
+
+  /* Drag handlers */
+  const handleDragStart = () => setDragging(true);
+
+  const handleDrag = () => {
+    /* Update active color in real-time based on closest slot */
+    const nearest = closestIndex.get();
+    if (nearest !== active) setActive(nearest);
   };
 
-  const theme = OPTIONS[active].theme;
+  const handleDragEnd = () => {
+    setDragging(false);
+    const nearest = closestIndex.get();
+    setActive(nearest);
+    /* Snap with spring */
+    animate(indicatorY, yForIndex(nearest), {
+      type: 'spring',
+      stiffness: 200,
+      damping: 20,
+      mass: 1,
+    });
+  };
+
+  const theme = THEMES[OPTIONS[active].id];
+  const trackH = PAD * 2 + OPTIONS.length * BTN_H + (OPTIONS.length - 1) * GAP;
 
   return (
-    <div className="liquid-toggle">
-      {/* ── SVG Goo Filter Definition ── */}
-      <svg className="liquid-toggle__filter" xmlns="http://www.w3.org/2000/svg">
+    <div className="lt">
+      {/* ── SVG Goo Filter ── */}
+      <svg className="lt__svg" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <filter id="goo-filter">
-            {/* Blur both the indicator and buttons so edges merge */}
-            <feGaussianBlur in="SourceGraphic" stdDeviation="10" result="blur" />
-            {/* Bump alpha contrast so the blurred merge sharpens back into a solid */}
+          <filter id="goo">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="12" result="blur" />
             <feColorMatrix
               in="blur"
               mode="matrix"
               values="1 0 0 0 0
                       0 1 0 0 0
                       0 0 1 0 0
-                      0 0 0 20 -9"
+                      0 0 0 22 -9"
               result="goo"
             />
-            {/* Composite original source over goo for crisp text */}
-            <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+            {/* blend the goo back so edges stay smooth */}
+            <feBlend in="SourceGraphic" in2="goo" />
           </filter>
         </defs>
       </svg>
 
-      <div>
-        {/* ── Goo-filtered layer (buttons + indicator share the filter) ── */}
-        <div className="liquid-toggle__goo-layer">
-          <div className="liquid-toggle__track" ref={trackRef}>
-            {/* Animated indicator pill */}
-            <motion.div
-              className={`liquid-toggle__indicator liquid-toggle__indicator--${theme}`}
-              animate={{ y: yForIndex(active) }}
-              transition={{
-                type: 'spring',
-                stiffness: 180,
-                damping: 22,
-                mass: 1.2,
-              }}
-              drag="y"
-              dragConstraints={{
-                top: yForIndex(0) - yForIndex(active),
-                bottom: yForIndex(OPTIONS.length - 1) - yForIndex(active),
-              }}
-              dragElastic={0.15}
-              onDragEnd={handleDragEnd}
-              style={{ top: 0 }}
-            >
-              {/* Glass overlay — lives outside goo filter z-order trick */}
-              <div
-                className="liquid-toggle__indicator-glass"
-                style={{ '--glow-color': undefined }}
-              />
-            </motion.div>
+      <div className="lt__wrapper">
+        {/* ─── LAYER 1: Goo-filtered blobs (no text here!) ─── */}
+        <div className="lt__goo" style={{ width: BTN_W + PAD * 2, height: trackH }}>
+          {/* Static button blobs */}
+          {OPTIONS.map((_, i) => (
+            <Blob
+              key={i}
+              y={PAD + i * SLOT_H}
+              width={BTN_W}
+              height={BTN_H}
+              color="rgba(255,255,255,0.07)"
+              className="lt-blob--btn"
+              style={{ position: 'absolute', left: PAD }}
+            />
+          ))}
 
-            {/* Buttons */}
-            {OPTIONS.map((opt, i) => (
-              <button
-                key={opt.id}
-                className={`liquid-toggle__btn ${i === active ? 'liquid-toggle__btn--active' : ''}`}
-                onClick={() => setActive(i)}
-              >
-                <span className="liquid-toggle__icon">{opt.icon}</span>
-                {opt.label}
-              </button>
-            ))}
-          </div>
+          {/* Draggable indicator blob — this is the goo source */}
+          <motion.div
+            className="lt-blob lt-blob--indicator"
+            style={{
+              position: 'absolute',
+              left: PAD + (BTN_W - INDICATOR_W) / 2,
+              width: INDICATOR_W,
+              height: INDICATOR_H,
+              borderRadius: INDICATOR_H / 2,
+              background: theme.bg,
+              y: indicatorY,
+              cursor: 'grab',
+            }}
+            drag="y"
+            dragConstraints={{
+              top: yForIndex(0),
+              bottom: yForIndex(OPTIONS.length - 1),
+            }}
+            dragElastic={0.08}
+            dragMomentum={false}
+            onDragStart={handleDragStart}
+            onDrag={handleDrag}
+            onDragEnd={handleDragEnd}
+            whileDrag={{ cursor: 'grabbing', scale: 1.04 }}
+          />
         </div>
 
-        {/* ── Status label ── */}
-        <AnimatePresence mode="wait">
-          <motion.p
-            key={active}
-            className="liquid-toggle__status"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2 }}
-          >
-            {OPTIONS[active].icon}  {OPTIONS[active].label} mode active
-          </motion.p>
-        </AnimatePresence>
+        {/* ─── LAYER 2: Glass track + labels (NOT filtered) ─── */}
+        <div className="lt__glass-track" style={{ width: BTN_W + PAD * 2, height: trackH }}>
+          {/* Glossy overlay on the indicator */}
+          <motion.div
+            className="lt__indicator-shine"
+            style={{
+              width: INDICATOR_W,
+              height: INDICATOR_H,
+              left: PAD + (BTN_W - INDICATOR_W) / 2,
+              borderRadius: INDICATOR_H / 2,
+              y: indicatorY,
+              '--glow': theme.glow,
+              '--glow-wide': theme.glowWide,
+            }}
+          />
+
+          {/* Button labels */}
+          {OPTIONS.map((opt, i) => (
+            <button
+              key={opt.id}
+              className={`lt__btn ${i === active ? 'lt__btn--active' : ''}`}
+              style={{
+                top: PAD + i * SLOT_H,
+                width: BTN_W,
+                height: BTN_H,
+              }}
+              onClick={() => goToSlot(i)}
+            >
+              <span className="lt__icon">{opt.icon}</span>
+              {opt.label}
+            </button>
+          ))}
+        </div>
       </div>
+
+      {/* ─── Status text ─── */}
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={active}
+          className="lt__status"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.2 }}
+          style={{ color: theme.glow }}
+        >
+          {OPTIONS[active].icon}  {OPTIONS[active].label}
+        </motion.p>
+      </AnimatePresence>
     </div>
   );
 }
