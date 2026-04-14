@@ -128,16 +128,26 @@ export default async function handler(req, res) {
 ⚠️ 【最高系統原則】：若名單中有「孕/哺乳:是」的員工，無論其疲勞度為何，【必須】讓她們絕對優先選班！
 請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
 
-        // 6. 呼叫 Gemini (使用穩定的 2.0-flash)
+        // 6. 呼叫 Gemini（主模型 2.5-pro，失敗時降級至 flash-latest）
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-        const model = genAI.getGenerativeModel({ 
-            model: 'gemini-2.5-pro',
-            systemInstruction: '你是護理排班系統的 AI 助手。根據提供的員工數據、疲勞度與歷史紀錄，協助進行排班決策。必須回覆有效的 JSON 格式。'
-        });
-
-        const resultAI = await model.generateContent(aiPrompt);
-        const responseAI = await resultAI.response;
-        let text = responseAI.text();
+        const modelsToTry = ['gemini-2.5-pro', 'gemini-flash-latest'];
+        let text;
+        for (const modelName of modelsToTry) {
+            try {
+                const model = genAI.getGenerativeModel({
+                    model: modelName,
+                    systemInstruction: '你是護理排班系統的 AI 助手。根據提供的員工數據、疲勞度與歷史紀錄，協助進行排班決策。必須回覆有效的 JSON 格式。'
+                });
+                const resultAI = await model.generateContent(aiPrompt);
+                const responseAI = await resultAI.response;
+                text = responseAI.text();
+                console.log(`✅ 使用模型 ${modelName} 成功`);
+                break;
+            } catch (aiError) {
+                console.warn(`⚠️ 模型 ${modelName} 失敗: ${aiError.message}`);
+                if (modelName === modelsToTry[modelsToTry.length - 1]) throw aiError;
+            }
+        }
         
         // 魯棒性解析
         text = text.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/```json|```/g, '').trim();
