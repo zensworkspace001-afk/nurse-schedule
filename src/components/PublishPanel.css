@@ -497,22 +497,35 @@
    Responsive Web Design (RWD)
    ========================================================================== */
 @media screen and (max-width: 768px) {
+  .publish {
+    padding: 1rem;
+  }
   .publish__header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 0.75rem;
   }
-  .publish__actions {
-    flex-wrap: wrap;
+  .publish__header-actions {
     width: 100%;
+    display: flex;
+    gap: 0.5rem;
   }
-  .publish__actions button {
-    flex: 1 1 auto;
+  .publish__header-actions .publish__btn {
+    flex: 1;
     text-align: center;
+    font-size: 0.85rem;
+    padding: 8px 10px;
   }
   .publish__content {
     flex-direction: column;
+    overflow: visible;
   }
-  .publish__table-wrapper, .publish__sidebar {
+  .publish__table-wrapper {
+    padding: 0.75rem;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .publish__sidebar {
     padding: 1rem;
   }
   .publish__options {

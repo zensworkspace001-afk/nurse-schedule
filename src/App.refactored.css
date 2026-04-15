@@ -792,24 +792,24 @@
    ========================================================================== */
 @media screen and (max-width: 768px) {
   .app {
-    padding: 1rem 0.5rem; /* 手機版減少外圍留白，讓內容更填滿畫面 */
+    padding: 0.75rem 0.5rem;
   }
 
   .app__header {
-    flex-direction: column; /* 讓標題和按鈕在手機上垂直排列 */
-    gap: 1rem;
-    padding: 1rem;
-    margin-bottom: 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.75rem;
     border-radius: 16px;
   }
 
   .app__header-left {
     width: 100%;
-    justify-content: center; /* 標題置中 */
+    justify-content: center;
   }
 
   .app__header-title {
-    font-size: 1.5rem; /* 縮小標題字體 */
+    font-size: 1.3rem;
   }
 
   .app__header-right {
@@ -820,17 +820,26 @@
   }
 
   .app__status-dropdown-wrapper {
-    width: 100%;
-    display: flex;
-    justify-content: center;
+    width: auto;
+  }
+
+  .app__status-dropdown {
+    left: 0.5rem !important;
+    right: 0.5rem !important;
+    max-width: calc(100vw - 1rem);
   }
 
   .app__header-user {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
   }
 
   .app__header-pwd-btn, .app__header-logout-btn {
     padding: 6px 12px;
     font-size: 0.85rem;
+  }
+
+  .app__content {
+    overflow-x: hidden;
+    min-height: 0;
   }
 }
