@@ -37,3 +37,9 @@ coppy.py
 .env*.local
 .claude/
 *.bak
+
+# Playwright
+/playwright-report/
+/test-results/
+/.playwright/
+/blob-report/
