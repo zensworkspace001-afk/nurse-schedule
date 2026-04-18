@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Sphere Drop Transition</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #0d0d12;
+    color: #fff;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  #page-content {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    text-align: center;
+    padding: 40px;
+    user-select: none;
+  }
+  #page-content h1 { font-size: 48px; margin: 0 0 12px; letter-spacing: -0.02em; }
+  #page-content p  { font-size: 18px; opacity: 0.7; margin: 0; }
+  #page-content .hint { margin-top: 32px; padding: 10px 22px; border: 1px solid rgba(255,255,255,0.2); border-radius: 999px; display: inline-block; }
+
+  #transition-canvas-container {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 9999;
+    pointer-events: none;
+  }
+  #transition-canvas-container canvas { display: block; width: 100%; height: 100%; }
+</style>
+</head>
+<body>
+  <div id="page-content">
+    <div>
+      <h1>Page A</h1>
+      <p>Click anywhere to run the transition.</p>
+      <div class="hint">↓ sphere-drop preview ↓</div>
+    </div>
+  </div>
+
+  <div id="transition-canvas-container"></div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "cannon-es": "https://esm.sh/cannon-es@0.20.0"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import * as CANNON from 'cannon-es';
+
+    // Material-design-ish palette.
+    const PALETTE = [
+      0xF44336, 0xE91E63, 0x9C27B0, 0x673AB7,
+      0x3F51B5, 0x2196F3, 0x03A9F4, 0x00BCD4,
+      0x009688, 0x4CAF50, 0x8BC34A, 0xCDDC39,
+      0xFFEB3B, 0xFFC107, 0xFF9800, 0xFF5722,
+    ];
+
+    function runTransition({ onScreenFilled = () => {} } = {}) {
+      const container = document.getElementById('transition-canvas-container');
+
+      // ─── Renderer ───
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      container.appendChild(renderer.domElement);
+
+      // ─── Scene ───
+      const scene = new THREE.Scene();
+
+      // ─── Camera: orthographic so "screen filled" is geometrically predictable.
+      const WORLD_HEIGHT = 40;
+      let aspect = window.innerWidth / window.innerHeight;
+      let worldWidth = WORLD_HEIGHT * aspect;
+      const camera = new THREE.OrthographicCamera(
+        -worldWidth / 2, worldWidth / 2,
+         WORLD_HEIGHT / 2, -WORLD_HEIGHT / 2,
+         0.1, 100
+      );
+      camera.position.z = 30;
+
+      // ─── Lights ───
+      scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+      const key = new THREE.DirectionalLight(0xffffff, 1.0);
+      key.position.set(6, 10, 20);
+      scene.add(key);
+      const rim = new THREE.DirectionalLight(0xbcd4ff, 0.45);
+      rim.position.set(-8, -4, 12);
+      scene.add(rim);
+
+      // ─── Physics world ───
+      const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -50, 0) });
+      world.broadphase = new CANNON.SAPBroadphase(world);
+      world.allowSleep = true;
+      world.defaultContactMaterial.restitution = 0.25;
+      world.defaultContactMaterial.friction = 0.3;
+
+      const sphereMat = new CANNON.Material('sphere');
+      const wallMat = new CANNON.Material('wall');
+      world.addContactMaterial(new CANNON.ContactMaterial(sphereMat, wallMat, {
+        restitution: 0.2, friction: 0.25,
+      }));
+      world.addContactMaterial(new CANNON.ContactMaterial(sphereMat, sphereMat, {
+        restitution: 0.15, friction: 0.35,
+      }));
+
+      // ─── Boundaries (floor + side walls) ───
+      const floorBody = new CANNON.Body({ mass: 0, material: wallMat });
+      floorBody.addShape(new CANNON.Plane());
+      floorBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+      floorBody.position.set(0, -WORLD_HEIGHT / 2, 0);
+      world.addBody(floorBody);
+
+      function makeWall(x, sign) {
+        const body = new CANNON.Body({ mass: 0, material: wallMat });
+        body.addShape(new CANNON.Plane());
+        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), sign > 0 ? -Math.PI / 2 : Math.PI / 2);
+        body.position.set(x, 0, 0);
+        world.addBody(body);
+        return body;
+      }
+      const leftWall  = makeWall(-worldWidth / 2,  1);
+      const rightWall = makeWall( worldWidth / 2, -1);
+
+      // ─── Sphere pool ───
+      const spheres = [];   // { mesh, body }
+      const geometries = [];
+      const materials = [];
+
+      function spawnSphere() {
+        const r = 0.9 + Math.random() * 1.4;
+        const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
+
+        const geo = new THREE.SphereGeometry(r, 24, 18);
+        const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.38, metalness: 0.12 });
+        geometries.push(geo);
+        materials.push(mat);
+
+        const mesh = new THREE.Mesh(geo, mat);
+        scene.add(mesh);
+
+        const body = new CANNON.Body({
+          mass: r * r,
+          shape: new CANNON.Sphere(r),
+          material: sphereMat,
+          linearDamping: 0.04,
+          angularDamping: 0.3,
+          sleepSpeedLimit: 0.2,
+          sleepTimeLimit: 0.5,
+        });
+        const xRange = worldWidth - r * 2 - 1;
+        body.position.set((Math.random() - 0.5) * xRange, WORLD_HEIGHT / 2 + r + 2, 0);
+        body.velocity.set((Math.random() - 0.5) * 2, -4 - Math.random() * 2, 0);
+        world.addBody(body);
+
+        spheres.push({ mesh, body });
+      }
+
+      // ─── State machine ───
+      let phase = 'spawning';       // spawning → pausing → falling → done
+      let spawnAcc = 0;
+      const SPAWN_INTERVAL = 0.028;
+      let fillStable = 0;
+      const FILL_STABLE_TARGET = 0.45;
+      let pauseElapsed = 0;
+      const PAUSE_DURATION = 0.8;
+      const MAX_SPHERES = 320;
+      let finished = false;
+      let rafId = null;
+      let resolvedCleanup = null;
+
+      function topOfStack() {
+        let maxY = -Infinity;
+        for (const { body } of spheres) {
+          const top = body.position.y + body.shapes[0].radius;
+          if (top > maxY) maxY = top;
+        }
+        return maxY;
+      }
+      function allBelowView() {
+        const cutoff = -WORLD_HEIGHT / 2 - 6;
+        for (const { body } of spheres) if (body.position.y > cutoff) return false;
+        return true;
+      }
+
+      // ─── Resize ───
+      function onResize() {
+        aspect = window.innerWidth / window.innerHeight;
+        worldWidth = WORLD_HEIGHT * aspect;
+        camera.left = -worldWidth / 2;
+        camera.right = worldWidth / 2;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        leftWall.position.x = -worldWidth / 2;
+        rightWall.position.x = worldWidth / 2;
+      }
+      window.addEventListener('resize', onResize);
+
+      // ─── Animation loop ───
+      const clock = new THREE.Clock();
+
+      function tick() {
+        const dt = Math.min(clock.getDelta(), 1 / 30);
+
+        if (phase === 'spawning') {
+          spawnAcc += dt;
+          while (spawnAcc >= SPAWN_INTERVAL && spheres.length < MAX_SPHERES) {
+            spawnSphere();
+            spawnAcc -= SPAWN_INTERVAL;
+          }
+          const full = topOfStack() >= WORLD_HEIGHT / 2 - 1.2 && spheres.length >= 80;
+          if (full) {
+            fillStable += dt;
+            if (fillStable >= FILL_STABLE_TARGET) {
+              phase = 'pausing';
+              pauseElapsed = 0;
+              try { onScreenFilled(); } catch (err) { console.error('onScreenFilled threw', err); }
+            }
+          } else {
+            fillStable = 0;
+          }
+          // Safety valve: if we hit the cap and still not "full", proceed anyway.
+          if (spheres.length >= MAX_SPHERES && phase === 'spawning') {
+            phase = 'pausing';
+            pauseElapsed = 0;
+            try { onScreenFilled(); } catch (err) { console.error('onScreenFilled threw', err); }
+          }
+        } else if (phase === 'pausing') {
+          pauseElapsed += dt;
+          if (pauseElapsed >= PAUSE_DURATION) {
+            phase = 'falling';
+            world.removeBody(floorBody);
+            for (const { body } of spheres) body.wakeUp();
+          }
+        } else if (phase === 'falling') {
+          if (allBelowView()) {
+            phase = 'done';
+            cleanup();
+            return;
+          }
+        }
+
+        world.step(1 / 60, dt, 3);
+
+        // Constrain the sim to the XY plane; sync meshes from bodies.
+        for (const { mesh, body } of spheres) {
+          body.position.z = 0;
+          body.velocity.z = 0;
+          mesh.position.copy(body.position);
+          mesh.quaternion.copy(body.quaternion);
+        }
+
+        renderer.render(scene, camera);
+        rafId = requestAnimationFrame(tick);
+      }
+
+      function cleanup() {
+        if (finished) return;
+        finished = true;
+        if (rafId) cancelAnimationFrame(rafId);
+        window.removeEventListener('resize', onResize);
+
+        for (const { mesh, body } of spheres) {
+          scene.remove(mesh);
+          world.removeBody(body);
+        }
+        spheres.length = 0;
+
+        for (const g of geometries) g.dispose();
+        for (const m of materials) m.dispose();
+        geometries.length = 0;
+        materials.length = 0;
+
+        scene.clear();
+        renderer.dispose();
+        renderer.forceContextLoss();
+        if (renderer.domElement.parentNode) {
+          renderer.domElement.parentNode.removeChild(renderer.domElement);
+        }
+        if (resolvedCleanup) resolvedCleanup();
+      }
+
+      rafId = requestAnimationFrame(tick);
+      return new Promise(res => { resolvedCleanup = res; });
+    }
+
+    // Demo wiring: click to run, swap content during the filled pause.
+    let running = false;
+    document.body.addEventListener('click', async () => {
+      if (running) return;
+      running = true;
+      await runTransition({
+        onScreenFilled: () => {
+          console.log('Transition happens here');
+          const page = document.getElementById('page-content');
+          page.innerHTML = page.innerHTML.includes('Page A')
+            ? '<div><h1>Page B</h1><p>Content swapped during the pause.</p><div class="hint">click to replay</div></div>'
+            : '<div><h1>Page A</h1><p>Click anywhere to run the transition.</p><div class="hint">↓ sphere-drop preview ↓</div></div>';
+        },
+      });
+      running = false;
+    });
+  </script>
+</body>
+</html>
