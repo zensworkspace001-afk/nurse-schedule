@@ -34,19 +34,21 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   // ★★★ 修正：改為監聽 SelectionTurn/latest，避免年月不一致導致讀到舊資料 ★★★
   const [activeTurn, setActiveTurn] = useState(null);
   useEffect(() => {
+      let fallbackUnsub = null;
       const latestRef = doc(db, "SelectionTurn", "latest");
       const unsub = onSnapshot(latestRef, (docSnap) => {
           if (docSnap.exists()) {
+              if (fallbackUnsub) { fallbackUnsub(); fallbackUnsub = null; }
               setActiveTurn(docSnap.data());
           } else {
               // fallback：若 latest 不存在，嘗試讀取原始年月文件
               const turnRef = doc(db, "SelectionTurn", `${targetYear}_${targetMonth}`);
-              onSnapshot(turnRef, (fallbackSnap) => {
+              fallbackUnsub = onSnapshot(turnRef, (fallbackSnap) => {
                   setActiveTurn(fallbackSnap.exists() ? fallbackSnap.data() : null);
               });
           }
       });
-      return () => unsub();
+      return () => { unsub(); if (fallbackUnsub) fallbackUnsub(); };
   }, [targetYear, targetMonth]);
 
   // ★★★ 修正 2：useEffect 也必須置頂 ★★★
@@ -248,6 +250,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
   const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = { type: s, time: '' }); setPreviewSchedule(map); setCurrentStep(3); };
 const handleFinalSubmit = async () => { // 🌟 1. 加上 async
+    if (isProcessing) return;
     if (hasClaimed) {
         alert("⚠️ 您已經認領過班表，無法重複認領！");
         return;

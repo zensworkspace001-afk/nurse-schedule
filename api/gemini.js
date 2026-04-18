@@ -48,16 +48,17 @@ export default async function handler(req, res) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: '未經授權：缺少登入憑證' });
   }
+  let decodedToken;
   try {
     const token = authHeader.split('Bearer ')[1];
-    await admin.auth().verifyIdToken(token);
+    decodedToken = await admin.auth().verifyIdToken(token);
   } catch (err) {
     console.warn('⚠️ 攔截到未經授權的 AI API 請求');
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }
 
   // ★ Rate Limiting：每人每分鐘最多 10 次 AI 請求
-  const uid = req.headers.authorization.split('Bearer ')[1].substring(0, 20);
+  const uid = decodedToken.uid;
   const rateCheck = checkRateLimit(`gemini:${uid}`, 10);
   if (!rateCheck.allowed) {
     return res.status(429).json({ error: '請求過於頻繁，請稍後再試' });

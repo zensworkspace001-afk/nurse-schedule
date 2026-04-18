@@ -171,7 +171,10 @@ export default async function handler(req, res) {
             decision = JSON.parse(text);
         } catch (e) {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
-            decision = jsonMatch ? JSON.parse(jsonMatch[0]) : { selected_staff_id: unassignedStaff[0].staff_id, reason: "解析失敗，預設首位。" };
+            decision = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        }
+        if (!decision || !decision.selected_staff_id) {
+            decision = { selected_staff_id: unassignedStaff[0].staff_id, reason: "AI 回應解析失敗，預設首位。" };
         }
 
         // 7. 驗證並執行寫入

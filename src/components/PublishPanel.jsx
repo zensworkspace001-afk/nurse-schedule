@@ -23,13 +23,15 @@ const PublishPanel = ({
 const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         if (!newSchedule[staffId]) newSchedule[staffId] = {};
         newSchedule[staffId][day] = { ...(typeof newSchedule[staffId][day] === 'object' ? newSchedule[staffId][day] : {}), type: newValue };
+        const previousSchedule = finalizedSchedule;
         setFinalizedSchedule(newSchedule);
-
 
       try {
           await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
       } catch (e) {
           console.error("同步發布班表失敗", e);
+          setFinalizedSchedule(previousSchedule);
+          alert("❌ 班表更新失敗，已還原變更！");
       }
   };
 
@@ -58,7 +60,7 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
 // ★★★ 核心邏輯 1：單點拔除名字，轉回待認領 ★★★
     // 👉 加上 async
     const handleUnassignSingleStaff = async (staffId) => {
-        const staffName = staffData.find(s => s.staff_id === staffId)?.name || staffId;
+        const staffName = (staffData || []).find(s => s.staff_id === staffId)?.name || staffId;
         if (!window.confirm(`⚠️ 確定要拔除「${staffName}」的班表嗎？\n\n這將把此排班轉為「待認領 (Dxxx)」空缺，\n員工介面會立刻同步釋出，供其他人重新選擇。`)) return;
 
         const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
@@ -73,6 +75,7 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         newSchedule[newVirtualId] = newSchedule[staffId];
         delete newSchedule[staffId];
 
+        const previousSchedule = finalizedSchedule;
         setFinalizedSchedule(newSchedule);
 
         // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
@@ -80,7 +83,8 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
             await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
         } catch (error) {
             console.error("拔除失敗:", error);
-            alert("❌ 雲端同步失敗，請檢查網路連線！");
+            setFinalizedSchedule(previousSchedule);
+            alert("❌ 雲端同步失敗，已還原變更！請檢查網路連線！");
         }
     };
 
@@ -98,6 +102,7 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
             vIndex++;
         });
 
+        const previousSchedule = finalizedSchedule;
         setFinalizedSchedule(newSchedule);
 
         // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
@@ -106,7 +111,8 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
             alert("✅ 所有人員已成功拔除並同步至雲端！");
         } catch (error) {
             console.error("拔除失敗:", error);
-            alert("❌ 雲端同步失敗，請檢查網路連線！");
+            setFinalizedSchedule(previousSchedule);
+            alert("❌ 雲端同步失敗，已還原變更！請檢查網路連線！");
         }
     };
 
@@ -169,7 +175,7 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                                   <tr key={rowId} className={`publish__row${isVirtual ? ' publish__row--virtual' : ''}`}>
                                       <td className={`publish__td-staff${isVirtual ? ' publish__td-staff--virtual' : ''}`}>
                                           <div>
-                                              <div className={`publish__staff-name${isVirtual ? ' publish__staff-name--virtual' : ''}`}>{isVirtual ? '🎲 待認領' : (staffData.find(s=>s.staff_id===rowId)?.name || rowId)}</div>
+                                              <div className={`publish__staff-name${isVirtual ? ' publish__staff-name--virtual' : ''}`}>{isVirtual ? '🎲 待認領' : ((staffData || []).find(s=>s.staff_id===rowId)?.name || rowId)}</div>
                                               <div className="publish__staff-id">{rowId}</div>
                                           </div>
                                           {/* ★ 拔除名字按鈕 */}

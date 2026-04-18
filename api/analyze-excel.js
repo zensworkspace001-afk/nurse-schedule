@@ -51,9 +51,10 @@ export default async function handler(req, res) {
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
     return res.status(401).json({ error: '未經授權：缺少登入憑證' });
   }
+  let decodedToken;
   try {
     const token = authHeader.split('Bearer ')[1];
-    await admin.auth().verifyIdToken(token);
+    decodedToken = await admin.auth().verifyIdToken(token);
   } catch (err) {
     console.warn('⚠️ 攔截到未經授權的 Excel 分析請求');
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
@@ -71,8 +72,15 @@ export default async function handler(req, res) {
     let fileContent = '';
     let userPrompt = '';
 
+    const MAX_FILE_SIZE = 100000;
     bb.on('file', (name, file) => {
-      file.on('data', (data) => { fileContent += data.toString(); });
+      file.on('data', (data) => {
+        fileContent += data.toString();
+        if (fileContent.length > MAX_FILE_SIZE) {
+          file.destroy();
+          reject(new Error('FILE_TOO_LARGE'));
+        }
+      });
       file.on('error', reject);
     });
 
@@ -87,7 +95,7 @@ export default async function handler(req, res) {
   });
 
   // ★ Rate Limiting：每人每分鐘最多 5 次分析請求
-  const uid = req.headers.authorization.split('Bearer ')[1].substring(0, 20);
+  const uid = decodedToken.uid;
   const rateCheck = checkRateLimit(`excel:${uid}`, 5);
   if (!rateCheck.allowed) {
     return res.status(429).json({ error: '請求過於頻繁，請稍後再試' });

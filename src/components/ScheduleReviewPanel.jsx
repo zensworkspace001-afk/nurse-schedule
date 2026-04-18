@@ -19,7 +19,7 @@ const ScheduleReviewPanel = ({
     // ★ 加這兩行防呆，避免 undefined 傳進來導致 NaN crash
   const safeYear  = historyYear  || new Date().getFullYear();
   const safeMonth = historyMonth || (new Date().getMonth() === 0 ? 12 : new Date().getMonth());
-  const daysInMonth = new Date(historyYear, historyMonth, 0).getDate();
+  const daysInMonth = new Date(safeYear, safeMonth, 0).getDate();
   const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
  const [showSettlement, setShowSettlement] = useState(false);
@@ -107,9 +107,9 @@ const ScheduleReviewPanel = ({
           }
       }
       let hasFullWeekendOff = false;
-      for (let d = 1; d <= daysInMonth - 1; d++) {
-          const date = new Date(historyYear, historyMonth - 1, d);
-          if (date.getDay() === 6) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } }
+      for (let d = 1; d <= daysInMonth; d++) {
+          const date = new Date(safeYear, safeMonth - 1, d);
+          if (date.getDay() === 6 && d < daysInMonth) { if (isOff(shifts[d-1]) && isOff(shifts[d])) { hasFullWeekendOff = true; break; } }
       }
       if (!hasFullWeekendOff) { score -= 5; deductions.push(`[-5] 週末零休假`); }
 

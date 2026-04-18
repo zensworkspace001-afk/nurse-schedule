@@ -18,6 +18,7 @@ export function checkCsrf(req) {
   const origin = req.headers.origin || req.headers.referer;
   if (!origin) return { allowed: true, origin: 'server-to-server' };
 
-  const isAllowed = ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed));
+  const normalizedOrigin = origin.replace(/\/+$/, '');
+  const isAllowed = ALLOWED_ORIGINS.some(allowed => normalizedOrigin === allowed);
   return { allowed: isAllowed, origin };
 }

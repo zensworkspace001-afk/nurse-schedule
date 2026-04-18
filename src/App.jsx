@@ -259,7 +259,7 @@ const [historyYear, setHistoryYear] = useState(() => {
       setViolations([]);
       setScheduleRisks([]);
     }
-  }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays]);
+  }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays, historyData]);
 // ☁️ 雲端引擎 1：即時讀取 (使用抽象化 API)
   useEffect(() => {
     // 🌟 1. 核心修復：把安全門加回來！沒有登入的人，絕對不准去要資料！
@@ -341,6 +341,7 @@ const [historyYear, setHistoryYear] = useState(() => {
           priorityConfig: priorityConfig || {},
           requirements: requirements || { D: 15, E: 12, N: 8 },
           bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
+          baseSalary: baseSalary || 40000,
           levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
         });
 
@@ -354,7 +355,7 @@ const [historyYear, setHistoryYear] = useState(() => {
     return () => clearTimeout(timeoutId);
 
   // ★ 核心修復 3：移除了 finalizedSchedule 與 publishedDate 的依賴，徹底打破無限覆蓋迴圈
-  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth]);
+  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth, requirements, bedConfig, baseSalary, levelBonus]);
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
     if (!newSchedule) { return; }

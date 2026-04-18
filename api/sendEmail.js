@@ -57,8 +57,9 @@ export default async function handler(req, res) {
     const isCronCall = token === process.env.CRON_SECRET;
     if (!isCronCall) {
         // 管道 2：前端使用者必須持有合法的 Firebase Token
+        var decodedToken;
         try {
-            await admin.auth().verifyIdToken(token);
+            decodedToken = await admin.auth().verifyIdToken(token);
         } catch (err) {
             console.warn('⚠️ 攔截到未經授權的寄信請求');
             return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
@@ -66,7 +67,7 @@ export default async function handler(req, res) {
     }
 
     // ★ Rate Limiting：每人每分鐘最多 5 封信
-    const uid = isCronCall ? 'cron' : (req.headers.authorization.split('Bearer ')[1]).substring(0, 20);
+    const uid = isCronCall ? 'cron' : decodedToken.uid;
     const rateCheck = checkRateLimit(`email:${uid}`, 5);
     if (!rateCheck.allowed) {
         return res.status(429).json({ error: '請求過於頻繁，請稍後再試' });
