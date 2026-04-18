@@ -11,9 +11,20 @@ npm run build        # Build frontend → dist/
 npm run lint         # ESLint checks
 npm run preview      # Preview production build
 npm run electron:build  # Build desktop app → dist-electron/
+npm run test:e2e     # Run Playwright end-to-end tests (headless chromium)
+npm run test:e2e:ui  # Playwright UI runner
+npm run test:e2e:report  # Open the last HTML report
 ```
 
-There are **no tests** configured in this project. No test runner or test files exist.
+**Testing:** Playwright specs live in `tests/e2e/`. The config auto-starts `npm run dev` and reuses it locally. Tests hit the real Vercel/Firebase backend, so provide credentials via env:
+
+```bash
+TEST_STAFF_ID=n001 TEST_STAFF_PW=yourpw npm run test:e2e        # all specs
+TEST_STAFF_ID=n001 TEST_STAFF_PW=yourpw npx playwright test tests/e2e/login.spec.js  # single file
+npx playwright test -g "wrong password"                          # by title
+```
+
+Specs call `test.skip(...)` when creds are missing, so CI without secrets still passes cleanly. Traces, screenshots, and videos are retained only on failure under `test-results/`.
 
 Dev server proxies `/api/*` requests to `https://nurse-schedule-bachelor.vercel.app` (configured in `vite.config.js`), so local frontend connects to the production Vercel serverless backend.
 
