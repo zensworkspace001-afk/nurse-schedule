@@ -20,12 +20,25 @@ const SPAWN_VY_MAX = -18;
 const SPHERE_R_MIN = 0.7;              // smaller min packs tighter gaps
 const SPHERE_R_MAX = 2.1;
 
-// Sphere count scales with viewport area so phones don't over-fill and
-// desktops don't look sparse. Divisor tuned so 1920×1080 ≈ 1000 spheres.
+// Sphere budget for 90% screen coverage.
+//
+//   N = (worldArea × FILL_TARGET × PACKING_DENSITY) / avgSphereArea
+//
+// worldArea comes from the orthographic camera: WORLD_HEIGHT maps to
+// viewport height, so worldArea = WORLD_HEIGHT² × aspect. Packing
+// density 0.62 ≈ gravity-dropped polydisperse 2D circles. We spawn
+// ~30% beyond the target so the "stack reaches the top" fill check
+// triggers reliably even with small gaps.
+const SCREEN_FILL_TARGET = 0.9;
+const PACKING_DENSITY = 0.62;
 const computeSphereBudget = () => {
-  const area = window.innerWidth * window.innerHeight;
-  const max = Math.max(80, Math.min(1000, Math.round(area / 2074)));
-  const fillMin = Math.max(40, Math.round(max * 0.35));
+  const aspect = window.innerWidth / window.innerHeight;
+  const worldArea = WORLD_HEIGHT * WORLD_HEIGHT * aspect;
+  const rAvg = (SPHERE_R_MIN + SPHERE_R_MAX) / 2;
+  const sphereArea = Math.PI * rAvg * rAvg;
+  const target = Math.ceil((worldArea * SCREEN_FILL_TARGET * PACKING_DENSITY) / sphereArea);
+  const max = Math.max(80, Math.min(1200, Math.round(target * 1.3)));
+  const fillMin = Math.max(40, target);
   return { max, fillMin };
 };
 
