@@ -124,7 +124,6 @@ const [historyYear, setHistoryYear] = useState(() => {
 
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [closingStatusDropdown, setClosingStatusDropdown] = useState(false);
-  const [simulateFailMode, setSimulateFailMode] = useState(false);
   const statusTriggerRef = React.useRef(null);
 
   const handleCloseStatusDropdown = React.useCallback(() => {
@@ -857,9 +856,7 @@ const handleSaveAndPublish = async () => {
             <div className="app__status-dropdown-wrapper">
               <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => showStatusDropdown ? handleCloseStatusDropdown() : setShowStatusDropdown(true)}>
                 {(() => {
-                  const colors = simulateFailMode
-                    ? ['red', 'red', 'red', 'green', 'yellow', 'green', 'red', 'green', 'green']
-                    : HEALTH_ENDPOINTS.map(ep => endpointStatus[ep.key]?.color || 'gray');
+                  const colors = HEALTH_ENDPOINTS.map(ep => endpointStatus[ep.key]?.color || 'gray');
                   const overall = colors.includes('red') ? 'red' : colors.includes('yellow') ? 'yellow' : colors.includes('gray') ? 'gray' : 'green';
                   return <span className={`app__status-dot app__status-dot--${overall}`}></span>;
                 })()}
@@ -874,18 +871,7 @@ const handleSaveAndPublish = async () => {
                   })()}>
                     <div className="app__status-dropdown-title">系統 API 健康狀態</div>
                     {HEALTH_ENDPOINTS.map(ep => {
-                      const SIMULATED_STATUS = {
-                        firestore: { color: 'red', reason: 'Firebase 異常：PERMISSION_DENIED (142ms)' },
-                        gemini: { color: 'red', reason: 'Gemini AI 異常：API key not valid (305ms)' },
-                        analyzeExcel: { color: 'red', reason: 'Excel 分析 異常：API key not valid (289ms)' },
-                        sendEmail: { color: 'green', reason: 'Email 服務 正常 (198ms)' },
-                        syncAccounts: { color: 'yellow', reason: '帳號同步 正常 (3412ms)' },
-                        resetPassword: { color: 'green', reason: '密碼重設 正常 (156ms)' },
-                        autoSettle: { color: 'red', reason: '自動結算 異常：Firestore connection refused (8001ms)' },
-                        cronTimeout: { color: 'green', reason: 'Cron 逾時 正常 (230ms)' },
-                        calendar: { color: 'green', reason: '國定假日 正常 (87ms)' },
-                      };
-                      const s = simulateFailMode ? SIMULATED_STATUS[ep.key] : endpointStatus[ep.key];
+                      const s = endpointStatus[ep.key];
                       const color = s ? s.color : 'gray';
                       const reason = s ? s.reason : '檢測中...';
                       return (
@@ -899,14 +885,6 @@ const handleSaveAndPublish = async () => {
                         </div>
                       );
                     })}
-                    {currentUser.role === 'admin' && (
-                      <button
-                        className="app__status-dropdown-sim-btn"
-                        onClick={() => setSimulateFailMode(prev => !prev)}
-                      >
-                        {simulateFailMode ? '✓ 模擬故障中 — 點擊恢復' : '⚠ 模擬故障測試'}
-                      </button>
-                    )}
                   </div>
                 </>
               )}
