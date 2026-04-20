@@ -222,10 +222,13 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
           }
       }
       // 1. 檢查七休一
+      //    只有實際出勤 (D/E/N/支援) 才算「連續上班」；
+      //    休假/空班類 (OFF/RG/RC/空班/事假/病假/特休) 一律重置 streak。
+      const WORKING_SHIFTS = new Set(['D', 'E', 'N', '支援']);
       let currentStreak = prevStreak;
       for (let i = 0; i < pattern.length; i++) {
           const shift = pattern[i];
-          if (shift !== 'OFF' && shift !== 'RG' && shift !== 'RC' && shift !== '空班') currentStreak++;
+          if (WORKING_SHIFTS.has(shift)) currentStreak++;
           else currentStreak = 0;
           if (currentStreak > 6) return { valid: false, reason: `違反七休一 (第${i+1}天連上${currentStreak}天)` };
       }
