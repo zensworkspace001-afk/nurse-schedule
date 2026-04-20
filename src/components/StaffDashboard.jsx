@@ -244,7 +244,10 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 
 
   // ★ 未認領的員工：只顯示未被選走的班表；已認領的員工：可查看全部
-  const visibleSlots = hasClaimed ? aiSlots : aiSlots.filter(opt => !opt.isClaimed);
+  // ★ 實習生 (leave_status === 'Student') 不可選小夜 (E) / 大夜 (N)
+  const isStudent = currentStaffInfo?.leave_status === 'Student';
+  let visibleSlots = hasClaimed ? aiSlots : aiSlots.filter(opt => !opt.isClaimed);
+  if (isStudent) visibleSlots = visibleSlots.filter(opt => opt.shift !== 'E' && opt.shift !== 'N');
   const filteredOptions = selectedShiftType === 'ALL' ? visibleSlots : visibleSlots.filter(opt => opt.shift === selectedShiftType);
 
   const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };

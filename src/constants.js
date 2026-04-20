@@ -77,6 +77,8 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
     let currentWeekHours = 0;
     let isWeeklyViolationReported = false; // ★ 新增這行
 
+    const isStudent = staff?.leave_status === 'Student';
+
     for (let day = 1; day <= daysInMonth; day++) {
       const cell = monthSchedule[day] || 'OFF';
       const shiftType = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
@@ -91,6 +93,14 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
             staffId, staffName: staff?.name, day, type: 'DAILY_HOURS',
             message: `⚠️ 每日工時超標：${dailyHours} 小時 (上限 8)`
           });
+      }
+
+      // --- A2. 實習生限制：不可排小夜 (E) / 大夜 (N) ---
+      if (isStudent && (shiftType === 'E' || shiftType === 'N')) {
+        violations.push({
+          staffId, staffName: staff?.name, day, type: 'STUDENT_NIGHT_FORBIDDEN',
+          message: `⚠️ 實習生不可排 ${shiftType === 'E' ? '小夜班 (E)' : '大夜班 (N)'}`
+        });
       }
 
       // --- B. 每週工時檢查 (MAX_WEEKLY_HOURS: 40) ---
