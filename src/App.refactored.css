@@ -302,14 +302,14 @@
   to { opacity: 1; }
 }
 
-/* dropdown panel — glassmorphism */
+/* dropdown panel — glassmorphism (matches header/tab template) */
 .app__status-dropdown {
   position: fixed;
   z-index: 9999;
-  background: rgba(15, 20, 30, 0.75);
+  background: rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(24px) saturate(1.4);
   -webkit-backdrop-filter: blur(24px) saturate(1.4);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 16px;
   padding: 14px 0;
   min-width: 360px;
