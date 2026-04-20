@@ -11,8 +11,8 @@ const PALETTE = [
 
 const WORLD_HEIGHT = 40;
 const SPAWN_INTERVAL = 0.016;         // ~60/s — twice as fast as before
-const FILL_STABLE_TARGET = 0.35;
-const PAUSE_DURATION = 0.7;
+const FILL_STABLE_TARGET = 0.3;
+const PAUSE_DURATION = 0.35;
 const MAX_SPHERES = 500;
 const FALL_HARD_CAP = 4;
 const GRAVITY = -90;                   // heavier fall
@@ -38,10 +38,13 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
 
-    // Backdrop fades to opaque at the filled pause so gaps between spheres
-    // don't show the page underneath, then fades back out as they fall.
+    // Hazy backdrop — a semi-transparent tint + blur hides the swap
+    // without the hard "black screen" cut. Dashboard stays faintly
+    // visible through the frosted layer while spheres drop.
     container.style.backgroundColor = 'rgba(13, 13, 18, 0)';
-    container.style.transition = 'background-color 0.25s ease';
+    container.style.backdropFilter = 'blur(0px)';
+    container.style.webkitBackdropFilter = 'blur(0px)';
+    container.style.transition = 'background-color 0.35s ease, backdrop-filter 0.35s ease, -webkit-backdrop-filter 0.35s ease';
 
     const scene = new THREE.Scene();
 
@@ -191,7 +194,9 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
         const enterPausing = () => {
           phase = 'pausing';
           pauseElapsed = 0;
-          container.style.backgroundColor = 'rgba(13, 13, 18, 1)';
+          container.style.backgroundColor = 'rgba(13, 13, 18, 0.55)';
+          container.style.backdropFilter = 'blur(14px)';
+          container.style.webkitBackdropFilter = 'blur(14px)';
           try { onFilledRef.current?.(); } catch (err) { console.error(err); }
         };
         if (full) {
@@ -224,6 +229,8 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
           renderer.render(scene, camera);
           // Short backdrop fade → clean reveal of the dashboard, then unmount.
           container.style.backgroundColor = 'rgba(13, 13, 18, 0)';
+          container.style.backdropFilter = 'blur(0px)';
+          container.style.webkitBackdropFilter = 'blur(0px)';
           setTimeout(() => {
             try { onCompleteRef.current?.(); } catch (err) { console.error(err); }
           }, 280);
