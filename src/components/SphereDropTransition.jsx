@@ -207,14 +207,26 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
           phase = 'falling';
           world.removeBody(floorBody);
           for (const { body } of spheres) body.wakeUp();
-          container.style.backgroundColor = 'rgba(13, 13, 18, 0)';
+          // Backdrop stays opaque through the fall so the dashboard
+          // underneath stays hidden until every sphere is out of view.
         }
       } else if (phase === 'falling') {
         fallElapsed += dt;
         pruneFallen();
         if (spheres.length === 0 || fallElapsed >= FALL_HARD_CAP) {
-          phase = 'done';
-          try { onCompleteRef.current?.(); } catch (err) { console.error(err); }
+          phase = 'revealing';
+          // Drop any lingering spheres so we don't leave a frozen frame.
+          for (const { mesh, body } of spheres) {
+            scene.remove(mesh);
+            world.removeBody(body);
+          }
+          spheres.length = 0;
+          renderer.render(scene, camera);
+          // Short backdrop fade → clean reveal of the dashboard, then unmount.
+          container.style.backgroundColor = 'rgba(13, 13, 18, 0)';
+          setTimeout(() => {
+            try { onCompleteRef.current?.(); } catch (err) { console.error(err); }
+          }, 280);
           return;
         }
       }
