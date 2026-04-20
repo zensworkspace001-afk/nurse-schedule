@@ -62,14 +62,24 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
         return a.localeCompare(b);
     });
 
+    const WORKING = new Set(['D', 'E', 'N', '支援']);
+
     const formattedSlots = allSlots.map(slotId => {
         const slotData = currentSchedule[slotId];
         const pattern = [];
         const shiftCounts = { D: 0, E: 0, N: 0 };
 
+        // 邊讀邊套用七休一：第 7 天連上自動轉 OFF，避免舊班表卡死
+        let streak = 0;
         for (let d = 1; d <= daysInMonth; d++) {
             const cell = slotData[d];
-            const type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
+            let type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
+            if (WORKING.has(type)) {
+                if (streak >= 6) { type = 'OFF'; streak = 0; }
+                else streak++;
+            } else {
+                streak = 0;
+            }
             pattern.push(type);
             if (['D', 'E', 'N'].includes(type)) shiftCounts[type]++;
         }
