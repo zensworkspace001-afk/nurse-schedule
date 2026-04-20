@@ -312,7 +312,11 @@
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 16px;
   padding: 14px 0;
-  min-width: 360px;
+  min-width: 720px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 4px;
+  row-gap: 2px;
   box-shadow:
     0 20px 60px rgba(0, 0, 0, 0.5),
     0 0 0 1px rgba(255, 255, 255, 0.05) inset,
@@ -335,6 +339,7 @@
 }
 
 .app__status-dropdown-title {
+  grid-column: 1 / -1;
   font-size: 0.72rem;
   font-weight: 700;
   color: rgba(255, 255, 255, 0.4);
@@ -348,8 +353,9 @@
 .app__status-dropdown-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 9px 18px;
+  gap: 10px;
+  padding: 8px 14px;
+  min-width: 0;
   transition: background 0.15s;
 }
 .app__status-dropdown-row:hover {
@@ -366,7 +372,8 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
-  min-width: 80px;
+  min-width: 0;
+  flex: 1;
 }
 
 .app__status-dropdown-label {
@@ -381,11 +388,14 @@
 }
 
 .app__status-dropdown-reason {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.5);
   margin-left: auto;
   text-align: right;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 48%;
 }
 
 .app__header-user {
@@ -808,7 +818,9 @@
   .app__status-dropdown {
     left: 0.5rem !important;
     right: 0.5rem !important;
+    min-width: 0;
     max-width: calc(100vw - 1rem);
+    grid-template-columns: 1fr;
   }
 
   .app__header-user {
