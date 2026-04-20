@@ -850,7 +850,7 @@ const handleSaveAndPublish = async () => {
       <div className="app__header">
           <div className="app__header-left">
             <Calendar size={28} color="#ffffff" />
-            <h1 className="app__header-title">智能排班系統</h1>
+            <h1 className="app__header-title">排班系統</h1>
           </div>
           <div className="app__header-right">
             {/* ★ 系統連線狀態 — 下拉選單 ★ */}
