@@ -124,10 +124,15 @@
       floorBody.position.set(0, -WORLD_HEIGHT / 2, 0);
       world.addBody(floorBody);
 
-      function makeWall(x, sign) {
+      // inwardSign = +1 → normal points +X (a wall on the LEFT side of the scene)
+      // inwardSign = -1 → normal points -X (a wall on the RIGHT side)
+      function makeWall(x, inwardSign) {
         const body = new CANNON.Body({ mass: 0, material: wallMat });
         body.addShape(new CANNON.Plane());
-        body.quaternion.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), sign > 0 ? -Math.PI / 2 : Math.PI / 2);
+        body.quaternion.setFromAxisAngle(
+          new CANNON.Vec3(0, 1, 0),
+          inwardSign > 0 ? Math.PI / 2 : -Math.PI / 2,
+        );
         body.position.set(x, 0, 0);
         world.addBody(body);
         return body;
@@ -178,6 +183,8 @@
       let pauseElapsed = 0;
       const PAUSE_DURATION = 0.8;
       const MAX_SPHERES = 320;
+      let fallElapsed = 0;
+      const FALL_HARD_CAP = 5; // seconds — guarantees cleanup even if physics stalls
       let finished = false;
       let rafId = null;
       let resolvedCleanup = null;
@@ -190,10 +197,16 @@
         }
         return maxY;
       }
-      function allBelowView() {
-        const cutoff = -WORLD_HEIGHT / 2 - 6;
-        for (const { body } of spheres) if (body.position.y > cutoff) return false;
-        return true;
+      const FALL_CUTOFF_Y = -WORLD_HEIGHT / 2 - 8;
+      function pruneFallen() {
+        for (let i = spheres.length - 1; i >= 0; i--) {
+          const { mesh, body } = spheres[i];
+          if (body.position.y < FALL_CUTOFF_Y) {
+            scene.remove(mesh);
+            world.removeBody(body);
+            spheres.splice(i, 1);
+          }
+        }
       }
 
       // ─── Resize ───
@@ -246,7 +259,9 @@
             for (const { body } of spheres) body.wakeUp();
           }
         } else if (phase === 'falling') {
-          if (allBelowView()) {
+          fallElapsed += dt;
+          pruneFallen();
+          if (spheres.length === 0 || fallElapsed >= FALL_HARD_CAP) {
             phase = 'done';
             cleanup();
             return;
