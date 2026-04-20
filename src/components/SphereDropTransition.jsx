@@ -13,13 +13,21 @@ const WORLD_HEIGHT = 40;
 const SPAWN_INTERVAL = 0.016;         // ~60/s — twice as fast as before
 const FILL_STABLE_TARGET = 0.3;
 const PAUSE_DURATION = 0.35;
-const MAX_SPHERES = 500;
 const FALL_HARD_CAP = 4;
 const GRAVITY = -90;                   // heavier fall
 const SPAWN_VY_MIN = -12;
 const SPAWN_VY_MAX = -18;
 const SPHERE_R_MIN = 0.7;              // smaller min packs tighter gaps
 const SPHERE_R_MAX = 2.1;
+
+// Sphere count scales with viewport area so phones don't over-fill and
+// desktops don't look sparse. ~1 sphere per 4000 CSS px², clamped.
+const computeSphereBudget = () => {
+  const area = window.innerWidth * window.innerHeight;
+  const max = Math.max(80, Math.min(600, Math.round(area / 4000)));
+  const fillMin = Math.max(40, Math.round(max * 0.35));
+  return { max, fillMin };
+};
 
 export default function SphereDropTransition({ onScreenFilled, onComplete }) {
   const containerRef = useRef(null);
@@ -32,6 +40,8 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return undefined;
+
+    const { max: MAX_SPHERES, fillMin: FILL_MIN } = computeSphereBudget();
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -190,7 +200,7 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
           spawnSphere();
           spawnAcc -= SPAWN_INTERVAL;
         }
-        const full = topOfStack() >= WORLD_HEIGHT / 2 - 0.8 && spheres.length >= 120;
+        const full = topOfStack() >= WORLD_HEIGHT / 2 - 0.8 && spheres.length >= FILL_MIN;
         const enterPausing = () => {
           phase = 'pausing';
           pauseElapsed = 0;
