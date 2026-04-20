@@ -97,26 +97,52 @@ export default async function handler(req, res) {
         const submittedList = progressSnap.exists ? (progressSnap.data().submitted_staff || []) : [];
 
         // 3. 篩選出「尚未選班」的活躍員工
+        //    - is_active: 只排除明確為 false 的 (undefined/null 當作在職)
+        //    - leave_status: 只排除真正在休假的 (OnLeave / Maternal)，Student 仍可選班
         const scheduleKeys = currentSchedule ? Object.keys(currentSchedule) : [];
-        const unassignedStaff = staffData.filter(s =>
-            (s.is_active === true || String(s.is_active).toLowerCase() === 'true') &&
-            s.staff_id &&
-            s.staff_id !== 'admin' &&
-            !s.staff_id.startsWith('D') &&
-            (!s.leave_status || s.leave_status === 'None') &&
-            !submittedList.includes(s.staff_id) &&
-            !scheduleKeys.includes(s.staff_id)
-        );
+        const remainingDSlots = scheduleKeys.filter(k => typeof k === 'string' && k.startsWith('D'));
+        const excludedReasons = [];
+        const isOnLeave = (ls) => ls === 'OnLeave' || ls === 'Maternal';
+        const unassignedStaff = staffData.filter(s => {
+            if (!s.staff_id || s.staff_id === 'admin' || s.staff_id.startsWith('D')) return false;
+            if (s.is_active === false || String(s.is_active).toLowerCase() === 'false') { excludedReasons.push(`${s.staff_id}=已停用`); return false; }
+            if (isOnLeave(s.leave_status)) { excludedReasons.push(`${s.staff_id}=休假中(${s.leave_status})`); return false; }
+            if (submittedList.includes(s.staff_id)) return false;
+            if (scheduleKeys.includes(s.staff_id)) return false;
+            return true;
+        });
 
         // 4. 終止條件：所有人都選完了！
         if (unassignedStaff.length === 0) {
             const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'zensworkspace001@gmail.com';
-            await sendSystemEmail(adminEmail, `✅ ${month}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
             // 清除 latest 指標
             await db.collection('SelectionTurn').doc('latest').set({
                 active_staff_id: null, year, month,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
             });
+
+            // 🚨 若仍有未認領的 D* 空缺班表，代表「名額多於可選人數」或「有員工被排除卻還有空班」
+            if (remainingDSlots.length > 0) {
+                const reasonHtml = excludedReasons.length > 0
+                    ? `<p><strong>被排除的員工：</strong><br/>${excludedReasons.join('<br/>')}</p>`
+                    : '';
+                await sendSystemEmail(
+                    adminEmail,
+                    `⚠️ ${month}月 接力結束但仍有 ${remainingDSlots.length} 個空班未認領`,
+                    `<h3>報告護理長：</h3>
+                     <p>本月接力選班已結束，但仍有 <strong>${remainingDSlots.length}</strong> 個空班未被認領：</p>
+                     <p>${remainingDSlots.join('、')}</p>
+                     <p>可能原因：名額多於可選員工、或有員工因狀態設定被排除。請登入系統手動指派或調整排班設定。</p>
+                     ${reasonHtml}`
+                );
+                return res.status(200).json({
+                    message: "接力結束，但仍有空班未認領。",
+                    unfilledSlots: remainingDSlots,
+                    excludedReasons
+                });
+            }
+
+            await sendSystemEmail(adminEmail, `✅ ${month}月 班表全數認領完畢！`, `<h3>報告護理長：</h3><p>本月所有同仁皆已完成班表選擇，請登入系統進行最終確認與結算。</p>`);
             return res.status(200).json({ message: "所有員工皆已完成選班。" });
         }
 
