@@ -175,10 +175,10 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
       );
   }
 
-  // 防呆 3: 長假/特殊狀態檢查
-  if (currentStaffInfo && currentStaffInfo.leave_status && currentStaffInfo.leave_status !== 'None') {
-      const statusMap = { Maternal: '產假/育嬰假', Student: '進修留職', OnLeave: '長假' };
-      const statusName = statusMap[currentStaffInfo.leave_status] || '特殊休假';
+  // 防呆 3: 長假/特殊狀態檢查 (僅產假與長假會被擋；實習生仍可選班，只是不能選 E/N)
+  if (currentStaffInfo && (currentStaffInfo.leave_status === 'Maternal' || currentStaffInfo.leave_status === 'OnLeave')) {
+      const statusMap = { Maternal: '產假/育嬰假', OnLeave: '長假' };
+      const statusName = statusMap[currentStaffInfo.leave_status];
       return (
           <div className="dashboard__guard">
               <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
