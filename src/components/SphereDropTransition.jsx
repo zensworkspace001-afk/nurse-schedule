@@ -10,11 +10,16 @@ const PALETTE = [
 ];
 
 const WORLD_HEIGHT = 40;
-const SPAWN_INTERVAL = 0.028;
-const FILL_STABLE_TARGET = 0.45;
-const PAUSE_DURATION = 0.8;
-const MAX_SPHERES = 320;
-const FALL_HARD_CAP = 5;
+const SPAWN_INTERVAL = 0.016;         // ~60/s — twice as fast as before
+const FILL_STABLE_TARGET = 0.35;
+const PAUSE_DURATION = 0.7;
+const MAX_SPHERES = 500;
+const FALL_HARD_CAP = 4;
+const GRAVITY = -90;                   // heavier fall
+const SPAWN_VY_MIN = -12;
+const SPAWN_VY_MAX = -18;
+const SPHERE_R_MIN = 0.7;              // smaller min packs tighter gaps
+const SPHERE_R_MAX = 2.1;
 
 export default function SphereDropTransition({ onScreenFilled, onComplete }) {
   const containerRef = useRef(null);
@@ -32,6 +37,11 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setSize(window.innerWidth, window.innerHeight);
     container.appendChild(renderer.domElement);
+
+    // Backdrop fades to opaque at the filled pause so gaps between spheres
+    // don't show the page underneath, then fades back out as they fall.
+    container.style.backgroundColor = 'rgba(13, 13, 18, 0)';
+    container.style.transition = 'background-color 0.25s ease';
 
     const scene = new THREE.Scene();
 
@@ -52,7 +62,7 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
     rim.position.set(-8, -4, 12);
     scene.add(rim);
 
-    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, -50, 0) });
+    const world = new CANNON.World({ gravity: new CANNON.Vec3(0, GRAVITY, 0) });
     world.broadphase = new CANNON.SAPBroadphase(world);
     world.allowSleep = true;
     world.defaultContactMaterial.restitution = 0.25;
@@ -92,7 +102,7 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
     const materials = [];
 
     const spawnSphere = () => {
-      const r = 0.9 + Math.random() * 1.4;
+      const r = SPHERE_R_MIN + Math.random() * (SPHERE_R_MAX - SPHERE_R_MIN);
       const color = PALETTE[Math.floor(Math.random() * PALETTE.length)];
 
       const geo = new THREE.SphereGeometry(r, 24, 18);
@@ -114,7 +124,11 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
       });
       const xRange = worldWidth - r * 2 - 1;
       body.position.set((Math.random() - 0.5) * xRange, WORLD_HEIGHT / 2 + r + 2, 0);
-      body.velocity.set((Math.random() - 0.5) * 2, -4 - Math.random() * 2, 0);
+      body.velocity.set(
+        (Math.random() - 0.5) * 3,
+        SPAWN_VY_MIN + Math.random() * (SPAWN_VY_MAX - SPAWN_VY_MIN),
+        0,
+      );
       world.addBody(body);
 
       spheres.push({ mesh, body });
@@ -173,28 +187,27 @@ export default function SphereDropTransition({ onScreenFilled, onComplete }) {
           spawnSphere();
           spawnAcc -= SPAWN_INTERVAL;
         }
-        const full = topOfStack() >= WORLD_HEIGHT / 2 - 1.2 && spheres.length >= 80;
+        const full = topOfStack() >= WORLD_HEIGHT / 2 - 0.8 && spheres.length >= 120;
+        const enterPausing = () => {
+          phase = 'pausing';
+          pauseElapsed = 0;
+          container.style.backgroundColor = 'rgba(13, 13, 18, 1)';
+          try { onFilledRef.current?.(); } catch (err) { console.error(err); }
+        };
         if (full) {
           fillStable += dt;
-          if (fillStable >= FILL_STABLE_TARGET) {
-            phase = 'pausing';
-            pauseElapsed = 0;
-            try { onFilledRef.current?.(); } catch (err) { console.error(err); }
-          }
+          if (fillStable >= FILL_STABLE_TARGET) enterPausing();
         } else {
           fillStable = 0;
         }
-        if (spheres.length >= MAX_SPHERES && phase === 'spawning') {
-          phase = 'pausing';
-          pauseElapsed = 0;
-          try { onFilledRef.current?.(); } catch (err) { console.error(err); }
-        }
+        if (spheres.length >= MAX_SPHERES && phase === 'spawning') enterPausing();
       } else if (phase === 'pausing') {
         pauseElapsed += dt;
         if (pauseElapsed >= PAUSE_DURATION) {
           phase = 'falling';
           world.removeBody(floorBody);
           for (const { body } of spheres) body.wakeUp();
+          container.style.backgroundColor = 'rgba(13, 13, 18, 0)';
         }
       } else if (phase === 'falling') {
         fallElapsed += dt;
