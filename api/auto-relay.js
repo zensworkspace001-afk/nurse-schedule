@@ -123,22 +123,67 @@ export default async function handler(req, res) {
 
             // 🚨 若仍有未認領的 D* 空缺班表，代表「名額多於可選人數」或「有員工被排除卻還有空班」
             if (remainingDSlots.length > 0) {
+                // 🩺 診斷資訊：把 staffData 的所有狀態列出來，方便護理長一眼看懂為什麼少人
+                const totalEntries = staffData.length;
+                const adminCount = staffData.filter(s => s.staff_id === 'admin').length;
+                const eligibleStaff = staffData.filter(s => {
+                    if (!s.staff_id || s.staff_id === 'admin' || s.staff_id.startsWith('D')) return false;
+                    if (s.is_active === false || String(s.is_active).toLowerCase() === 'false') return false;
+                    if (isOnLeave(s.leave_status)) return false;
+                    return true;
+                });
+                const studentCount = eligibleStaff.filter(s => s.leave_status === 'Student').length;
+                const submittedCount = submittedList.length;
+
+                // 分析剩餘 D 空班的主要班別 (D/E/N)，判斷是否因為實習生不能選 E/N 造成卡關
+                const slotBreakdown = { D: 0, E: 0, N: 0, 其他: 0 };
+                const slotDetails = [];
+                remainingDSlots.forEach(slotId => {
+                    const slotData = currentSchedule[slotId] || {};
+                    const counts = { D: 0, E: 0, N: 0 };
+                    Object.values(slotData).forEach(cell => {
+                        const type = (cell && typeof cell === 'object') ? cell.type : cell;
+                        if (type === 'D' || type === 'E' || type === 'N') counts[type]++;
+                    });
+                    let mainShift = 'D';
+                    if (counts.E > counts.D && counts.E > counts.N) mainShift = 'E';
+                    if (counts.N > counts.D && counts.N > counts.E) mainShift = 'N';
+                    if (counts.D === 0 && counts.E === 0 && counts.N === 0) mainShift = '其他';
+                    slotBreakdown[mainShift]++;
+                    slotDetails.push(`${slotId} (主:${mainShift})`);
+                });
+
                 const reasonHtml = excludedReasons.length > 0
                     ? `<p><strong>被排除的員工：</strong><br/>${excludedReasons.join('<br/>')}</p>`
                     : '';
+
+                const studentHint = (studentCount > 0 && (slotBreakdown.E > 0 || slotBreakdown.N > 0))
+                    ? `<p style="color:#b84a00;"><strong>🔎 卡關提示：</strong>目前有 <strong>${studentCount}</strong> 位實習生不可選 E/小夜 或 N/大夜班，但剩餘空班中有 <strong>${slotBreakdown.E}</strong> 班小夜、<strong>${slotBreakdown.N}</strong> 班大夜，可能因此無人可認領。</p>`
+                    : '';
+
                 await sendSystemEmail(
                     adminEmail,
                     `⚠️ ${month}月 接力結束但仍有 ${remainingDSlots.length} 個空班未認領`,
                     `<h3>報告護理長：</h3>
                      <p>本月接力選班已結束，但仍有 <strong>${remainingDSlots.length}</strong> 個空班未被認領：</p>
-                     <p>${remainingDSlots.join('、')}</p>
-                     <p>可能原因：名額多於可選員工、或有員工因狀態設定被排除。請登入系統手動指派或調整排班設定。</p>
+                     <p>${slotDetails.join('、')}</p>
+                     <hr/>
+                     <p><strong>📊 人數盤點：</strong></p>
+                     <ul>
+                       <li>員工資料庫總筆數：<strong>${totalEntries}</strong> 筆（含 admin ${adminCount} 筆）</li>
+                       <li>可選班員工數：<strong>${eligibleStaff.length}</strong> 位（其中實習生 ${studentCount} 位）</li>
+                       <li>已完成選班：<strong>${submittedCount}</strong> 位</li>
+                       <li>剩餘空班：<strong>${remainingDSlots.length}</strong> 班（主白班 ${slotBreakdown.D}、小夜 ${slotBreakdown.E}、大夜 ${slotBreakdown.N}）</li>
+                     </ul>
+                     ${studentHint}
+                     <p>請登入系統手動指派或調整排班設定。</p>
                      ${reasonHtml}`
                 );
                 return res.status(200).json({
                     message: "接力結束，但仍有空班未認領。",
                     unfilledSlots: remainingDSlots,
-                    excludedReasons
+                    excludedReasons,
+                    diagnostics: { totalEntries, adminCount, eligibleCount: eligibleStaff.length, studentCount, submittedCount, slotBreakdown }
                 });
             }
 
