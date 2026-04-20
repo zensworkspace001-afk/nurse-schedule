@@ -759,6 +759,7 @@ const handleSaveAndPublish = async () => {
   if (!currentUser) {
     return (
       <>
+        <ParticleBackground />
         <LoginPanel onLogin={handleLoginTransition} onApiStatus={() => {}} staffData={staffData} />
         {pendingLoginUser && (
           <SphereDropTransition
