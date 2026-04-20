@@ -331,14 +331,13 @@ const handleSave = async () => {
                         // prevMonthLeave 按日期順序儲存：idx0=倒數第7天, idx6=最後一天
                         // 從尾端(最後一天)往前數，遇到休假或沒資料就停止
                         const leaves = staff[col.key];
-                        // 沒有 prevMonthLeave 資料（未同步）→ 顯示 0
-                        if (!leaves || leaves.length === 0) {
-                          return <div className="staff-mgmt__streak-empty">—</div>;
-                        }
+                        // 沒有 prevMonthLeave 資料（未同步）→ 當作 0 天
                         let streak = 0;
-                        for (let i = 6; i >= 0; i--) {
-                          if (leaves[i] !== false) break; // 只有明確 false（上班）才繼續，其餘（true休假/undefined未知）都停止
-                          streak++;
+                        if (Array.isArray(leaves) && leaves.length > 0) {
+                          for (let i = 6; i >= 0; i--) {
+                            if (leaves[i] !== false) break; // 只有明確 false（上班）才繼續，其餘（true休假/undefined未知）都停止
+                            streak++;
+                          }
                         }
                         const isWarning = streak >= 6;
                         const isAlert = streak >= 5;
