@@ -299,17 +299,33 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
             if (parsed.patterns && Array.isArray(parsed.patterns)) {
                 const virtualSchedule = {};
 
+                // 七休一 後處理：任何「第 7 天連續上班」自動改為 OFF，
+                // 避免 AI 偶爾輸出 7+ 連上的 pattern 讓員工 dashboard 全鎖死。
+                const WORKING_SHIFTS = new Set(['D', 'E', 'N', '支援']);
+
                 parsed.patterns.forEach((patternStr, index) => {
                     const virtualId = `D${String(index + 1).padStart(3, '0')}`;
                     const shifts = patternStr.split(',').map(s => s.trim());
 
                     virtualSchedule[virtualId] = {};
 
+                    let streak = 0;
                     shifts.forEach((shiftType, dIndex) => {
                         const dayNum = dIndex + 1;
-                        if (dayNum <= daysInMonth) {
-                            virtualSchedule[virtualId][dayNum] = { type: shiftType, time: '' };
+                        if (dayNum > daysInMonth) return;
+
+                        let finalType = shiftType;
+                        if (WORKING_SHIFTS.has(finalType)) {
+                            if (streak >= 6) {
+                                finalType = 'OFF';
+                                streak = 0;
+                            } else {
+                                streak++;
+                            }
+                        } else {
+                            streak = 0;
                         }
+                        virtualSchedule[virtualId][dayNum] = { type: finalType, time: '' };
                     });
                 });
                 // =========================================================
