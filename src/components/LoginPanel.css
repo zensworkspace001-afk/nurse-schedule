@@ -161,10 +161,10 @@
 
 /* --- Card (毛玻璃面板 — 與 app__header 同風格) --- */
 .login-panel__card {
-  background: rgba(255, 255, 255, 0.07);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   padding: 3rem;
   border-radius: 20px;
   width: 100%;
