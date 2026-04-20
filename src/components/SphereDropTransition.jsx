@@ -21,10 +21,10 @@ const SPHERE_R_MIN = 0.7;              // smaller min packs tighter gaps
 const SPHERE_R_MAX = 2.1;
 
 // Sphere count scales with viewport area so phones don't over-fill and
-// desktops don't look sparse. ~1 sphere per 4000 CSS px², clamped.
+// desktops don't look sparse. Divisor tuned so 1920×1080 ≈ 1000 spheres.
 const computeSphereBudget = () => {
   const area = window.innerWidth * window.innerHeight;
-  const max = Math.max(80, Math.min(600, Math.round(area / 4000)));
+  const max = Math.max(80, Math.min(1000, Math.round(area / 2074)));
   const fillMin = Math.max(40, Math.round(max * 0.35));
   return { max, fillMin };
 };
