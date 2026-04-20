@@ -870,7 +870,6 @@ const handleSaveAndPublish = async () => {
                     const rect = statusTriggerRef.current?.getBoundingClientRect();
                     return rect ? { top: rect.bottom + 8, right: window.innerWidth - rect.right } : {};
                   })()}>
-                    <div className="app__status-dropdown-title">系統 API 健康狀態</div>
                     {HEALTH_ENDPOINTS.map(ep => {
                       const s = endpointStatus[ep.key];
                       const color = s ? s.color : 'gray';
