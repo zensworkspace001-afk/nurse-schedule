@@ -20,7 +20,7 @@
    1. Ratio Panel (衛福部三班護病比)
    ========================================================== */
 .statistics__ratio-panel {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -263,7 +263,7 @@
    2. Chart section (趨勢圖)
    ========================================================== */
 .statistics__chart {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
@@ -414,7 +414,7 @@
    3. AI Center (智能 AI 決策與分析中心)
    ========================================================== */
 .statistics__ai-center {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
