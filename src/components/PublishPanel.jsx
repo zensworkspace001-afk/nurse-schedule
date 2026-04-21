@@ -7,6 +7,7 @@ const PublishPanel = ({
     staffData, violations, scheduleRisks,
     selectedYear, selectedMonth, shiftOptions,
     publicHolidays, finalizedSchedule, setFinalizedSchedule, onPushToHistory,
+    calculateAndNotifyNextStaff, healthStats,
 }) => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
@@ -81,6 +82,14 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
         try {
             await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
+            // 🔁 重新啟動 AI 接力：auto-relay 會自動把幽靈 submittedList 清乾淨並挑下一位
+            if (typeof calculateAndNotifyNextStaff === 'function') {
+                try {
+                    await calculateAndNotifyNextStaff(newSchedule, healthStats, selectedYear, selectedMonth);
+                } catch (relayErr) {
+                    console.error("拔除後重啟接力失敗:", relayErr);
+                }
+            }
         } catch (error) {
             console.error("拔除失敗:", error);
             setFinalizedSchedule(previousSchedule);
@@ -108,6 +117,14 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
         try {
             await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
+            // 🔁 全部拔除相當於重新開放接力：走 resetRelay 完全清空 SelectionProgress
+            if (typeof calculateAndNotifyNextStaff === 'function') {
+                try {
+                    await calculateAndNotifyNextStaff(newSchedule, healthStats, selectedYear, selectedMonth, null, true);
+                } catch (relayErr) {
+                    console.error("拔除後重啟接力失敗:", relayErr);
+                }
+            }
             alert("✅ 所有人員已成功拔除並同步至雲端！");
         } catch (error) {
             console.error("拔除失敗:", error);

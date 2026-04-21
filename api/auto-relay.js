@@ -94,12 +94,23 @@ export default async function handler(req, res) {
         // 2. 抓取「已經選過」的黑名單 (SelectionProgress)
         const progressRef = db.collection('SelectionProgress').doc(`${year}_${month}`);
         const progressSnap = await progressRef.get();
-        const submittedList = progressSnap.exists ? (progressSnap.data().submitted_staff || []) : [];
+        let submittedList = progressSnap.exists ? (progressSnap.data().submitted_staff || []) : [];
+
+        // 2-a. 🧹 自我修復：如果 submittedList 裡有人已不在班表中（被管理員拔除釋出），
+        //      把它們從黑名單移除，讓 AI 有機會重新輪到他們
+        const scheduleKeys = currentSchedule ? Object.keys(currentSchedule) : [];
+        const ghosts = submittedList.filter(sid => !scheduleKeys.includes(sid));
+        if (ghosts.length > 0) {
+            console.log(`🧹 清除 ${ghosts.length} 位幽靈員工（已從班表拔除但仍在黑名單）: ${ghosts.join(', ')}`);
+            await progressRef.set({
+                submitted_staff: admin.firestore.FieldValue.arrayRemove(...ghosts)
+            }, { merge: true });
+            submittedList = submittedList.filter(sid => !ghosts.includes(sid));
+        }
 
         // 3. 篩選出「尚未選班」的活躍員工
         //    - is_active: 只排除明確為 false 的 (undefined/null 當作在職)
         //    - leave_status: 只排除真正在休假的 (OnLeave / Maternal)，Student 仍可選班
-        const scheduleKeys = currentSchedule ? Object.keys(currentSchedule) : [];
         const remainingDSlots = scheduleKeys.filter(k => typeof k === 'string' && k.startsWith('D'));
         const excludedReasons = [];
         const isOnLeave = (ls) => ls === 'OnLeave' || ls === 'Maternal';
