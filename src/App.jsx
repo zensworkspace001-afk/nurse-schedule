@@ -89,7 +89,10 @@ const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
 const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   // ★ 新增這行：把病床與護病比的狀態提升到最高層
   const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 });
-  const [baseSalary, setBaseSalary] = useState(40000);
+  // baseSalary：null = 已加密尚未解鎖；數字 = 已解鎖明文
+  // baseSalaryEnc：來自雲端的密文 blob {ct, iv, tag, v}（遷移後格式）
+  const [baseSalary, setBaseSalary] = useState(null);
+  const [baseSalaryEnc, setBaseSalaryEnc] = useState(null);
   const [levelBonus, setLevelBonus] = useState({ N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 });
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
@@ -275,7 +278,19 @@ const [historyYear, setHistoryYear] = useState(() => {
         if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
         if (data.requirements) setRequirements(data.requirements);
         if (data.bedConfig) setBedConfig(data.bedConfig);
-        if (data.baseSalary) setBaseSalary(data.baseSalary);
+        // baseSalary：辨識密文 vs 明文（為遷移期間做向下相容）
+        if (data.baseSalary !== undefined && data.baseSalary !== null) {
+          const v = data.baseSalary;
+          const isCipher = v && typeof v === 'object' && typeof v.ct === 'string' && typeof v.iv === 'string';
+          if (isCipher) {
+            setBaseSalaryEnc(v);
+            // baseSalary 維持 null，等管理員主動解鎖
+          } else {
+            // 舊版明文（migration 前）
+            setBaseSalary(Number(v) || 40000);
+            setBaseSalaryEnc(null);
+          }
+        }
         if (data.levelBonus) setLevelBonus(data.levelBonus);
         if (data.publishedDate) {
           setPublishedDate(prev => {
@@ -336,12 +351,14 @@ const [historyYear, setHistoryYear] = useState(() => {
             });
         }
 
+        // ★ 注意：baseSalary 不在自動存檔範圍 — 它是加密欄位，由
+        //   ScheduleReviewPanel 的「💾 儲存底薪」明確走 /api/secure-field 加密後寫入。
+        //   若這裡也順手寫，會把密文蓋成明文 0/40000，整個加密就破功了。
         saveGlobalSettings({
           shiftOptions: shiftOptions || [],
           priorityConfig: priorityConfig || {},
           requirements: requirements || { D: 15, E: 12, N: 8 },
           bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
-          baseSalary: baseSalary || 40000,
           levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
         });
 
@@ -355,7 +372,7 @@ const [historyYear, setHistoryYear] = useState(() => {
     return () => clearTimeout(timeoutId);
 
   // ★ 核心修復 3：移除了 finalizedSchedule 與 publishedDate 的依賴，徹底打破無限覆蓋迴圈
-  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth, requirements, bedConfig, baseSalary, levelBonus]);
+  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth, requirements, bedConfig, levelBonus]);
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
     if (!newSchedule) { return; }
@@ -612,13 +629,13 @@ const handleSaveAndPublish = async () => {
     localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
 
     // ★★★ 強制立即存檔到雲端，不等待 2 秒防抖機制 ★★★
+    // ★ baseSalary 排除：加密欄位由 ScheduleReviewPanel 自行存
     try {
         await saveGlobalSettings({
             shiftOptions: shiftOptions || [],
             priorityConfig: priorityConfig || {},
             requirements: requirements || { D: 15, E: 12, N: 8 },
             bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
-            baseSalary: baseSalary || 40000,
             levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 },
             publishedDate: newPubDate
         });
@@ -931,6 +948,7 @@ const handleSaveAndPublish = async () => {
             onManualRefresh={handleManualRefresh}  
             calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
             baseSalary={baseSalary} setBaseSalary={setBaseSalary}
+            baseSalaryEnc={baseSalaryEnc} setBaseSalaryEnc={setBaseSalaryEnc}
             levelBonus={levelBonus} setLevelBonus={setLevelBonus}
           />
         ) : (

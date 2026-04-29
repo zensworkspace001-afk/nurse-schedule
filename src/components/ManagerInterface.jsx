@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { motion, useMotionValue, animate } from 'framer-motion';
-import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, Menu, X } from 'lucide-react';
+import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
@@ -9,6 +9,7 @@ import SchedulePanel from './SchedulePanel';
 import PublishPanel from './PublishPanel';
 import ScheduleReviewPanel from './ScheduleReviewPanel';
 import StatisticsPanel from './StatisticsPanel';
+import AccessLogPanel from './AccessLogPanel';
 
 const ManagerInterface = ({
   staffData, setStaffData, historyData, requirements, setRequirements,
@@ -21,6 +22,7 @@ const ManagerInterface = ({
   finalizedSchedule,
   setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff,
   baseSalary, setBaseSalary,
+  baseSalaryEnc, setBaseSalaryEnc,
   levelBonus, setLevelBonus,
 }) => {
   const tabs = [
@@ -29,7 +31,8 @@ const ManagerInterface = ({
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
     { id: 'publish', path: '/publish', label: '發布與認領', icon: Megaphone },
     { id: 'review', path: '/review', label: '結算與歷史', icon: ClipboardCheck },
-    { id: 'statistics', path: '/statistics', label: '統計報表', icon: BarChart3 }
+    { id: 'statistics', path: '/statistics', label: '統計報表', icon: BarChart3 },
+    { id: 'audit', path: '/audit', label: '稽核日誌', icon: ShieldAlert },
   ];
 
   const location = useLocation();
@@ -260,6 +263,7 @@ const ManagerInterface = ({
                    setHistoryYear={setHistoryYear} setHistoryMonth={setHistoryMonth}
                    historySchedule={historySchedule} setHistorySchedule={setHistorySchedule}
                    baseSalary={baseSalary} setBaseSalary={setBaseSalary}
+                   baseSalaryEnc={baseSalaryEnc} setBaseSalaryEnc={setBaseSalaryEnc}
                    levelBonus={levelBonus} setLevelBonus={setLevelBonus}
                 />
               } />
@@ -277,6 +281,8 @@ const ManagerInterface = ({
                     selectedMonth={selectedMonth}
                 />
               } />
+
+              <Route path="/audit" element={<AccessLogPanel />} />
           </Routes>
       </div>
     </div>

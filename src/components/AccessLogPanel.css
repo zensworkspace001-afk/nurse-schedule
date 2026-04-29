@@ -1,0 +1,223 @@
+.acclog {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  height: 100%;
+  overflow: hidden;
+}
+
+.acclog__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.acclog__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1f2937;
+  margin: 0;
+}
+
+.acclog__stats {
+  display: flex;
+  gap: 8px;
+}
+
+.acclog__stat {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.acclog__stat--decrypt { background: #fef3c7; color: #92400e; }
+.acclog__stat--encrypt { background: #dbeafe; color: #1e40af; }
+.acclog__stat--ai      { background: #ede9fe; color: #5b21b6; }
+
+.acclog__filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px;
+  background: rgba(243, 244, 246, 0.6);
+  border-radius: 8px;
+}
+
+.acclog__filter-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.acclog__filter-btn {
+  border: 1px solid #d1d5db;
+  background: white;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #4b5563;
+  transition: all 0.15s;
+}
+
+.acclog__filter-btn:hover {
+  border-color: #6366f1;
+  color: #4338ca;
+}
+
+.acclog__filter-btn--active {
+  background: #4338ca;
+  color: white;
+  border-color: #4338ca;
+}
+
+.acclog__search-input,
+.acclog__limit-select {
+  padding: 4px 8px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 12px;
+  outline: none;
+}
+
+.acclog__search-input {
+  min-width: 220px;
+}
+
+.acclog__search-input:focus,
+.acclog__limit-select:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.acclog__refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #4b5563;
+}
+
+.acclog__refresh:hover {
+  background: #f3f4f6;
+}
+
+.acclog__empty {
+  text-align: center;
+  padding: 40px;
+  color: #9ca3af;
+  font-style: italic;
+}
+
+.acclog__table-wrap {
+  flex: 1;
+  overflow: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+}
+
+.acclog__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.acclog__table thead th {
+  position: sticky;
+  top: 0;
+  background: #f9fafb;
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  color: #374151;
+  border-bottom: 1px solid #e5e7eb;
+  z-index: 1;
+}
+
+.acclog__table tbody td {
+  padding: 6px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  vertical-align: top;
+}
+
+.acclog__row:hover {
+  background: rgba(99, 102, 241, 0.04);
+}
+
+.acclog__row--ai-access {
+  background: rgba(237, 233, 254, 0.4);
+}
+
+.acclog__cell-ts {
+  font-family: 'Courier New', monospace;
+  white-space: nowrap;
+  color: #4b5563;
+}
+
+.acclog__cell-actor {
+  min-width: 180px;
+}
+
+.acclog__cell-uid {
+  font-size: 10px;
+  color: #9ca3af;
+  font-family: 'Courier New', monospace;
+}
+
+.acclog__cell-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.acclog__field-tag {
+  display: inline-block;
+  font-size: 10px;
+  padding: 1px 6px;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 3px;
+  font-family: 'Courier New', monospace;
+}
+
+.acclog__cell-ip {
+  font-family: 'Courier New', monospace;
+  font-size: 11px;
+  color: #6b7280;
+}
+
+.acclog__cell-extra {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #6b7280;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.acclog__action {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.acclog__action--decrypt   { background: #fef3c7; color: #92400e; }
+.acclog__action--encrypt   { background: #dbeafe; color: #1e40af; }
+.acclog__action--ai-access { background: #ede9fe; color: #5b21b6; }

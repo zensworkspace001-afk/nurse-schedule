@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Download, Plus, Save, KeyRound, Trash2, AlertTriangle } from 'lucide-react';
 import { auth } from '../api/database';
+import EncryptedField from './EncryptedField';
 import './StaffManagementPanel.css';
 
 const StaffManagementPanel = ({ staffData, setStaffData }) => {
@@ -44,7 +45,9 @@ useEffect(() => {
       staff_id: newId, name: '新員工', gender: '女', email: '', level: 'N0', tenure_years: 0,
      leave_status: 'None', is_active: true, special_status: 'Standard',
      is_pregnant_or_nursing: false, can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
-      annual_leave_used: 0, prevMonthLeave: [false, false, false, false, false, false, false]
+      annual_leave_used: 0, prevMonthLeave: [false, false, false, false, false, false, false],
+      // 敏感欄位（加密前為 ''；寫入後為 {ct, iv, tag, v} 密文 blob）
+      idNumber: '', bankAccount: '', phone: ''
     };
 
     setLocalStaff([...localStaff, newStaff]);
@@ -193,6 +196,10 @@ const handleSave = async () => {
     { key: 'annual_leave_used', label: '已休特休', type: 'number', width: '75px', color: 'black' },
     { key: 'accumulated_ot', label: '積假', type: 'number', width: '65px' },
     { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '65px' },
+    // —— 加密欄位 —— Firestore 端僅存 {ct,iv,tag,v} 密文，UI 點開才解
+    { key: 'idNumber',    label: '🔒 身分證',   type: 'encrypted', width: '160px' },
+    { key: 'bankAccount', label: '🔒 銀行帳號', type: 'encrypted', width: '180px' },
+    { key: 'phone',       label: '🔒 手機',     type: 'encrypted', width: '140px' },
   ];
 
   // Helper: build className string for text/number inputs
@@ -326,6 +333,13 @@ const handleSave = async () => {
                       </label>
                     ) : col.type === 'select' ? (
                       <select value={staff[col.key] || ''} onChange={(e) => handleChange(staff.staff_id, col.key, e.target.value)} className="staff-mgmt__select">{col.options.map(opt => <option key={opt} value={opt}>{opt === 'None' ? '--' : opt}</option>)}</select>
+                    ) : col.type === 'encrypted' ? (
+                      <EncryptedField
+                        value={staff[col.key]}
+                        target={{ kind: 'staff', id: staff.staff_id }}
+                        fieldName={col.key}
+                        onSave={(blobOrEmpty) => handleChange(staff.staff_id, col.key, blobOrEmpty)}
+                      />
                     ) : col.type === 'streak_display' ? (
                       (() => {
                         // prevMonthLeave 按日期順序儲存：idx0=倒數第7天, idx6=最後一天

@@ -1,21 +1,53 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Banknote, FileDown, Settings, X } from 'lucide-react';
-import { auth, updateStaffSchedule, saveArchiveReport, backupScheduleToArchive } from '../api/database';
+import { Banknote, FileDown, Settings, X, Lock, Unlock, Save, Loader2 } from 'lucide-react';
+import { auth, updateStaffSchedule, saveArchiveReport, backupScheduleToArchive, saveGlobalSettings } from '../api/database';
+import { decryptField, encryptFieldRemote } from '../api/secureField';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from '../constants';
 import './ScheduleReviewPanel.css';
 
-const ScheduleReviewPanel = ({ 
-  staffData, setStaffData, 
-  shiftOptions, 
+const ScheduleReviewPanel = ({
+  staffData, setStaffData,
+  shiftOptions,
   publicHolidays = [],
   onUpdateHealthStats,
-  baseSalary, setBaseSalary, // ★★★ 這裡接收
+  baseSalary, setBaseSalary, // 明文（已解鎖時為數字，未解鎖時為 null）
+  baseSalaryEnc,             // 來自雲端的密文 blob
   // ★ 接收專屬的歷史狀態
   setHistorySchedule,
   historyYear, historyMonth, setHistoryYear, setHistoryMonth,
     historySchedule = {}, bedConfig,
     levelBonus = { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }, setLevelBonus
 }) => {
+  // 底薪加密欄位的本地狀態
+  const [salaryBusy, setSalaryBusy] = useState(false);
+  const [salaryErr, setSalaryErr] = useState(null);
+
+  const handleUnlockBaseSalary = async () => {
+    if (!baseSalaryEnc) return;
+    setSalaryBusy(true); setSalaryErr(null);
+    try {
+      const v = await decryptField(baseSalaryEnc, { kind: 'settings', id: null }, ['baseSalary']);
+      setBaseSalary(Number(v) || 0);
+    } catch (e) {
+      setSalaryErr(e.message);
+    } finally {
+      setSalaryBusy(false);
+    }
+  };
+
+  const handleSaveBaseSalary = async () => {
+    if (typeof baseSalary !== 'number' || Number.isNaN(baseSalary)) return;
+    setSalaryBusy(true); setSalaryErr(null);
+    try {
+      const blob = await encryptFieldRemote(Number(baseSalary));
+      await saveGlobalSettings({ baseSalary: blob });
+      // onSnapshot 會自動把 baseSalaryEnc 更新；本地 baseSalary 留著（仍解鎖中）
+    } catch (e) {
+      setSalaryErr(e.message);
+    } finally {
+      setSalaryBusy(false);
+    }
+  };
     // ★ 加這兩行防呆，避免 undefined 傳進來導致 NaN crash
   const safeYear  = historyYear  || new Date().getFullYear();
   const safeMonth = historyMonth || (new Date().getMonth() === 0 ? 12 : new Date().getMonth());
@@ -117,6 +149,11 @@ const ScheduleReviewPanel = ({
   };
 
   const handleOpenSettlement = () => {
+      // 底薪為加密未解鎖時，攔阻：避免薪資全部結算為 0 卻不知為何
+      if (baseSalary === null && baseSalaryEnc) {
+        alert('⚠️ 底薪為加密狀態，請先點擊「🔒 解鎖」後再執行結算。');
+        return;
+      }
       const scores = [];
       Object.keys(historySchedule).forEach(rowId => {
           if (!rowId.startsWith('D')) {
@@ -394,16 +431,41 @@ return (
            </div>
 
 <div className="review__toolbar">
-              {/* ★ 找回底薪設定欄位 ★ */}
+              {/* ★ 加密底薪欄位：未解鎖→顯示鎖；已解鎖→可編輯 + 加密儲存 ★ */}
               <div className="review__salary-field">
-                  <span className="review__salary-label">預設底薪:</span>
-                  <input
-                      type="number"
-                      value={baseSalary}
-                      onChange={(e) => setBaseSalary(Number(e.target.value))}
-                      className="review__salary-input"
-                      title="此底薪將用於計算加班費與請假扣薪"
-                  />
+                  <span className="review__salary-label">
+                    {baseSalaryEnc ? <Lock size={11} /> : null} 預設底薪:
+                  </span>
+                  {baseSalary === null && baseSalaryEnc ? (
+                    <button
+                      onClick={handleUnlockBaseSalary}
+                      disabled={salaryBusy}
+                      className="review__salary-unlock"
+                      title="解鎖檢視底薪（會記錄到稽核日誌）"
+                    >
+                      {salaryBusy ? <Loader2 size={12} className="review__salary-spin" /> : <Unlock size={12} />}
+                      已加密 — 點此解鎖
+                    </button>
+                  ) : (
+                    <>
+                      <input
+                          type="number"
+                          value={baseSalary ?? ''}
+                          onChange={(e) => setBaseSalary(Number(e.target.value))}
+                          className="review__salary-input"
+                          title="此底薪將用於計算加班費與請假扣薪。修改後請按💾 儲存以加密寫入雲端。"
+                      />
+                      <button
+                        onClick={handleSaveBaseSalary}
+                        disabled={salaryBusy || typeof baseSalary !== 'number'}
+                        className="review__salary-save"
+                        title="加密寫入雲端"
+                      >
+                        {salaryBusy ? <Loader2 size={12} className="review__salary-spin" /> : <Save size={12} />} 儲存
+                      </button>
+                    </>
+                  )}
+                  {salaryErr && <span className="review__salary-err">{salaryErr}</span>}
               </div>
 
               <button onClick={handleOpenSettlement} className="review__btn review__btn--settle"><Banknote size={14} /> 薪資與加班費結算</button>

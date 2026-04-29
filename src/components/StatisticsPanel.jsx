@@ -294,6 +294,23 @@ let combinedData = "";
           formData.append('file', fileBlob, 'cross_month_big_data.txt');
           formData.append('prompt', userMsg);
 
+          // ★ 稽核：在送 AI 前先記下「誰、何時、把哪幾個月的明文薪資資料丟給 Gemini」。
+          //   不阻擋業務 — 寫 log 失敗只 console.warn。
+          try {
+            await fetch('/api/secure-field', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                action: 'logAiAccess',
+                target: { kind: 'archive', id: null },
+                fields: ['cross_month_csv', 'staff_balances', 'health_trends'],
+                extra: { months: loadedMonths, prompt_preview: userMsg.slice(0, 80) },
+              }),
+            });
+          } catch (e) {
+            console.warn('AI 存取稽核寫入失敗（不阻擋）:', e.message);
+          }
+
           const response = await fetch('/api/analyze-excel', {
               method: 'POST',
               headers: { 'Authorization': `Bearer ${token}` },

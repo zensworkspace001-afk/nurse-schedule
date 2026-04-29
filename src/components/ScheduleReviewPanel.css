@@ -126,6 +126,61 @@
   color: #ffffff;
 }
 
+.review__salary-unlock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px dashed rgba(255, 255, 255, 0.45);
+  background: rgba(217, 119, 6, 0.25);
+  color: #fff;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.review__salary-unlock:hover:not(:disabled) {
+  background: rgba(217, 119, 6, 0.45);
+}
+
+.review__salary-unlock:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.review__salary-save {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  background: rgba(34, 197, 94, 0.3);
+  color: #fff;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.review__salary-save:hover:not(:disabled) {
+  background: rgba(34, 197, 94, 0.55);
+}
+
+.review__salary-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.review__salary-err {
+  font-size: 11px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.4);
+  padding: 2px 6px;
+  border-radius: 3px;
+}
+
+.review__salary-spin {
+  animation: review-salary-spin 0.8s linear infinite;
+}
+
+@keyframes review-salary-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* --- Toolbar buttons --- */
 .review__btn {
   padding: 0.5rem 1rem;

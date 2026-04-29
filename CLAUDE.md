@@ -36,6 +36,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 - `RESEND_API_KEY` — Email service
 - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — Firebase Admin SDK (backend only)
 - `CRON_SECRET` — Vercel Cron job authentication
+- `FIELD_ENC_KEY` — **AES-256-GCM master key for field-level encryption** (base64-encoded 32 bytes). Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Lose this and all encrypted fields are unrecoverable** — back it up offline. Used by `api/secure-field.js` and `scripts/migrate-encrypt.js`.
 
 ## Architecture
 
@@ -83,20 +84,44 @@ Vercel serverless functions:
 | `reset-password.js` | Admin resets staff password; requires `admin@hospital.com` token |
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
 | `cron/check-timeout.js` | Runs daily (Vercel Cron `0 0 * * *`); auto-advances agentic turn after 24h timeout |
+| `secure-field.js` | Field-level encryption gateway: `action: encrypt \| decrypt \| batchDecrypt \| logAiAccess`. Verifies Firebase token, applies RBAC (admin sees all; staff sees only own UID), writes audit row to `access_logs`. Requires `FIELD_ENC_KEY`. |
 
-**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs).
+**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs), `crypto.js` (AES-256-GCM encrypt/decrypt; ciphertext format `{ct, iv, tag, v}`), `accessLog.js` (writes audit rows to Firestore `access_logs` collection — fire-and-forget, never blocks business logic).
 
 ### Firestore Schema
 
 ```
-NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary, levelBonus, publishedDate)
+NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary*, levelBonus, publishedDate)
 NurseApp/Staff             — { staffData: [...], healthStats: [...] }
+                             staffData[*] sensitive fields (encrypted blob): idNumber*, bankAccount*, phone*
 Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }
 archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note, csv? }
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
 SelectionProgress/{YYYY_M} — { submitted_staff: [...] }
 AI_Decision_Logs           — { timestamp, selected_staff, ai_logic, candidates_data }
+access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access', target:{kind,id}, fields:[], ip, ua, extra? }
 ```
+
+**Encrypted fields (marked `*` above):** stored as `{ ct, iv, tag, v: 1 }` AES-256-GCM blobs. Read/write goes through `/api/secure-field`, never directly. UI uses `<EncryptedField>` (click-to-decrypt, 30s auto-relock). Migration: `node scripts/migrate-encrypt.js` (dry-run) → `--commit` (actual write).
+
+### Field-Level Encryption Setup (one-time)
+
+```bash
+# 1) Generate master key
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+
+# 2) Add to Vercel env vars (Production + Preview + Development)
+#    FIELD_ENC_KEY=<paste base64 string>
+
+# 3) Pull to local
+vercel env pull
+
+# 4) Migrate existing plaintext fields (dry-run first!)
+node scripts/migrate-encrypt.js              # preview
+node scripts/migrate-encrypt.js --commit     # actually write
+```
+
+**⚠️ Key loss = data loss:** if `FIELD_ENC_KEY` is rotated or lost, all existing ciphertext is permanently unrecoverable. Back the key up offline before deployment.
 
 ### Agentic Turn System
 
