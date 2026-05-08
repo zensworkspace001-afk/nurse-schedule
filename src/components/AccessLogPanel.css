@@ -21,7 +21,7 @@
   gap: 8px;
   font-size: 18px;
   font-weight: 700;
-  color: #1f2937;
+  color: #0f172a;
   margin: 0;
 }
 
@@ -64,8 +64,9 @@
   padding: 4px 10px;
   border-radius: 6px;
   font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  color: #4b5563;
+  color: #1f2937;
   transition: all 0.15s;
 }
 
@@ -86,8 +87,11 @@
   border: 1px solid #d1d5db;
   border-radius: 6px;
   font-size: 12px;
+  color: #111827;
+  background: white;
   outline: none;
 }
+.acclog__search-input::placeholder { color: #6b7280; }
 
 .acclog__search-input {
   min-width: 220px;
@@ -109,7 +113,7 @@
   background: white;
   border-radius: 6px;
   cursor: pointer;
-  color: #4b5563;
+  color: #1f2937;
 }
 
 .acclog__refresh:hover {
@@ -119,8 +123,9 @@
 .acclog__empty {
   text-align: center;
   padding: 40px;
-  color: #9ca3af;
+  color: #4b5563;
   font-style: italic;
+  font-weight: 500;
 }
 
 .acclog__empty--error {
@@ -149,12 +154,12 @@
 .acclog__table thead th {
   position: sticky;
   top: 0;
-  background: #f9fafb;
+  background: #e5e7eb;
   text-align: left;
   padding: 8px 12px;
-  font-weight: 600;
-  color: #374151;
-  border-bottom: 1px solid #e5e7eb;
+  font-weight: 700;
+  color: #0f172a;
+  border-bottom: 1px solid #cbd5e1;
   z-index: 1;
 }
 
@@ -162,6 +167,7 @@
   padding: 6px 12px;
   border-bottom: 1px solid #f3f4f6;
   vertical-align: top;
+  color: #111827;
 }
 
 .acclog__row:hover {
@@ -175,17 +181,21 @@
 .acclog__cell-ts {
   font-family: 'Courier New', monospace;
   white-space: nowrap;
-  color: #4b5563;
+  color: #1f2937;
+  font-weight: 500;
 }
 
 .acclog__cell-actor {
   min-width: 180px;
+  color: #111827;
+  font-weight: 500;
 }
 
 .acclog__cell-uid {
   font-size: 10px;
-  color: #9ca3af;
+  color: #4b5563;
   font-family: 'Courier New', monospace;
+  margin-top: 2px;
 }
 
 .acclog__cell-fields {
@@ -197,23 +207,24 @@
 .acclog__field-tag {
   display: inline-block;
   font-size: 10px;
-  padding: 1px 6px;
-  background: #e0e7ff;
-  color: #3730a3;
+  padding: 2px 7px;
+  background: #c7d2fe;
+  color: #1e1b4b;
   border-radius: 3px;
   font-family: 'Courier New', monospace;
+  font-weight: 600;
 }
 
 .acclog__cell-ip {
   font-family: 'Courier New', monospace;
   font-size: 11px;
-  color: #6b7280;
+  color: #1f2937;
 }
 
 .acclog__cell-extra {
   font-family: 'Courier New', monospace;
-  font-size: 10px;
-  color: #6b7280;
+  font-size: 11px;
+  color: #1f2937;
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
