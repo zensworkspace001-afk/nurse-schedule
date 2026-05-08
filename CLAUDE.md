@@ -80,14 +80,15 @@ Vercel serverless functions:
 | `gemini.js` | AI chat — requires Firebase Bearer token |
 | `analyze-excel.js` | Analyzes uploaded CSV/Excel using Gemini Flash |
 | `sendEmail.js` | Sends email via Resend |
-| `sync-accounts.js` | Bulk-creates Firebase Auth accounts (`{id}@hospital.com`, default pw: `123456`) |
-| `reset-password.js` | Admin resets staff password; requires `admin@hospital.com` token |
+| `sync-accounts.js` | Bulk-creates Firebase Auth accounts (`{id}@hospital.com`) with `disabled: true` and a random throwaway password; issues a one-time activation token (`pending_activation/{sha256(token)}`) and emails the user a `/activate?token=...` link. No more hardcoded `123456`. |
+| `reset-password.js` | Admin triggers a password-reset email. Backend revokes prior tokens, issues a new `purpose: 'reset'` token, and sends the same `/activate` link. Backend never sees or sets the new password. |
+| `activate-account.js` | Public endpoint (token IS the auth). `POST {token, newPassword}` → verifies token, enforces strength, sets the password via Admin SDK; for `purpose: 'activation'` also flips `disabled: false`. CSRF + per-IP rate limit. |
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
 | `cron/check-timeout.js` | Runs daily (Vercel Cron `0 0 * * *`); auto-advances agentic turn after 24h timeout |
 | `auto-relay.js` | Triggered when an agentic turn is force-relayed; uses Gemini to pick the next staff and emails the warning + diagnostics. Accepts `CRON_SECRET` or a Firebase ID token. |
 | `secure-field.js` | Field-level encryption gateway: `action: encrypt \| decrypt \| batchDecrypt \| logAiAccess`. Verifies Firebase token, applies RBAC (admin sees all; staff sees only own UID), writes audit row to `access_logs`. Requires `FIELD_ENC_KEY`. |
 
-**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs), `crypto.js` (AES-256-GCM encrypt/decrypt; ciphertext format `{ct, iv, tag, v}`), `accessLog.js` (writes audit rows to Firestore `access_logs` collection — fire-and-forget, never blocks business logic).
+**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs), `crypto.js` (AES-256-GCM encrypt/decrypt; ciphertext format `{ct, iv, tag, v}`), `accessLog.js` (writes audit rows to Firestore `access_logs` collection — fire-and-forget, never blocks business logic), `activationToken.js` (issue/verify/consume one-time tokens for account activation and password reset; stores sha256 hash, 24h TTL).
 
 ### Firestore Schema
 
@@ -100,6 +101,7 @@ archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note,
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
 SelectionProgress/{YYYY_M} — { submitted_staff: [...] }
 AI_Decision_Logs           — { timestamp, selected_staff, ai_logic, candidates_data }
+pending_activation/{sha256(token)} — server-only; { uid, email, purpose: 'activation'|'reset', expiresAt, createdAt }
 access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access', target:{kind,id}, fields:[], ip, ua, extra? }
 ```
 

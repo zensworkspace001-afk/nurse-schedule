@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Settings, LogOut, X, Hand, Lock } from 'lucide-react';
+import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import {
   doc, getDoc, setDoc, addDoc, collection,
   query, orderBy, limit, getDocs, arrayUnion, onSnapshot
@@ -33,13 +33,6 @@ const NurseSchedulingSystem = () => {
   const [adminPwdData, setAdminPwdData] = useState({ old: '', new: '', confirm: '' });
   const [adminPwdMsg, setAdminPwdMsg] = useState({ type: '', text: '' });
   const [isAdminPwdSubmitting, setIsAdminPwdSubmitting] = useState(false);
-
-  // ★★★ 資安升級：首次登入強制改密碼 ★★★
-  const [showForceChangePwd, setShowForceChangePwd] = useState(false);
-  const [closingForceChangePwd, setClosingForceChangePwd] = useState(false);
-  const [forceChangePwdData, setForceChangePwdData] = useState({ new: '', confirm: '' });
-  const [forceChangePwdMsg, setForceChangePwdMsg] = useState({ type: '', text: '' });
-  const [isForcePwdSubmitting, setIsForcePwdSubmitting] = useState(false);
 
   const closeAdminPwdModal = () => {
     setClosingAdminPwdModal(true);
@@ -143,8 +136,9 @@ const [historyYear, setHistoryYear] = useState(() => {
     { key: 'gemini', label: 'Gemini AI', desc: 'AI 排班與對話引擎', url: '/api/gemini', method: 'POST' },
     { key: 'analyzeExcel', label: 'Excel 分析', desc: 'CSV/Excel Gemini Flash 分析', url: '/api/analyze-excel', method: 'POST' },
     { key: 'sendEmail', label: 'Email 服務', desc: 'Resend 電子郵件發送', url: '/api/sendEmail', method: 'POST' },
-    { key: 'syncAccounts', label: '帳號同步', desc: '批次建立 Firebase Auth 帳號', url: '/api/sync-accounts', method: 'POST' },
-    { key: 'resetPassword', label: '密碼重設', desc: '管理員重設員工密碼', url: '/api/reset-password', method: 'POST' },
+    { key: 'syncAccounts', label: '帳號同步', desc: '批次建立 Firebase Auth 帳號 + 寄啟用信', url: '/api/sync-accounts', method: 'POST' },
+    { key: 'resetPassword', label: '密碼重設', desc: '寄送密碼重設信', url: '/api/reset-password', method: 'POST' },
+    { key: 'activateAccount', label: '帳號啟用', desc: '一次性 token 啟用 / 重設密碼', url: '/api/activate-account', method: 'POST' },
     { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle?healthCheck=true', method: 'GET' },
     { key: 'cronTimeout', label: 'Cron 逾時', desc: '每日自動推進選班逾時', url: '/api/cron/check-timeout?healthCheck=true', method: 'GET' },
     { key: 'calendar', label: '國定假日', desc: '台灣國定假日 API', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
@@ -657,51 +651,6 @@ const handleSaveAndPublish = async () => {
     }
   };
 
-// ★★★ 資安升級：首次登入強制改密碼 Handler ★★★
-  const handleForceChangePwd = async (e) => {
-      e.preventDefault();
-      if (forceChangePwdData.new !== forceChangePwdData.confirm) {
-          return setForceChangePwdMsg({ type: 'error', text: '兩次輸入的新密碼不一致！' });
-      }
-      if (forceChangePwdData.new === '123456') {
-          return setForceChangePwdMsg({ type: 'error', text: '新密碼不可與預設密碼相同！' });
-      }
-      const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d]{6,}$/;
-      if (!strongPasswordRegex.test(forceChangePwdData.new)) {
-          return setForceChangePwdMsg({ type: 'error', text: '密碼強度不足：需至少 6 碼，且必須包含英文與數字！' });
-      }
-      setIsForcePwdSubmitting(true);
-      try {
-          const user = auth.currentUser;
-          if (user) {
-              const credential = EmailAuthProvider.credential(user.email, '123456');
-              await reauthenticateWithCredential(user, credential);
-              await updatePassword(user, forceChangePwdData.new);
-              setIsForcePwdSubmitting(false);
-              setForceChangePwdMsg({ type: 'success', text: '✅ 密碼修改成功！' });
-              setTimeout(() => {
-                  setClosingForceChangePwd(true);
-                  setTimeout(() => {
-                      setShowForceChangePwd(false);
-                      setClosingForceChangePwd(false);
-                      setForceChangePwdData({ new: '', confirm: '' });
-                      setForceChangePwdMsg({ type: '', text: '' });
-                      setCurrentUser(prev => ({ ...prev, forcePasswordChange: false }));
-                  }, 700);
-              }, 1000);
-          }
-      } catch (error) {
-          if (import.meta.env.DEV) console.error("強制改密碼失敗:", error);
-          if (error.code === 'auth/requires-recent-login') {
-              setForceChangePwdMsg({ type: 'error', text: '⚠️ 登入已過期，請重新登入後再試。' });
-          } else {
-              setForceChangePwdMsg({ type: 'error', text: '修改失敗，請聯絡系統管理員。' });
-          }
-      } finally {
-          setIsForcePwdSubmitting(false);
-      }
-  };
-
 // ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
   const handleAdminPasswordSubmit = async (e) => {
       e.preventDefault();
@@ -764,9 +713,6 @@ const handleSaveAndPublish = async () => {
   const handleScreenFilled = () => {
     if (!pendingLoginUser) return;
     setCurrentUser(pendingLoginUser);
-    if (pendingLoginUser.forcePasswordChange) {
-      setShowForceChangePwd(true);
-    }
   };
 
   const handleTransitionComplete = () => {
@@ -828,36 +774,6 @@ const handleSaveAndPublish = async () => {
                     )}
                     <button type="submit" disabled={isAdminPwdSubmitting} className={`app__modal-submit-btn${isAdminPwdSubmitting ? ' app__modal-submit-btn--loading' : ''}`}>
                         {isAdminPwdSubmitting ? <><span className="app__modal-spinner" /> 驗證中...</> : '儲存修改'}
-                    </button>
-                </form>
-            </div>
-        </div>
-      )}
-
-      {/* ★★★ 資安升級：首次登入強制改密碼 Modal (不可關閉) ★★★ */}
-      {showForceChangePwd && (
-        <div className={`app__modal-overlay app__modal-overlay--force-pwd${closingForceChangePwd ? ' app__modal-overlay--force-pwd-closing' : ''}`}>
-            <div className={`app__modal app__modal--force-pwd${closingForceChangePwd ? ' app__modal--force-pwd-closing' : ''}`}>
-                <h3 className="app__modal-title"><Lock size={20} /> 首次登入：請修改預設密碼</h3>
-                <p className="app__modal--force-pwd-desc">
-                    系統偵測到您正在使用預設密碼，為保護帳號安全，請立即設定新密碼。
-                </p>
-                <form onSubmit={handleForceChangePwd} className="app__modal-form">
-                    <div>
-                        <label className="app__modal-label">新密碼（至少 6 碼，需含英文與數字）</label>
-                        <input type="password" value={forceChangePwdData.new} onChange={e=>setForceChangePwdData({...forceChangePwdData, new: e.target.value})} required minLength="6" className="app__modal-input" autoFocus />
-                    </div>
-                    <div>
-                        <label className="app__modal-label">確認新密碼</label>
-                        <input type="password" value={forceChangePwdData.confirm} onChange={e=>setForceChangePwdData({...forceChangePwdData, confirm: e.target.value})} required minLength="6" className="app__modal-input" />
-                    </div>
-                    {forceChangePwdMsg.text && (
-                        <div className={`app__modal-msg ${forceChangePwdMsg.type === 'error' ? 'app__modal-msg--error' : 'app__modal-msg--success'}`}>
-                            {forceChangePwdMsg.text}
-                        </div>
-                    )}
-                    <button type="submit" disabled={isForcePwdSubmitting} className={`app__modal-submit-btn${isForcePwdSubmitting ? ' app__modal-submit-btn--loading' : ''}`}>
-                        {isForcePwdSubmitting ? <><span className="app__modal-spinner" /> 驗證中...</> : '確認修改密碼'}
                     </button>
                 </form>
             </div>

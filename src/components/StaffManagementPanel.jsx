@@ -113,39 +113,32 @@ useEffect(() => {
     reader.readAsText(file);
   };
 
-  // ★★★ 修改：呼叫後端 API 進行真實密碼重置 ★★★
+  // 觸發後端寄送一次性密碼重設信（不再直接覆寫密碼）
   const handleResetPassword = async (id, name) => {
-      if (!window.confirm(`確定要將員工「${name} (${id})」的登入密碼強制重置為 123456 嗎？\n\n注意：這將直接修改系統通行驗證碼。`)) {
+      if (!window.confirm(`確定要寄送密碼重設信給「${name} (${id})」嗎？\n\n系統將寄出 24 小時內有效的一次性連結，員工點擊後可自行設定新密碼。`)) {
           return;
       }
 
       try {
-          // 1. 取得管理員自己的 Token
           const token = await auth.currentUser.getIdToken();
-
-          // 2. 呼叫我們自己寫的 Vercel 後端 API
           const response = await fetch('/api/reset-password', {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}` // 帶上管理員證明
+                  'Authorization': `Bearer ${token}`
               },
               body: JSON.stringify({ staffId: id })
           });
 
           const data = await response.json();
-
           if (!response.ok) {
-              throw new Error(data.error || '重置失敗');
+              throw new Error(data.error || '寄送失敗');
           }
 
-
-
-          // 3. API 執行成功後，只需通知使用者即可，前端不保留密碼狀態
-alert(`✅ 成功！員工 ${name} 的登入密碼已重置為 123456。`);
+          alert(`✅ 已寄送密碼重設信至 ${data.email || name + ' 的信箱'}。\n員工請點擊信中連結設定新密碼（24 小時內有效）。`);
       } catch (error) {
           console.error(error);
-          alert(`❌ 重置密碼失敗：${error.message}`);
+          alert(`❌ 寄送密碼重設信失敗：${error.message}`);
       }
   };
 
@@ -378,7 +371,7 @@ const handleSave = async () => {
                 {/* ★★★ 這裡是操作欄位 ★★★ */}
                 <td className="staff-mgmt__td--actions">
                   {/* 新增：重置密碼按鈕 */}
-                  <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--reset" title="重置密碼為 123456"><KeyRound size={16} /></button>
+                  <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--reset" title="寄送密碼重設信"><KeyRound size={16} /></button>
                   <button onClick={() => handleDelete(staff.staff_id)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--delete" title="刪除員工"><Trash2 size={16} /></button>
                 </td>
 

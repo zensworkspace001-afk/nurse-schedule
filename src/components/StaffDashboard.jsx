@@ -309,7 +309,7 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
                 <h3 className="dashboard__pwd-title"><Settings size={18} /> 修改密碼</h3>
                 <form onSubmit={handlePasswordSubmit} className="dashboard__pwd-form">
                     <div>
-                        <label className="dashboard__pwd-label">舊密碼 (預設: 123456)</label>
+                        <label className="dashboard__pwd-label">舊密碼</label>
                         <input type="password" value={pwdData.old} onChange={e=>setPwdData({...pwdData, old: e.target.value})} required className="dashboard__pwd-input" />
                     </div>
                     <div>
