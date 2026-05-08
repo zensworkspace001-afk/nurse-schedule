@@ -10,7 +10,6 @@ import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
 import ProfileWizard from './components/ProfileWizard';
 import ParticleBackground from './components/ParticleBackground';
-import SphereDropTransition from './components/SphereDropTransition';
 import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
@@ -723,33 +722,11 @@ const handleSaveAndPublish = async () => {
       }
   };
 
-  const [pendingLoginUser, setPendingLoginUser] = useState(null);
-
-  const handleLoginTransition = (user) => {
-    setPendingLoginUser(user);
-  };
-
-  const handleScreenFilled = () => {
-    if (!pendingLoginUser) return;
-    setCurrentUser(pendingLoginUser);
-  };
-
-  const handleTransitionComplete = () => {
-    setPendingLoginUser(null);
-  };
-
   if (!currentUser) {
     return (
       <>
         <ParticleBackground />
-        <LoginPanel onLogin={handleLoginTransition} onApiStatus={() => {}} staffData={staffData} />
-        {pendingLoginUser && (
-          <SphereDropTransition
-            key="sphere-drop-transition"
-            onScreenFilled={handleScreenFilled}
-            onComplete={handleTransitionComplete}
-          />
-        )}
+        <LoginPanel onLogin={setCurrentUser} onApiStatus={() => {}} staffData={staffData} />
       </>
     );
   }
@@ -908,13 +885,6 @@ const handleSaveAndPublish = async () => {
         </div>
       </div>
     </div>
-    {pendingLoginUser && (
-      <SphereDropTransition
-        key="sphere-drop-transition"
-        onScreenFilled={handleScreenFilled}
-        onComplete={handleTransitionComplete}
-      />
-    )}
     </>
   );
 };

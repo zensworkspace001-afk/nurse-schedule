@@ -69,7 +69,7 @@ async function main() {
 
     // 數一下這份 doc 內被遮掉幾個 cell
     let cellsMasked = 0;
-    for (const [staffId, dayCells] of Object.entries(finalized)) {
+    for (const [, dayCells] of Object.entries(finalized)) {
       if (!dayCells || typeof dayCells !== 'object') continue;
       for (const cell of Object.values(dayCells)) {
         const t = typeof cell === 'string' ? cell : cell?.type;
