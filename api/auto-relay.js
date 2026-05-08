@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 
 // 1. 初始化 Firebase Admin
 if (!admin.apps.length) {
@@ -43,13 +44,15 @@ export default async function handler(req, res) {
     // 安全驗證：必須提供 CRON_SECRET 或有效的 Firebase ID Token (管理員或員工)
     const authHeader = req.headers.authorization;
     let isAuthorized = false;
-    
+    let actor = { uid: 'cron', email: null }; // CRON 觸發時用 'cron' 做為 actor
+
     if (authHeader === `Bearer ${process.env.CRON_SECRET}`) {
         isAuthorized = true;
     } else if (authHeader?.startsWith('Bearer ')) {
         try {
             const token = authHeader.split('Bearer ')[1];
-            await admin.auth().verifyIdToken(token);
+            const decoded = await admin.auth().verifyIdToken(token);
+            actor = { uid: decoded.uid, email: decoded.email || null };
             isAuthorized = true;
         } catch {
             return res.status(401).json({ error: '未經授權' });
@@ -215,15 +218,37 @@ export default async function handler(req, res) {
             aiPrompt += `[管理員最高指導原則]：${priorityConfig.relayInstruction}\n\n`;
         }
 
+        // ★ 個資法 §8 跨境傳輸保護：送至 Google Gemini 的 prompt 不含員工姓名（只送內部工號 staff_id）。
+        //   工號搭配特種個資（孕/哺乳）對 Google 而言是不可去識別化的內部代號，
+        //   降低跨境傳輸的個人識別風險。每次發送另寫一筆 access_logs 留稽核軌跡。
         aiPrompt += `尚未選班之候選人現況：\n`;
         unassignedStaff.forEach(staff => {
             const historyScore = statsData ? (statsData.find(s => s.staff_id === staff.staff_id)?.score || 100) : 100;
-            aiPrompt += `- [${staff.staff_id} ${staff.name}] 性別:${staff.gender || '女'} | 職級:${staff.level || 'N0'} | 孕/哺乳:${staff.is_pregnant_or_nursing ? '是' : '否'} | 組長:${staff.is_leader ? '是' : '否'} | 可上夜班:${staff.can_night_shift === false ? '否' : '是'} | 工時制:${staff.special_status} | 年資:${staff.tenure_years || 0}年 | 歷史健康度:${historyScore}分 | 積假餘額:${staff.accumulated_ot || 0} | 夜班結餘:${staff.night_shift_balance || 0}\n`;
+            aiPrompt += `- [${staff.staff_id}] 性別:${staff.gender || '女'} | 職級:${staff.level || 'N0'} | 孕/哺乳:${staff.is_pregnant_or_nursing ? '是' : '否'} | 組長:${staff.is_leader ? '是' : '否'} | 可上夜班:${staff.can_night_shift === false ? '否' : '是'} | 工時制:${staff.special_status} | 年資:${staff.tenure_years || 0}年 | 歷史健康度:${historyScore}分 | 積假餘額:${staff.accumulated_ot || 0} | 夜班結餘:${staff.night_shift_balance || 0}\n`;
         });
 
         aiPrompt += `\n請根據上述數據與原則，選出「最符合條件、最需要優先選班」的 1 位員工。
 ⚠️ 【最高系統原則】：若名單中有「孕/哺乳:是」的員工，無論其疲勞度為何，【必須】讓她們絕對優先選班！
 請務必只以 JSON 格式回覆：{"selected_staff_id": "N00X", "reason": "你的判斷理由"}`;
+
+        // 寫稽核：記錄這次有哪些員工的哪些欄位送給了 Gemini，方便事後追溯
+        const meta = extractClientMeta(req);
+        writeAccessLog({
+            actor,
+            action: 'ai-access',
+            target: { kind: 'staff', id: null },
+            fields: ['staff_id', 'gender', 'level', 'is_pregnant_or_nursing', 'is_leader', 'can_night_shift', 'special_status', 'tenure_years', 'health_score', 'accumulated_ot', 'night_shift_balance'],
+            ip: meta.ip, ua: meta.ua,
+            extra: {
+                source: 'auto-relay',
+                purpose: 'agentic-turn-decision',
+                vendor: 'google-gemini',
+                model: 'gemini-2.5-pro|gemini-flash-latest',
+                staff_count: unassignedStaff.length,
+                year, month,
+                anonymization: 'name-stripped; staff_id retained as internal pseudonym',
+            },
+        });
 
         // 6. 呼叫 Gemini（主模型 2.5-pro，失敗時降級至 flash-latest）
         const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);

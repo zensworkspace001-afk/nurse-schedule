@@ -370,11 +370,29 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
 
       try {
           const token = await auth.currentUser.getIdToken();
+
+          // 個資法稽核：admin 自由輸入的 chat 內容無法事前匿名（可能含工號 / 姓名等）；
+          // 至少留下「誰、何時、把多少 prompt 預覽 送給了 Gemini」的軌跡。fire-and-forget
+          // 不阻擋業務 — 寫 log 失敗只 console.warn。
+          fetch('/api/secure-field', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({
+                  action: 'logAiAccess',
+                  target: { kind: 'chat', id: null },
+                  fields: ['admin_chat_message'],
+                  extra: {
+                      source: 'SchedulePanel.handleUserChat',
+                      vendor: 'google-gemini',
+                      prompt_preview: userMsg.slice(0, 80),
+                      prompt_length: userMsg.length,
+                  },
+              }),
+          }).catch((e) => console.warn('AI 存取稽核寫入失敗（不阻擋）:', e.message));
+
           const response = await fetch('/api/gemini', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}` // <--- 加上這行防護罩
-               },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ prompt: userMsg })
           });
 
