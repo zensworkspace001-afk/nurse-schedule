@@ -3,7 +3,7 @@ import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut } from "firebase/auth";
-import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
+import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
@@ -71,6 +71,9 @@ const NurseSchedulingSystem = () => {
   ]);
   const [priorityConfig, setPriorityConfig] = useState({ types: ['accumulated_ot'], count: 5, isOpenToAll: false });
   const [staffData, setStaffData] = useState([]);
+  // 員工角色額外訂閱自己的私有 row（含 leave_status、is_pregnant_or_nursing 等敏感欄位）。
+  // admin 角色 myStaffRow 永遠是 null，因為 admin 直接從完整 staffData 取。
+  const [myStaffRow, setMyStaffRow] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [finalizedSchedule, setFinalizedSchedule] = useState(null);
   // 修改後（從 localStorage 讀正確的發布月份）
@@ -294,13 +297,28 @@ const [historyYear, setHistoryYear] = useState(() => {
       isSettingsLoaded = true; checkAllLoaded();
     });
 
-    const unsubStaff = subscribeToStaff((data) => {
-      if (data) {
-        if (data.staffData) setStaffData(data.staffData);
-        if (data.healthStats) setHealthStats(data.healthStats);
-      }
-      isStaffLoaded = true; checkAllLoaded();
-    });
+    // ★ 角色分流訂閱：
+    //   admin → 訂閱完整 NurseApp/Staff（規則限定 admin 才能讀）
+    //   staff → 訂閱 NurseApp/StaffPublic（同事用精簡投影）+ 自己的 NurseApp/StaffPrivate/{id}
+    let unsubStaff;
+    let unsubMyPrivate = null;
+    if (currentUser.role === 'admin') {
+      unsubStaff = subscribeToStaff((data) => {
+        if (data) {
+          if (data.staffData) setStaffData(data.staffData);
+          if (data.healthStats) setHealthStats(data.healthStats);
+        }
+        isStaffLoaded = true; checkAllLoaded();
+      });
+    } else {
+      unsubStaff = subscribeToStaffPublic((data) => {
+        if (data && data.staffData) setStaffData(data.staffData);
+        isStaffLoaded = true; checkAllLoaded();
+      });
+      unsubMyPrivate = subscribeToMyStaffPrivate(currentUser.id, (data) => {
+        setMyStaffRow(data || null);
+      });
+    }
 
     const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
     const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
@@ -326,7 +344,11 @@ const [historyYear, setHistoryYear] = useState(() => {
         });
     }
 
-    return () => { unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory(); unsubReports?.(); setIsCloudLoaded(false); };
+    return () => {
+      unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory();
+      unsubReports?.(); unsubMyPrivate?.();
+      setIsCloudLoaded(false); setMyStaffRow(null);
+    };
     
   }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
   // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
@@ -734,16 +756,11 @@ const handleSaveAndPublish = async () => {
   }
 
   // 員工首次登入若尚未完善個人資料 → 顯示精靈，擋下主畫面。
-  // 條件：staff 角色 + 雲端資料已載入 + 找到該員工的 row + profile_completed 顯式為 false。
+  // 條件：staff 角色 + 自己的 private row 已載入 + profile_completed 顯式為 false。
   //   - 用 === false（而非 !== true）是為了不打擾既有員工：他們的 row 沒這個欄位，視為 undefined，跳過精靈。
   //   - 只有透過 sync-accounts 新建的員工 / admin 在 StaffManagementPanel 新增的列才會被標記為 false。
-  if (currentUser.role === 'staff' && isCloudLoaded) {
-    const myRow = staffData.find(
-      (s) => String(s.staff_id).toLowerCase() === String(currentUser.id).toLowerCase(),
-    );
-    if (myRow && myRow.profile_completed === false) {
-      return <ProfileWizard staffRow={myRow} currentUser={currentUser} />;
-    }
+  if (currentUser.role === 'staff' && myStaffRow && myStaffRow.profile_completed === false) {
+    return <ProfileWizard staffRow={myStaffRow} currentUser={currentUser} />;
   }
 
 
@@ -880,14 +897,13 @@ const handleSaveAndPublish = async () => {
           />
         ) : (
           <StaffDashboard
-          currentUser={currentUser}
+            currentUser={currentUser}
+            myStaffRow={myStaffRow}
             targetYear={publishedDate.year}
-  targetMonth={publishedDate.month}
-  currentSchedule={finalizedSchedule} 
-  onConfirmSchedule={handleStaffScheduleUpdate} 
-  staffData={staffData}
-  priorityConfig={priorityConfig} // <--- ★★★ 補上這個，用於判斷權限
-  setStaffData={setStaffData} // <--- ★★★ 補上這行：讓員工有權限改自己密碼 ★★★
+            targetMonth={publishedDate.month}
+            currentSchedule={finalizedSchedule}
+            onConfirmSchedule={handleStaffScheduleUpdate}
+            staffData={staffData}
           />
         )}
         </div>

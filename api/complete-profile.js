@@ -141,7 +141,7 @@ export default async function handler(req, res) {
       phone: encryptField(v.cleaned.phone),
     };
 
-    staffData[idx] = {
+    const updatedRow = {
       ...staffData[idx],
       name: v.cleaned.name,
       gender: v.cleaned.gender,
@@ -154,8 +154,28 @@ export default async function handler(req, res) {
       profile_completed: true,
       profile_completed_at: new Date().toISOString(),
     };
+    staffData[idx] = updatedRow;
 
-    await staffRef.update({ staffData });
+    // 三層 doc 同步寫入（與前端 saveGlobalStaff 相同的拆分策略）：
+    //   1. NurseApp/Staff           — 完整名單 (admin 用)
+    //   2. NurseApp/StaffPublic     — 精簡公開投影 (同事看得到的部分)
+    //   3. NurseApp/StaffPrivate/{id} — 該員工自己的完整 row
+    const publicList = staffData.map((s) => ({
+      staff_id: s.staff_id,
+      name: s.name,
+      level: s.level,
+      is_leader: !!s.is_leader,
+      is_active: s.is_active !== false,
+    }));
+
+    const batch = admin.firestore().batch();
+    batch.update(staffRef, { staffData });
+    batch.set(admin.firestore().doc('NurseApp/StaffPublic'), { staffData: publicList });
+    batch.set(
+      admin.firestore().doc(`NurseApp/StaffPrivate/${updatedRow.staff_id}`),
+      updatedRow,
+    );
+    await batch.commit();
 
     // 為每個加密欄位寫 access_logs（fire-and-forget；存取 log 失敗不該擋使用者）
     writeAccessLog({

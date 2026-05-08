@@ -50,7 +50,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 `src/constants.js` — Shared constants and pure functions. All compliance logic lives here: `SHIFT_TYPES`, `LABOR_LAW_RULES`, `calculateAnnualLeave`, `checkLaborLawCompliance`, `checkSkillMixSafety`, `calculateScheduleRisks`. Import from here — do not duplicate.
 
-`src/api/database.js` — All Firestore CRUD: `subscribeToSettings`, `subscribeToStaff`, `subscribeToSchedule`, `saveGlobalSettings`, `saveGlobalStaff`, `saveMonthlySchedule`, `updateStaffSchedule`, `saveArchiveReport`, `subscribeToArchiveReports`, `clearArchiveReports`, `backupScheduleToArchive`. Also exports `auth` and `db` Firebase instances.
+`src/api/database.js` — All Firestore CRUD: `subscribeToSettings`, `subscribeToStaff` (admin), `subscribeToStaffPublic` (staff colleagues view), `subscribeToMyStaffPrivate` (staff own row), `subscribeToSchedule`, `saveGlobalSettings`, `saveGlobalStaff` (batch-writes the three staff docs), `saveMonthlySchedule`, `updateStaffSchedule`, `saveArchiveReport`, `subscribeToArchiveReports`, `clearArchiveReports`, `backupScheduleToArchive`, `buildStaffPublicProjection`. Also exports `auth` and `db` Firebase instances.
 
 **Component hierarchy:**
 - `App.jsx` → `LoginPanel` (unauthenticated) | `ManagerInterface` (admin) | `ProfileWizard` (staff first-login, gated by `profile_completed !== true`) | `StaffDashboard` (staff)
@@ -95,9 +95,13 @@ Vercel serverless functions:
 
 ```
 NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary*, levelBonus, publishedDate)
-NurseApp/Staff             — { staffData: [...], healthStats: [...] }
+NurseApp/Staff             — { staffData: [...], healthStats: [...] }   admin-only read
                              staffData[*] sensitive fields (encrypted blob): idNumber*, bankAccount*, phone*
                              staffData[*].profile_completed: true once the staff has filled the first-login wizard
+NurseApp/StaffPublic       — { staffData: [{staff_id,name,level,is_leader,is_active}, ...] }   any authed user reads
+                             sanitized projection — no PII, health, or financial fields. mirrored on every saveGlobalStaff.
+NurseApp/StaffPrivate/{id} — full row for a single staff   admin or matching staff uid reads
+                             same shape as a single element of NurseApp/Staff.staffData
 Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }
 archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note, csv? }
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
@@ -108,6 +112,8 @@ access_logs                — audit trail; { ts, actor:{uid,email}, action:'dec
 ```
 
 **Encrypted fields (marked `*` above):** stored as `{ ct, iv, tag, v: 1 }` AES-256-GCM blobs. Read/write goes through `/api/secure-field`, never directly. UI uses `<EncryptedField>` (click-to-decrypt, 30s auto-relock). Migration: `node scripts/migrate-encrypt.js` (dry-run) → `--commit` (actual write).
+
+**Staff data three-doc split (PDPA §6 compliance):** the original single `NurseApp/Staff` doc was readable by any authenticated user, leaking colleagues' is_pregnant_or_nursing / leave_status / accumulated_ot etc. Now split into three: full doc admin-only, public sanitized projection for colleague-name lookups, per-staff private doc for own sensitive data. The frontend `saveGlobalStaff` and the backend `api/complete-profile.js` both batch-write all three to keep them in sync. To migrate existing deployments: `node scripts/migrate-staff-public.js` (dry-run) → `--commit`. Run **before** deploying the new firestore.rules so staff don't see empty data during the gap.
 
 ### Field-Level Encryption Setup (one-time)
 

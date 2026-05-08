@@ -8,7 +8,11 @@ import './StaffDashboard.css';
 // ============================================================================
 // 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
 // ============================================================================
-const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [] }) => {
+// myStaffRow：員工自己的完整 row（含 leave_status / is_pregnant_or_nursing 等敏感欄位）。
+//             由 App.jsx 從 NurseApp/StaffPrivate/{id} 訂閱後傳入。
+//             staffData 現在只含同事的精簡公開投影（staff_id, name, level, is_leader, is_active），
+//             不再含上述敏感欄位 — 故所有「自己的」狀態檢查都改用 myStaffRow。
+const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [] }) => {
 
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -104,10 +108,8 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 // 計算上個月底的「連續上班天數」，用來銜接本月 1 號的七休一防呆
   const getPrevMonthStreak = () => {
     if (!currentUser || !currentUser.id) return 0;
-    if (!staffData || staffData.length === 0) return 0;
-
-    const staff = staffData.find(s => s.staff_id === currentUser.id);
-    if (!staff || !staff.prevMonthLeave) return 0;
+    if (!myStaffRow || !myStaffRow.prevMonthLeave) return 0;
+    const staff = myStaffRow;
 
     // prevMonthLeave 陣列紀錄上個月最後 7 天的「休假狀態」
     // 💡 狀態對應：true = 有休假 (UI打勾)，false = 有上班 (UI未打勾)
@@ -172,7 +174,8 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 // 防呆 1: 基本未載入檢查
   if (!currentUser) return <div className="dashboard__loading"><Loader size={18} className="dashboard__spin" /> 正在載入使用者資料...</div>;
 
-  const currentStaffInfo = staffData.find(s => s.staff_id === currentUser.id);
+  // 自己的完整 row（含敏感欄位）走 myStaffRow，不再從 staffData 撈
+  const currentStaffInfo = myStaffRow;
 
   // 防呆 2: 離職或停權檢查
   if (currentStaffInfo && (currentStaffInfo.is_active === false || currentStaffInfo.is_active === 'false')) {
@@ -221,8 +224,7 @@ const StaffDashboard = ({ currentUser, onConfirmSchedule, targetYear = 2026, tar
 
   const checkCompliance = (pattern) => {
     // ★★★ 新增：3. 提前攔截！檢查母性保護 (懷孕/哺乳禁止夜班) ★★★
-      const currentStaffInfo = staffData.find(s => s.staff_id === currentUser.id);
-      const isPregnant = currentStaffInfo?.is_pregnant_or_nursing === true || currentStaffInfo?.is_pregnant_or_nursing === 'True' || currentStaffInfo?.is_pregnant_or_nursing === 'true';
+      const isPregnant = myStaffRow?.is_pregnant_or_nursing === true || myStaffRow?.is_pregnant_or_nursing === 'True' || myStaffRow?.is_pregnant_or_nursing === 'true';
 
       if (isPregnant) {
           for (let i = 0; i < pattern.length; i++) {
