@@ -2,7 +2,7 @@
 //
 // 用法：
 //   const num = await decryptField(blob, { kind: 'settings', id: null }, ['baseSalary']);
-//   const blob = await encryptField(40000);
+//   const blob = await encryptFieldRemote(40000, { kind: 'settings', id: null }, ['baseSalary']);
 //   const list = await batchDecryptFields([blobA, blobB], { kind: 'staff', id: 'N001' }, ['idNumber','bankAccount']);
 //
 // `target` / `fields` 純粹用於稽核日誌，前端必須老老實實傳，不會影響加解密本身。
@@ -28,8 +28,8 @@ async function call(body) {
   return data;
 }
 
-export async function encryptFieldRemote(plaintext) {
-  const { blob } = await call({ action: 'encrypt', payload: plaintext });
+export async function encryptFieldRemote(plaintext, target, fields) {
+  const { blob } = await call({ action: 'encrypt', payload: plaintext, target, fields });
   return blob;
 }
 

@@ -39,7 +39,7 @@ const ScheduleReviewPanel = ({
     if (typeof baseSalary !== 'number' || Number.isNaN(baseSalary)) return;
     setSalaryBusy(true); setSalaryErr(null);
     try {
-      const blob = await encryptFieldRemote(Number(baseSalary));
+      const blob = await encryptFieldRemote(Number(baseSalary), { kind: 'settings', id: null }, ['baseSalary']);
       await saveGlobalSettings({ baseSalary: blob });
       // onSnapshot 會自動把 baseSalaryEnc 更新；本地 baseSalary 留著（仍解鎖中）
     } catch (e) {

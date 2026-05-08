@@ -101,7 +101,12 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: '權限不足：只有管理員能執行加密' });
         }
         const blob = encryptField(payload);
-        // 加密本身不寫稽核（只在解密 / 寫入時記）；寫入動作由前端決定要不要 log
+        writeAccessLog({
+          actor, action: 'encrypt',
+          target: target || { kind: null, id: null },
+          fields: fields || [],
+          ip: meta.ip, ua: meta.ua, extra: null,
+        });
         return res.status(200).json({ blob });
       }
 

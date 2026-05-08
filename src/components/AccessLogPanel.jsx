@@ -13,7 +13,7 @@ const AccessLogPanel = () => {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errMsg, setErrMsg] = useState(null);
-  const [actionFilter, setActionFilter] = useState('all');   // all | decrypt | ai-access
+  const [actionFilter, setActionFilter] = useState('all');   // all | decrypt | encrypt | ai-access
   const [actorFilter, setActorFilter] = useState('');
   const [maxRows, setMaxRows] = useState(200);
   const [tick, setTick] = useState(0); // 用於手動重新訂閱（refresh 按鈕）
@@ -52,8 +52,7 @@ const AccessLogPanel = () => {
   }), [logs, actionFilter, actorFilter]);
 
   const counts = useMemo(() => {
-    // encrypt 動作目前不寫稽核（見 api/secure-field.js 註解），所以不展示加密計數
-    const c = { decrypt: 0, 'ai-access': 0, other: 0 };
+    const c = { decrypt: 0, encrypt: 0, 'ai-access': 0, other: 0 };
     logs.forEach(l => { (c[l.action] !== undefined ? c[l.action]++ : c.other++); });
     return c;
   }, [logs]);
@@ -66,6 +65,7 @@ const AccessLogPanel = () => {
         </h2>
         <div className="acclog__stats">
           <span className="acclog__stat acclog__stat--decrypt">解密 {counts.decrypt}</span>
+          <span className="acclog__stat acclog__stat--encrypt">加密 {counts.encrypt}</span>
           <span className="acclog__stat acclog__stat--ai">AI 存取 {counts['ai-access']}</span>
           {counts.other > 0 && (
             <span className="acclog__stat acclog__stat--other">其他 {counts.other}</span>
@@ -76,7 +76,7 @@ const AccessLogPanel = () => {
       <div className="acclog__filter-bar">
         <div className="acclog__filter-group">
           <Filter size={12} />
-          {['all', 'decrypt', 'ai-access'].map(a => (
+          {['all', 'decrypt', 'encrypt', 'ai-access'].map(a => (
             <button
               key={a}
               onClick={() => setActionFilter(a)}

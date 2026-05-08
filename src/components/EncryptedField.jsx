@@ -79,7 +79,7 @@ const EncryptedField = ({
       if (draft === '') {
         await onSave('');
       } else {
-        const blob = await encryptFieldRemote(draft);
+        const blob = await encryptFieldRemote(draft, target, [fieldName]);
         await onSave(blob);
       }
       setDecrypted(draft);
