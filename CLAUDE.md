@@ -54,7 +54,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 **Component hierarchy:**
 - `App.jsx` → `LoginPanel` (unauthenticated) | `ManagerInterface` (admin) | `StaffDashboard` (staff)
-- `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`
+- `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`, `AccessLogPanel` (稽核日誌 — admin-only viewer for `access_logs`)
 
 **Key components:**
 - `SchedulePanel` — AI-powered schedule generation workspace with Gemini chat, drag-to-assign, and conflict detection
@@ -65,7 +65,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 **Shift types:** D (day 07-16), E (evening 15-00), N (night 23-08), OFF, RG (例假/statutory rest), RC (休息日), 支援 (support), 事假, 病假, 特休.
 
-**Labor law compliance** (Taiwan 勞基法) via `checkLaborLawCompliance` in `constants.js`: max 40h/week, 46h/month OT, 11h min rest between shifts, max 6 consecutive days, forbidden sequences (E→D, N→D, N→E), maternity protection, RG interval rule (≤6 days, ≤12 for BiWeekly).
+**Labor law compliance** (Taiwan 勞基法) via `checkLaborLawCompliance` in `constants.js`: max 40h/week, 46h/month OT, 11h min rest between shifts, max 6 consecutive days, forbidden sequences (E→D, N→D, N→E), maternity protection, RG interval rule (≤6 days, ≤12 for BiWeekly), and **七休一** (every 7-day window must contain at least one RG/RC day off). The 七休一 rule is also enforced post-AI in `SchedulePanel` and re-normalized at dashboard read-time as a defence-in-depth check.
 
 **Staff levels:** N0/N1 = junior; N2/N3/N4 = senior. `checkSkillMixSafety` warns when a shift has no senior (N2+) or leader present. Each level has a configurable monthly bonus (`levelBonus` in Settings): N0=0, N1=1000, N2=2000, N3=3200, N4=5000 by default.
 
@@ -84,6 +84,7 @@ Vercel serverless functions:
 | `reset-password.js` | Admin resets staff password; requires `admin@hospital.com` token |
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
 | `cron/check-timeout.js` | Runs daily (Vercel Cron `0 0 * * *`); auto-advances agentic turn after 24h timeout |
+| `auto-relay.js` | Triggered when an agentic turn is force-relayed; uses Gemini to pick the next staff and emails the warning + diagnostics. Accepts `CRON_SECRET` or a Firebase ID token. |
 | `secure-field.js` | Field-level encryption gateway: `action: encrypt \| decrypt \| batchDecrypt \| logAiAccess`. Verifies Firebase token, applies RBAC (admin sees all; staff sees only own UID), writes audit row to `access_logs`. Requires `FIELD_ENC_KEY`. |
 
 **Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs), `crypto.js` (AES-256-GCM encrypt/decrypt; ciphertext format `{ct, iv, tag, v}`), `accessLog.js` (writes audit rows to Firestore `access_logs` collection — fire-and-forget, never blocks business logic).
