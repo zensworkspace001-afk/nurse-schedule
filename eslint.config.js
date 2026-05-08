@@ -1,5 +1,6 @@
 import js from '@eslint/js'
 import globals from 'globals'
+import react from 'eslint-plugin-react'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
 import { defineConfig, globalIgnores } from 'eslint/config'
@@ -25,7 +26,12 @@ export default defineConfig([
         sourceType: 'module',
       },
     },
+    plugins: { react },
     rules: {
+      // 讓 ESLint 認得 JSX 中的 import — 沒這條時 <motion.div> 會被誤判為 motion 未使用，
+      // 上一次 lint 清理就因此誤刪了 framer-motion 的 motion import 導致 runtime error。
+      'react/jsx-uses-vars': 'error',
+      'react/jsx-uses-react': 'error',
       'no-unused-vars': ['error', {
         varsIgnorePattern: '^[A-Z_]',
         argsIgnorePattern: '^_',

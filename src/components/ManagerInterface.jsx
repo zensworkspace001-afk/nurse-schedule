@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { useMotionValue, animate } from 'framer-motion';
+import { motion, useMotionValue, animate } from 'framer-motion';
 import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';

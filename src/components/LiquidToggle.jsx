@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
+import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import './LiquidToggle.css';
 
 /* ─── Option definitions ─── */
