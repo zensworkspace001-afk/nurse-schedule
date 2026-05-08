@@ -3,7 +3,7 @@ import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut } from "firebase/auth";
-import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
+import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
@@ -532,73 +532,62 @@ const handleLogout = () => {
           throw error;
       }
   };
-// ★★★ 核心修復：員工認領班表 (解決重複寫入與疊加問題) ★★★
-  const handleStaffScheduleUpdate = async (result) => { 
+// ★★★ 員工認領班表：透過 /api/claim-schedule 走後端 transaction，
+//      避免 firestore.rules 無法精準擋住「員工把同事的 cell 一起改掉」的垂直越權。
+  const handleStaffScheduleUpdate = async (result) => {
+    const targetVirtualId = result.chosenSchedule?.id;
+    if (!targetVirtualId) {
+      alert("❌ 無法判斷您要認領的班表（缺少 virtualSlotId）。");
+      return;
+    }
+
     try {
-        // 1. 🛑 寫入前，先向 Firebase 索取「最熱騰騰」的最新班表
-        const docRef = doc(db, 'Schedules', `${publishedDate.year}_${publishedDate.month}`);
-        const snap = await getDoc(docRef);
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) throw new Error('登入逾期，請重新登入');
 
-        if (!snap.exists()) {
-            alert("❌ 找不到該月份的班表資料！");
-            return;
-        }
+      const response = await fetch('/api/claim-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          year: publishedDate.year,
+          month: publishedDate.month,
+          virtualSlotId: targetVirtualId,
+        }),
+      });
+      const data = await response.json();
 
-        const latestData = snap.data();
-        const latestSchedule = latestData.finalizedSchedule || {};
+      if (response.status === 409) {
+        // 後端 transaction 偵測到搶單或重複認領
+        alert(`⚠️ ${data.error || '此班表已被別人選走'}\n系統將為您重新整理畫面。`);
+        window.location.reload();
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(data.error || '認領失敗');
+      }
 
-        // 2. 🛑 檢查想要認領的班表，是不是剛剛被別人搶走了？
-        const targetVirtualId = result.chosenSchedule?.id;
-        if (targetVirtualId && !latestSchedule[targetVirtualId]) {
-            alert("⚠️ 慢了一步！這個班表剛剛被別人選走了！\n系統將為您重新整理畫面，請選擇其他班表。");
-            window.location.reload(); 
-            return;
-        }
+      // 用後端回傳的最新 finalizedSchedule 同步本地畫面（onSnapshot 也會跟著更新，這裡是 optimistic）
+      if (data.finalizedSchedule) {
+        setFinalizedSchedule(data.finalizedSchedule);
+      }
 
-        // 3. 基於雲端的「最新資料」進行修改：加入新員工
-        const next = { ...latestSchedule };
-        next[result.staffId] = result.fullMonthData; 
-        
-        // 4. ★ 最重要的一步：從物件中徹底刪除舊的空缺班表 (例如 D001)
-        if (targetVirtualId && next[targetVirtualId]) {
-            delete next[targetVirtualId]; 
-        } else {
-            const fallbackId = Object.keys(next).find(k => k.startsWith('D'));
-            if (fallbackId) delete next[fallbackId];
-        }
+      // 呼叫 AI 接力，標記本人已完成並通知下一位
+      try {
+        await calculateAndNotifyNextStaff(
+          data.finalizedSchedule || {},
+          healthStats,
+          publishedDate.year,
+          publishedDate.month,
+          result.staffId,
+        );
+      } catch (e) {
+        console.error("交棒失敗:", e);
+      }
 
-        // 5. 更新本地畫面
-        setFinalizedSchedule(next); 
-
-        // 更新員工資料 (維持原樣)
-        setStaffData(prevData => {
-          const exists = prevData.find(s => s.staff_id === result.staffId);
-          if (exists) return prevData;
-          return [...prevData, { 
-            staff_id: result.staffId, name: result.staffName, 
-            special_status: result.shiftType === 'D' ? 'Standard' : 'BiWeekly', 
-            is_active: true, accumulated_ot: 0, night_shift_balance: 0,
-            prevMonthLeave: [false,false,false,false,false,false,false]
-          }];
-        });
-
-// 6. 透過剛剛修正過的 API 寫入雲端，徹底覆蓋欄位！
-        await updateStaffSchedule(publishedDate.year, publishedDate.month, next);
-        
-        // 🌟 ★★★ 關鍵修復：呼叫後端 API 標記完成並自動找下一個人 ★★★
-        try {
-            // 背景呼叫 AI，不卡住畫面
-            await calculateAndNotifyNextStaff(next, healthStats, publishedDate.year, publishedDate.month, result.staffId);
-        } catch (e) {
-            console.error("交棒失敗:", e);
-        }
-        // =========================================================
-
-        alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
-        
+      alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
     } catch (error) {
-        console.error("寫入失敗:", error);
-        alert("❌ 認領失敗：權限不足或網路異常。");
+      console.error("認領失敗:", error);
+      alert(`❌ 認領失敗：${error.message}`);
     }
   } // <-- 這是 handleStaffScheduleUpdate 的結尾
 
