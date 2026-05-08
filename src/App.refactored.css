@@ -8,6 +8,15 @@
   100% { opacity: 1; }
 }
 
+/* 登入成功後主畫面的漸入：模糊 + 縮放 + 透明度三軌同時做 */
+@keyframes appBlurIn {
+  0%   { opacity: 0; filter: blur(20px); transform: scale(0.97); }
+  100% { opacity: 1; filter: blur(0);    transform: scale(1); }
+}
+.app--entering {
+  animation: appBlurIn 600ms cubic-bezier(0.4, 0, 0.2, 1) both;
+}
+
 @keyframes appSlideDown {
   0%   { opacity: 0; transform: translateY(-20px); }
   100% { opacity: 1; transform: translateY(0); }

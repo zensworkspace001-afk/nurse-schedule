@@ -7,7 +7,7 @@ import './LoginPanel.css';
 // ============================================================================
 // 1. LoginPanel (安全升級版 - 串接 Firebase Auth)
 // ============================================================================
-const LoginPanel = ({ onLogin, onApiStatus }) => {
+const LoginPanel = ({ onLogin, onApiStatus, isExiting = false }) => {
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -80,7 +80,7 @@ try {
   };
 
   return (
-    <div className="login-panel">
+    <div className={`login-panel${isExiting ? ' login-panel--exiting' : ''}`}>
       {/* 🌟 背景動畫色塊 */}
       <div className="login-panel__blob login-panel__blob--1"></div>
       <div className="login-panel__blob login-panel__blob--2"></div>

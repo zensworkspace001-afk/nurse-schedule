@@ -7,6 +7,16 @@
   100% { opacity: 1; }
 }
 
+/* 登入成功時的退場：模糊 + 微縮 + 淡出（與 .app--entering 對稱） */
+@keyframes loginPageOut {
+  0%   { opacity: 1; filter: blur(0);    transform: scale(1); }
+  100% { opacity: 0; filter: blur(24px); transform: scale(1.04); }
+}
+.login-panel--exiting {
+  animation: loginPageOut 600ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  pointer-events: none;
+}
+
 /* --- Background / Page Container --- */
 .login-panel {
   width: 100vw;

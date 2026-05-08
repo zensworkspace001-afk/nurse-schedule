@@ -73,6 +73,8 @@ const NurseSchedulingSystem = () => {
   // 員工角色額外訂閱自己的私有 row（含 leave_status、is_pregnant_or_nursing 等敏感欄位）。
   // admin 角色 myStaffRow 永遠是 null，因為 admin 直接從完整 staffData 取。
   const [myStaffRow, setMyStaffRow] = useState(null);
+  // 登入轉場：true 期間 LoginPanel 進入 fade-out 動畫（模糊+淡出）
+  const [loginExiting, setLoginExiting] = useState(false);
   const [schedule, setSchedule] = useState(null);
   const [finalizedSchedule, setFinalizedSchedule] = useState(null);
   // 修改後（從 localStorage 讀正確的發布月份）
@@ -723,10 +725,18 @@ const handleSaveAndPublish = async () => {
   };
 
   if (!currentUser) {
+    // 登入轉場：點下登入後，先讓 LoginPanel 模糊淡出 ~600ms，再 setCurrentUser 切到主畫面（主畫面也有 blur-in）
+    const handleLoginWithTransition = (user) => {
+      setLoginExiting(true);
+      setTimeout(() => {
+        setCurrentUser(user);
+        setLoginExiting(false);
+      }, 600);
+    };
     return (
       <>
         <ParticleBackground />
-        <LoginPanel onLogin={setCurrentUser} onApiStatus={() => {}} staffData={staffData} />
+        <LoginPanel onLogin={handleLoginWithTransition} onApiStatus={() => {}} staffData={staffData} isExiting={loginExiting} />
       </>
     );
   }
@@ -742,7 +752,7 @@ const handleSaveAndPublish = async () => {
 
   return (
     <>
-    <div className="app">
+    <div className="app app--entering">
       {/* 🌟 Canvas 粒子動態背景 */}
       <ParticleBackground />
       {/* 🌟 背景動畫色塊 (與登入頁面相同) */}
