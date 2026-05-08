@@ -20,20 +20,32 @@ import admin from 'firebase-admin';
 const COMMIT = process.argv.includes('--commit');
 
 if (!admin.apps.length) {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    let sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  // 優先用三件組（PROJECT_ID + CLIENT_EMAIL + PRIVATE_KEY），對 .env 單行格式相容性最好。
+  // 若三件組沒湊齊才退回 FIREBASE_SERVICE_ACCOUNT（Vercel 上常用，但 Node --env-file
+  // 對多行 JSON 不支援，會被 newline 截斷成 4 字元的破片）。
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+  let privateKey = process.env.FIREBASE_PRIVATE_KEY;
+  if (privateKey) privateKey = privateKey.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
+
+  if (projectId && clientEmail && privateKey) {
+    admin.initializeApp({
+      credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+    });
+  } else if (process.env.FIREBASE_SERVICE_ACCOUNT && process.env.FIREBASE_SERVICE_ACCOUNT.length > 50) {
+    let sa;
+    try {
+      sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+    } catch (err) {
+      console.error('FIREBASE_SERVICE_ACCOUNT 不是合法 JSON（多行 .env 常見）：', err.message);
+      console.error('改用三件組 FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY');
+      process.exit(1);
+    }
     if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n');
     admin.initializeApp({ credential: admin.credential.cert(sa) });
   } else {
-    let pk = process.env.FIREBASE_PRIVATE_KEY;
-    if (pk) pk = pk.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
-    admin.initializeApp({
-      credential: admin.credential.cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: pk,
-      }),
-    });
+    console.error('找不到 Firebase 憑證。請確認 .env.local 至少有 FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY 三組變數。');
+    process.exit(1);
   }
 }
 
