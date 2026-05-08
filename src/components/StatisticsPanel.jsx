@@ -224,8 +224,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
           }
       });
   }
-  const priorityList = Array.from(allowedStaffMap.values());
-
   const RankingList = ({ title, data, color }) => (
     <div className="statistics__ranking">
       <div className="statistics__ranking-title">{title}</div>
@@ -457,7 +455,7 @@ let combinedData = "";
       const getYHealth = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
       const getYRatio = (value) => padding + chartHeight - ((value - minRatio) / (maxRatio - minRatio)) * chartHeight;
 
-      const avgPoints = dynamicHealthStats.filter(d => d.avg !== null).map((d, i) => `${getX(dynamicHealthStats.indexOf(d))},${getYHealth(d.avg)}`).join(' ');
+      const avgPoints = dynamicHealthStats.filter(d => d.avg !== null).map((d) => `${getX(dynamicHealthStats.indexOf(d))},${getYHealth(d.avg)}`).join(' ');
       const ratioDPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioD))}`).join(' ');
       const ratioEPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioE))}`).join(' ');
       const ratioNPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioN))}`).join(' ');

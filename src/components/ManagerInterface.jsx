@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { motion, useMotionValue, animate } from 'framer-motion';
+import { useMotionValue, animate } from 'framer-motion';
 import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
@@ -12,8 +12,8 @@ import StatisticsPanel from './StatisticsPanel';
 import AccessLogPanel from './AccessLogPanel';
 
 const ManagerInterface = ({
-  staffData, setStaffData, historyData, requirements, setRequirements,
-  preferences, setPreferences, schedule, violations,
+  staffData, setStaffData, requirements, setRequirements,
+  schedule, violations,
   scheduleRisks,bedConfig, setBedConfig,
   shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays,
   selectedYear, setSelectedYear,

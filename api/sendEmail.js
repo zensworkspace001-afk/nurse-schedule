@@ -60,7 +60,7 @@ export default async function handler(req, res) {
         var decodedToken;
         try {
             decodedToken = await admin.auth().verifyIdToken(token);
-        } catch (err) {
+        } catch {
             console.warn('⚠️ 攔截到未經授權的寄信請求');
             return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
         }

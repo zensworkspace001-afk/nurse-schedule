@@ -6,7 +6,7 @@ import './PublishPanel.css';
 const PublishPanel = ({
     staffData, violations, scheduleRisks,
     selectedYear, selectedMonth, shiftOptions,
-    publicHolidays, finalizedSchedule, setFinalizedSchedule, onPushToHistory,
+    finalizedSchedule, setFinalizedSchedule, onPushToHistory,
     calculateAndNotifyNextStaff, healthStats,
 }) => {
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
@@ -44,7 +44,6 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
             shifts.push((typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF'));
         }
         const isWork = (s) => ['D', 'E', 'N', '支援'].includes(s) || (s && s.includes('OT'));
-        const isOff = (s) => ['OFF', 'RG', 'RC', '事假', '病假', '特休'].includes(s);
 
         for (let i = 0; i < shifts.length - 1; i++) {
             if ((shifts[i] === 'E' && shifts[i+1] === 'D') || (shifts[i] === 'N' && (shifts[i+1] === 'D' || shifts[i+1] === 'E'))) { score -= 20; deductions.push(`[-20] 短間隔`); }

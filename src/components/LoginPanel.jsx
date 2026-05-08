@@ -7,7 +7,7 @@ import './LoginPanel.css';
 // ============================================================================
 // 1. LoginPanel (安全升級版 - 串接 Firebase Auth)
 // ============================================================================
-const LoginPanel = ({ onLogin, onApiStatus, staffData = [] }) => {
+const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');

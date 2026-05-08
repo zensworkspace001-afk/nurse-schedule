@@ -48,7 +48,7 @@ export default async function handler(req, res) {
       if (decodedToken.email !== 'admin@hospital.com') {
         return res.status(403).json({ error: '權限不足：只有管理員能執行此操作' });
       }
-    } catch (err) {
+    } catch {
       console.warn('⚠️ 攔截到未經授權的結算請求');
       return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
     }

@@ -15,8 +15,8 @@ const ScheduleReviewPanel = ({
   // ★ 接收專屬的歷史狀態
   setHistorySchedule,
   historyYear, historyMonth, setHistoryYear, setHistoryMonth,
-    historySchedule = {}, bedConfig,
-    levelBonus = { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }, setLevelBonus
+    historySchedule = {},
+    levelBonus = { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 },
 }) => {
   // 底薪加密欄位的本地狀態
   const [salaryBusy, setSalaryBusy] = useState(false);
@@ -212,7 +212,7 @@ const handleCellChange = async (staffId, day, newValue) => {
           const name = (staff && staff.name && staff.name.trim() !== '') ? staff.name : '未知姓名'; 
           
           let workDays = 0, nationalHolidayWorkDays = 0, explicitOtDays = 0; 
-          let personalLeaveDays = 0, sickLeaveDays = 0, annualLeaveDays = 0; // ★ 加入 annualLeaveDays
+          let personalLeaveDays = 0, sickLeaveDays = 0;
           let nightShiftsCount = 0;
 
           for (let d = 1; d <= daysInMonth; d++) {
@@ -229,7 +229,6 @@ const handleCellChange = async (staffId, day, newValue) => {
               else if (type.includes('(OT)')) explicitOtDays++;
               else if (type === '事假') personalLeaveDays++;
               else if (type === '病假') sickLeaveDays++;
-              else if (type === '特休') annualLeaveDays++; // ★ 結算特休天數
           }
 
           const nationalHolidayPay = nationalHolidayWorkDays * (hourlyWage * 8);

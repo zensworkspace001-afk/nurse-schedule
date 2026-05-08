@@ -8,7 +8,7 @@ import './SchedulePanel.css';
 // 總班表顯示面板 (精簡版：移除認領清單，專注於 AI 排班工作桌)
 // ============================================================================
 const SchedulePanel = ({
-    onSaveSchedule, schedule, setSchedule, staffData, violations, requirements,
+    onSaveSchedule, schedule, setSchedule, staffData, requirements,
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions, setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
@@ -53,30 +53,6 @@ const SchedulePanel = ({
     if (window.confirm(`⚠️ 確定要【清空 ${selectedMonth}月 的所有班表】嗎？\n\n這將刪除目前工作桌上的所有資料，讓您有一張乾淨的空白桌面。\n(此操作不可逆)`)) {
         setSchedule({});
         if (setFinalizedSchedule) setFinalizedSchedule(null); // ★ 關鍵修復 3：連發布區一起殺乾淨
-    }
-  };
-
-const handleReset = () => {
-    // ★★★ 抓取畫面上「最新」的狀態 (包含員工已認領的發布區，或是剛生成的草稿區)
-    const targetSchedule = finalizedSchedule || schedule;
-
-    if (!targetSchedule || Object.keys(targetSchedule).length === 0) {
-        alert("目前沒有班表可重置。");
-        return;
-    }
-    if (window.confirm("⚠️ 確定要【退回所有認領狀態】嗎？\n\n執行後：\n1. 班表內容將全數保留。\n2. 但所有員工的名字會被拔除，全部變回待認領的虛擬空缺 (Dxxx)。")) {
-      const newSchedule = {};
-      let index = 1;
-
-      Object.keys(targetSchedule).sort().forEach(key => {
-          const virtualId = `D${String(index).padStart(3, '0')}`;
-          newSchedule[virtualId] = targetSchedule[key];
-          index++;
-      });
-
-      setSchedule(newSchedule);
-      if (setFinalizedSchedule) setFinalizedSchedule(null); // ★★★ 同步清除發布區，防止舊資料干擾
-      alert("✅ 系統已重置！所有班次已退回待認領狀態。");
     }
   };
 

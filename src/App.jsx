@@ -1,9 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
-import {
-  doc, getDoc, setDoc, addDoc, collection,
-  query, orderBy, limit, getDocs, arrayUnion, onSnapshot
-} from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, updateStaffSchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
@@ -78,7 +75,7 @@ const NurseSchedulingSystem = () => {
   // 修改後（從 localStorage 讀正確的發布月份）
 const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
   // --- 2. 本機暫存狀態 (不需上雲端) ---
-  const [historyData, setHistoryData] = useState([]);
+  const [historyData] = useState([]);
 const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   // ★ 新增這行：把病床與護病比的狀態提升到最高層
   const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 });

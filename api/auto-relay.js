@@ -51,7 +51,7 @@ export default async function handler(req, res) {
             const token = authHeader.split('Bearer ')[1];
             await admin.auth().verifyIdToken(token);
             isAuthorized = true;
-        } catch (e) {
+        } catch {
             return res.status(401).json({ error: '未經授權' });
         }
     }
@@ -251,7 +251,7 @@ export default async function handler(req, res) {
         let decision;
         try {
             decision = JSON.parse(text);
-        } catch (e) {
+        } catch {
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             decision = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
         }

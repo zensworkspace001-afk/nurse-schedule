@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
+import { AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion';
 import './LiquidToggle.css';
 
 /* ─── Option definitions ─── */
@@ -52,7 +52,7 @@ function Blob({ y, width, height, color, className, style }) {
    ═══════════════════════════════════════ */
 export default function LiquidToggle() {
   const [active, setActive] = useState(0);
-  const [dragging, setDragging] = useState(false);
+  const [, setDragging] = useState(false);
 
   /* Motion value for the indicator Y — drives both the goo blob and the glass overlay */
   const indicatorY = useMotionValue(yForIndex(0));

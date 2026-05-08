@@ -67,7 +67,6 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
 
     let consecutiveDays = 0;
     let lastShiftType = null;
-    let totalOffDays = 0;
     let totalMonthlyHours = 0;
     let totalRG = 0; // ★ 新增：統計例假 (不可出勤)
     let totalRC = 0; // ★ 新增：統計休息日 (可加班)
@@ -122,9 +121,7 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
           isWeeklyViolationReported = true; // ★ 標記本週已經警告過了，這週剩下的日子不要再吵了
       }
 
-      // --- C. 統計休假天數 ---
       // --- C. 統計休假天數與種類 ---
-      if (['RG', 'RC', 'OFF', '空班'].includes(shiftType)) totalOffDays++;
       if (shiftType === '特休') scheduledAnnualLeave++; // ★ 算特休天數
       if (shiftType === 'RG') {
           totalRG++;
@@ -283,7 +280,7 @@ export const checkSkillMixSafety = (schedule, staffData, year, month) => {
 export const calculateScheduleRisks = (schedule, staffData, publicHolidays, year, month) => {
   const risks = [];
   const stats = {};
-  let totalN = 0, totalE = 0, totalHolidayWork = 0;
+  let totalN = 0, totalHolidayWork = 0;
   let validStaffCount = 0;
   const daysInMonth = new Date(year, month, 0).getDate();
 
@@ -306,7 +303,7 @@ export const calculateScheduleRisks = (schedule, staffData, publicHolidays, year
       const isHoliday = publicHolidays.includes(dateStr);
 
       if (type === 'N') { stats[staffId].N++; totalN++; }
-      if (type === 'E') { stats[staffId].E++; totalE++; }
+      if (type === 'E') { stats[staffId].E++; }
       if (isWork && (isWeekend || isHoliday)) { stats[staffId].holidayWork++; totalHolidayWork++; }
 
       if (isWork) {

@@ -77,7 +77,7 @@ export default async function handler(req, res) {
     const token = authHeader.split('Bearer ')[1];
     const decoded = await admin.auth().verifyIdToken(token);
     actor = { uid: decoded.uid, email: decoded.email || null };
-  } catch (err) {
+  } catch {
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }
 

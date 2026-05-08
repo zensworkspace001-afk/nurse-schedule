@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   try {
     const token = authHeader.split('Bearer ')[1];
     decodedToken = await admin.auth().verifyIdToken(token);
-  } catch (err) {
+  } catch {
     console.warn('⚠️ 攔截到未經授權的 AI API 請求');
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }
