@@ -12,12 +12,15 @@ import './AccessLogPanel.css';
 const AccessLogPanel = () => {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [actionFilter, setActionFilter] = useState('all');   // all | decrypt | encrypt | ai-access
+  const [errMsg, setErrMsg] = useState(null);
+  const [actionFilter, setActionFilter] = useState('all');   // all | decrypt | ai-access
   const [actorFilter, setActorFilter] = useState('');
   const [maxRows, setMaxRows] = useState(200);
+  const [tick, setTick] = useState(0); // 用於手動重新訂閱（refresh 按鈕）
 
   useEffect(() => {
     setIsLoading(true);
+    setErrMsg(null);
     const q = query(
       collection(db, 'access_logs'),
       orderBy('ts', 'desc'),
@@ -29,10 +32,13 @@ const AccessLogPanel = () => {
       setIsLoading(false);
     }, (err) => {
       console.error('access_logs 訂閱失敗:', err);
+      setErrMsg(err.code === 'permission-denied'
+        ? '無權限讀取稽核日誌（請確認您以管理員身份登入，且 firestore.rules 已部署）'
+        : `稽核日誌訂閱失敗：${err.message}`);
       setIsLoading(false);
     });
     return () => unsub();
-  }, [maxRows]);
+  }, [maxRows, tick]);
 
   const filtered = useMemo(() => logs.filter(log => {
     if (actionFilter !== 'all' && log.action !== actionFilter) return false;
@@ -46,7 +52,8 @@ const AccessLogPanel = () => {
   }), [logs, actionFilter, actorFilter]);
 
   const counts = useMemo(() => {
-    const c = { decrypt: 0, encrypt: 0, 'ai-access': 0, other: 0 };
+    // encrypt 動作目前不寫稽核（見 api/secure-field.js 註解），所以不展示加密計數
+    const c = { decrypt: 0, 'ai-access': 0, other: 0 };
     logs.forEach(l => { (c[l.action] !== undefined ? c[l.action]++ : c.other++); });
     return c;
   }, [logs]);
@@ -59,15 +66,17 @@ const AccessLogPanel = () => {
         </h2>
         <div className="acclog__stats">
           <span className="acclog__stat acclog__stat--decrypt">解密 {counts.decrypt}</span>
-          <span className="acclog__stat acclog__stat--encrypt">加密 {counts.encrypt}</span>
           <span className="acclog__stat acclog__stat--ai">AI 存取 {counts['ai-access']}</span>
+          {counts.other > 0 && (
+            <span className="acclog__stat acclog__stat--other">其他 {counts.other}</span>
+          )}
         </div>
       </div>
 
       <div className="acclog__filter-bar">
         <div className="acclog__filter-group">
           <Filter size={12} />
-          {['all', 'decrypt', 'encrypt', 'ai-access'].map(a => (
+          {['all', 'decrypt', 'ai-access'].map(a => (
             <button
               key={a}
               onClick={() => setActionFilter(a)}
@@ -90,12 +99,14 @@ const AccessLogPanel = () => {
           <option value={500}>最近 500 筆</option>
           <option value={1000}>最近 1000 筆</option>
         </select>
-        <button onClick={() => setMaxRows(m => m)} className="acclog__refresh" title="重新整理">
+        <button onClick={() => setTick(t => t + 1)} className="acclog__refresh" title="重新訂閱（onSnapshot 本身已即時）">
           <RefreshCw size={12} />
         </button>
       </div>
 
-      {isLoading ? (
+      {errMsg ? (
+        <div className="acclog__empty acclog__empty--error">⚠️ {errMsg}</div>
+      ) : isLoading ? (
         <div className="acclog__empty">載入中…</div>
       ) : filtered.length === 0 ? (
         <div className="acclog__empty">尚無稽核紀錄</div>
