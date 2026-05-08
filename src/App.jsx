@@ -141,6 +141,8 @@ const [historyYear, setHistoryYear] = useState(() => {
     { key: 'syncAccounts', label: '帳號同步', desc: '批次建立 Firebase Auth 帳號 + 寄啟用信', url: '/api/sync-accounts', method: 'POST' },
     { key: 'resetPassword', label: '密碼重設', desc: '寄送密碼重設信', url: '/api/reset-password', method: 'POST' },
     { key: 'activateAccount', label: '帳號啟用', desc: '一次性 token 啟用 / 重設密碼', url: '/api/activate-account', method: 'POST' },
+    { key: 'logLogin', label: '登入紀錄', desc: '記錄成功登入到稽核日誌', url: '/api/log-login', method: 'POST' },
+    { key: 'logLoginFailure', label: '登入失敗紀錄', desc: '記錄失敗登入到稽核日誌', url: '/api/log-login-failure', method: 'POST' },
     { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle?healthCheck=true', method: 'GET' },
     { key: 'cronTimeout', label: 'Cron 逾時', desc: '每日自動推進選班逾時', url: '/api/cron/check-timeout?healthCheck=true', method: 'GET' },
     { key: 'calendar', label: '國定假日', desc: '台灣國定假日 API', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },

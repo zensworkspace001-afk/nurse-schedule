@@ -37,10 +37,12 @@
   font-weight: 600;
 }
 
-.acclog__stat--decrypt { background: #fef3c7; color: #92400e; }
-.acclog__stat--encrypt { background: #dbeafe; color: #1e40af; }
-.acclog__stat--ai      { background: #ede9fe; color: #5b21b6; }
-.acclog__stat--other   { background: #e5e7eb; color: #374151; }
+.acclog__stat--decrypt    { background: #fef3c7; color: #92400e; }
+.acclog__stat--encrypt    { background: #dbeafe; color: #1e40af; }
+.acclog__stat--ai         { background: #ede9fe; color: #5b21b6; }
+.acclog__stat--login      { background: #d1fae5; color: #065f46; }
+.acclog__stat--login-fail { background: #fee2e2; color: #991b1b; }
+.acclog__stat--other      { background: #e5e7eb; color: #374151; }
 
 .acclog__filter-bar {
   display: flex;
@@ -239,6 +241,8 @@
   border-radius: 4px;
 }
 
-.acclog__action--decrypt   { background: #fef3c7; color: #92400e; }
-.acclog__action--encrypt   { background: #dbeafe; color: #1e40af; }
-.acclog__action--ai-access { background: #ede9fe; color: #5b21b6; }
+.acclog__action--decrypt        { background: #fef3c7; color: #92400e; }
+.acclog__action--encrypt        { background: #dbeafe; color: #1e40af; }
+.acclog__action--ai-access      { background: #ede9fe; color: #5b21b6; }
+.acclog__action--login          { background: #d1fae5; color: #065f46; }
+.acclog__action--login-failure  { background: #fee2e2; color: #991b1b; }

@@ -36,6 +36,18 @@ try {
           else onApiStatus('red', `登入回應過慢 (${loginMs}ms)`);
         }
 
+        // ★ 稽核：登入成功，fire-and-forget 不阻擋 UI
+        try {
+            const token = await auth.currentUser?.getIdToken();
+            if (token) {
+                fetch('/api/log-login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                    body: JSON.stringify({}),
+                }).catch(() => {});
+            }
+        } catch { /* 寫稽核失敗不影響登入流程 */ }
+
         // 2. 登入成功後，判斷角色權限
         if (inputId === 'admin') {
             onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
@@ -51,7 +63,17 @@ try {
     } catch (err) {
         // ★ 登入失敗 → API 狀態紅燈
         if (onApiStatus) onApiStatus('red', `登入失敗: ${err.code || err.message}`);
-        // ... 原本的 catch 錯誤處理保留不動 ...
+
+        // ★ 稽核：登入失敗，fire-and-forget 不阻擋 UI
+        fetch('/api/log-login-failure', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                attempted_email: emailToLogin,
+                error_code: err.code || 'unknown',
+            }),
+        }).catch(() => {});
+
         if (import.meta.env.DEV) {
         console.error("登入錯誤:", err.code);
         }
