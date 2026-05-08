@@ -75,17 +75,27 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 3. Schedules/{yearMonth} — 月班表
-    //    讀取：所有已登入使用者
+    // 3. Schedules/{yearMonth} — 完整月班表（含 事假/病假/特休 原始類型）
+    //    讀取：僅管理員（員工看的是 SchedulesPublic 遮罩版）
     //    寫入：僅管理員（員工認領班次走 /api/claim-schedule，後端用 Admin SDK 寫入）
     //
-    //    為什麼把 staff 的 update 例外移除：原本的規則只擋「不能改 finalizedSchedule
-    //    以外的欄位」，但 finalizedSchedule 內任何 cell 員工都能改 — 包含同事的 cell。
-    //    rules 無法檢查 map 內 key 變動是否限定為自己的 staff_id（會誤擋認領流程，因為
-    //    認領涉及刪除 D 開頭虛擬鍵 + 新增自己的鍵兩個 key 同時變動）。改走後端後，
-    //    每筆寫入都通過 token 嚴格綁定 actor.uid，垂直越權被徹底關閉。
+    //    為什麼把 read 收緊：原本員工可讀完整 finalizedSchedule，等於可看到
+    //    同事哪幾天請病假/事假/特休 — 違反 PDPA §6（醫療/健康屬特種個資）。
+    //    為什麼把 staff 的 update 例外移除：rules 無法檢查 map 內 key 變動是否限定為
+    //    自己的 staff_id；改走後端 transaction，每筆寫入都通過 token 嚴格綁定 actor.uid。
     // ============================================================
     match /Schedules/{yearMonth} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
+    // 3a. SchedulesPublic/{yearMonth} — 員工看的遮罩版
+    //    內容固定為 { finalizedSchedule: {...} }，且 cell 中的 事假/病假/特休
+    //    一律遮成 'OFF'。Admin SDK 寫入時會由 saveMonthlySchedule /
+    //    updateStaffSchedule / claim-schedule 同步維護。
+    // ============================================================
+    match /SchedulesPublic/{yearMonth} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }

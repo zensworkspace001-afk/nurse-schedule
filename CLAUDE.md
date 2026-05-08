@@ -84,7 +84,7 @@ Vercel serverless functions:
 | `reset-password.js` | Admin triggers a password-reset email. Backend revokes prior tokens, issues a new `purpose: 'reset'` token, and sends the same `/activate` link. Backend never sees or sets the new password. |
 | `activate-account.js` | Public endpoint (token IS the auth). `POST {token, newPassword}` → verifies token, enforces strength, sets the password via Admin SDK; for `purpose: 'activation'` also flips `disabled: false`. CSRF + per-IP rate limit. |
 | `complete-profile.js` | Authenticated endpoint (staff Firebase token). On first login the staff fills name / gender / tenure / 孕哺 / 大夜 / encrypted PII (idNumber, bankAccount, phone). Server validates, AES-encrypts the PII, writes the staff's row in `staffData`, sets `profile_completed: true`, and writes one `access_logs` row (action=`encrypt`). Admin cannot use this endpoint. |
-| `claim-schedule.js` | Authenticated endpoint (staff Firebase token). Body `{year, month, virtualSlotId}`. Runs a Firestore transaction: read `Schedules/{ym}.finalizedSchedule`, verify the virtual D-slot still exists and the actor hasn't already claimed for this month, then atomically delete the virtual slot key and write the same pattern under the actor's UID. Admin and direct client writes to the schedule are blocked by rules — staff route through this endpoint, eliminating the vertical-escalation hole where any staff could overwrite a colleague's whole month. |
+| `claim-schedule.js` | Authenticated endpoint (staff Firebase token). Body `{year, month, virtualSlotId}`. Runs a Firestore transaction: read `Schedules/{ym}.finalizedSchedule`, verify the virtual D-slot still exists and the actor hasn't already claimed for this month, then atomically delete the virtual slot key and write the same pattern under the actor's UID. Inside the same tx also writes a masked projection to `SchedulesPublic/{ym}` (事假/病假/特休 → OFF) so colleagues' privacy stays consistent. Admin and direct client writes to the schedule are blocked by rules — staff route through this endpoint, eliminating the vertical-escalation hole where any staff could overwrite a colleague's whole month. |
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
 | `cron/check-timeout.js` | Runs daily (Vercel Cron `0 0 * * *`); auto-advances agentic turn after 24h timeout |
 | `auto-relay.js` | Triggered when an agentic turn is force-relayed; uses Gemini to pick the next staff and emails the warning + diagnostics. Accepts `CRON_SECRET` or a Firebase ID token. |
@@ -104,7 +104,11 @@ NurseApp/StaffPublic       — { staffData: [{staff_id,name,level,is_leader,is_a
 StaffPrivate/{id}          — top-level collection; full row for a single staff   admin or matching staff uid reads
                              same shape as a single element of NurseApp/Staff.staffData
                              (top-level rather than NurseApp/StaffPrivate/* because Firestore doc paths must be even segments)
-Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }
+Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }   admin-only read
+                             full content including raw 事假/病假/特休 leave types
+SchedulesPublic/{YYYY_M}   — { finalizedSchedule: {... masked ...} }   any authed user reads
+                             same shape but 事假/病假/特休 cells replaced by 'OFF';
+                             mirrored on every saveMonthlySchedule / updateStaffSchedule / claim-schedule
 archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note, csv? }
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
 SelectionProgress/{YYYY_M} — { submitted_staff: [...] }

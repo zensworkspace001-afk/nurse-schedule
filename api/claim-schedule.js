@@ -110,6 +110,12 @@ export default async function handler(req, res) {
       const updated = { ...finalized };
       delete updated[virtualSlotId];
       updated[actor.uid] = claimedPattern;
+
+      // 連動寫遮罩過的公開版 SchedulesPublic（同事看不到請假類型）
+      const masked = buildSchedulePublicMasked(updated);
+      const publicRef = admin.firestore().doc(`SchedulesPublic/${docId}`);
+      tx.set(publicRef, { finalizedSchedule: masked });
+
       return updated;
     });
 
@@ -133,4 +139,27 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+// 與 src/api/database.js 的 buildSchedulePublicProjection 行為一致：
+// 把 事假/病假/特休 cell 一律遮成 OFF，保護同事的醫療隱私。
+const SENSITIVE_LEAVE_TYPES = new Set(['事假', '病假', '特休']);
+function sanitizeCell(cell) {
+  if (cell == null) return cell;
+  if (typeof cell === 'string') return SENSITIVE_LEAVE_TYPES.has(cell) ? 'OFF' : cell;
+  if (typeof cell === 'object' && SENSITIVE_LEAVE_TYPES.has(cell.type)) {
+    return { ...cell, type: 'OFF' };
+  }
+  return cell;
+}
+function buildSchedulePublicMasked(finalized) {
+  if (!finalized || typeof finalized !== 'object') return {};
+  const out = {};
+  for (const [key, dayCells] of Object.entries(finalized)) {
+    if (!dayCells || typeof dayCells !== 'object') continue;
+    const sanitized = {};
+    for (const [day, cell] of Object.entries(dayCells)) sanitized[day] = sanitizeCell(cell);
+    out[key] = sanitized;
+  }
+  return out;
 }

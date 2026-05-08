@@ -3,7 +3,7 @@ import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut } from "firebase/auth";
-import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
+import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
@@ -323,15 +323,25 @@ const [historyYear, setHistoryYear] = useState(() => {
     const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
     const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
 
-    const unsubSchedule = subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
-      if (data) {
-        setSchedule(data.schedule || {});
-        setFinalizedSchedule(data.finalizedSchedule || null); 
-      } else {
-        setSchedule({}); setFinalizedSchedule(null);
-      }
-      isScheduleLoaded = true; checkAllLoaded();
-    });
+    // ★ 角色分流訂閱班表：
+    //   admin → Schedules/{ym}（含完整 schedule + finalizedSchedule，含原始請假類型）
+    //   staff → SchedulesPublic/{ym}（只含 finalizedSchedule，事假/病假/特休 已遮成 OFF）
+    const unsubSchedule = currentUser.role === 'admin'
+      ? subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+          if (data) {
+            setSchedule(data.schedule || {});
+            setFinalizedSchedule(data.finalizedSchedule || null);
+          } else {
+            setSchedule({}); setFinalizedSchedule(null);
+          }
+          isScheduleLoaded = true; checkAllLoaded();
+        })
+      : subscribeToSchedulePublic(scheduleYear, scheduleMonth, (data) => {
+          // 員工不需要看草稿 schedule，只需 finalizedSchedule（已遮罩過）
+          setSchedule({});
+          setFinalizedSchedule(data?.finalizedSchedule || null);
+          isScheduleLoaded = true; checkAllLoaded();
+        });
 
     const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
         setHistorySchedule(data?.finalizedSchedule || {});

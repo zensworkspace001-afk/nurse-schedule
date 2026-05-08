@@ -118,8 +118,46 @@ export const saveGlobalStaff = async (data) => {
 };
 
 // ============================================================================
-// 3. 每月班表 — 路徑改為 2 段 Schedules/{year_month}
+// 3. 每月班表 — 雙 doc 拆分以遮罩同事的請假紀錄
 // ============================================================================
+//
+// Schedules/{year_month}        — 完整版本（admin only read），含 事假/病假/特休
+// SchedulesPublic/{year_month}  — 員工同事看的版本，事假/病假/特休 一律遮成 OFF
+//
+// 為什麼要拆：原本的 Schedules 規則開放給所有登入者讀，員工 A 可以看到員工 B 的
+// 病假/事假/特休 cell —— 這在 PDPA §6 是特種個資（醫療/健康）外洩。班表的 cell
+// 內容是 string 或 { type: '事假', ...metadata }，遮罩函式只動 type 欄位，不改其他。
+
+const SENSITIVE_LEAVE_TYPES = new Set(['事假', '病假', '特休']);
+
+function sanitizeCell(cell) {
+  if (cell == null) return cell;
+  if (typeof cell === 'string') {
+    return SENSITIVE_LEAVE_TYPES.has(cell) ? 'OFF' : cell;
+  }
+  if (typeof cell === 'object' && SENSITIVE_LEAVE_TYPES.has(cell.type)) {
+    // 保留其他 metadata（例如時數），只遮 type
+    return { ...cell, type: 'OFF' };
+  }
+  return cell;
+}
+
+// 把 finalizedSchedule (map of staff_id → {day: cell}) 整個跑一遍遮罩
+export const buildSchedulePublicProjection = (finalizedSchedule) => {
+  if (!finalizedSchedule || typeof finalizedSchedule !== 'object') return {};
+  const out = {};
+  for (const [key, dayCells] of Object.entries(finalizedSchedule)) {
+    if (!dayCells || typeof dayCells !== 'object') continue;
+    const sanitized = {};
+    for (const [day, cell] of Object.entries(dayCells)) {
+      sanitized[day] = sanitizeCell(cell);
+    }
+    out[key] = sanitized;
+  }
+  return out;
+};
+
+// 管理員 / 後端：訂閱完整 Schedules doc（含 schedule 草稿 + finalizedSchedule）
 export const subscribeToSchedule = (year, month, callback) => {
   if (!year || !month) return () => {};
   const docId = `${year}_${month}`;
@@ -128,34 +166,56 @@ export const subscribeToSchedule = (year, month, callback) => {
   }, (err) => console.error('subscribeToSchedule 失敗:', err));
 };
 
-// ★ 核心修復 1：改用 updateDoc，真正做到「刪除被拔除的班表」
+// 員工：訂閱遮罩過的 SchedulesPublic（只含 finalizedSchedule，且不含請假類型）
+export const subscribeToSchedulePublic = (year, month, callback) => {
+  if (!year || !month) return () => {};
+  const docId = `${year}_${month}`;
+  return onSnapshot(doc(db, 'SchedulesPublic', docId), (snap) => {
+    callback(snap.exists() ? snap.data() : null);
+  }, (err) => console.error('subscribeToSchedulePublic 失敗:', err));
+};
+
+// 管理員寫整份班表（schedule + finalizedSchedule）— 自動 batch 同步到 SchedulesPublic
 export const saveMonthlySchedule = async (year, month, data) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'Schedules', docId);
+  const ref = doc(db, 'Schedules', docId);
+  const publicRef = doc(db, 'SchedulesPublic', docId);
+
+  // 先 try updateDoc（保留現有欄位）；若 doc 不存在就 setDoc 初始化。
   try {
-    await updateDoc(docRef, data); // 強制依照傳入的資料完全覆蓋欄位
+    await updateDoc(ref, data);
   } catch (error) {
     if (error.code === 'not-found') {
-      await setDoc(docRef, data); // 若該月班表尚未建立，則初始化
+      await setDoc(ref, data);
     } else {
       throw error;
     }
+  }
+
+  // SchedulesPublic 部分：只有當 data 含 finalizedSchedule 時才需要更新公開版
+  if (data && data.finalizedSchedule !== undefined) {
+    const masked = buildSchedulePublicProjection(data.finalizedSchedule);
+    await setDoc(publicRef, { finalizedSchedule: masked }, { merge: false });
   }
 };
 
-// ★ 核心修復 2：改用 updateDoc，真正做到「員工認領覆蓋空缺，絕不疊加」
+// 認領 / 取消認領時的快速路徑：只動 finalizedSchedule，連動寫公開版
 export const updateStaffSchedule = async (year, month, finalizedSchedule) => {
   const docId = `${year}_${month}`;
-  const docRef = doc(db, 'Schedules', docId);
+  const ref = doc(db, 'Schedules', docId);
+  const publicRef = doc(db, 'SchedulesPublic', docId);
+  const masked = buildSchedulePublicProjection(finalizedSchedule);
+
   try {
-    await updateDoc(docRef, { finalizedSchedule }); 
+    await updateDoc(ref, { finalizedSchedule });
   } catch (error) {
     if (error.code === 'not-found') {
-      await setDoc(docRef, { finalizedSchedule });
+      await setDoc(ref, { finalizedSchedule });
     } else {
       throw error;
     }
   }
+  await setDoc(publicRef, { finalizedSchedule: masked }, { merge: false });
 };
 
 // ============================================================================
