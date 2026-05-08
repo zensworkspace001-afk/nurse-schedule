@@ -8,6 +8,7 @@ import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } 
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
+import ProfileWizard from './components/ProfileWizard';
 import ParticleBackground from './components/ParticleBackground';
 import SphereDropTransition from './components/SphereDropTransition';
 import './App.refactored.css';
@@ -730,6 +731,19 @@ const handleSaveAndPublish = async () => {
         )}
       </>
     );
+  }
+
+  // 員工首次登入若尚未完善個人資料 → 顯示精靈，擋下主畫面。
+  // 條件：staff 角色 + 雲端資料已載入 + 找到該員工的 row + profile_completed 顯式為 false。
+  //   - 用 === false（而非 !== true）是為了不打擾既有員工：他們的 row 沒這個欄位，視為 undefined，跳過精靈。
+  //   - 只有透過 sync-accounts 新建的員工 / admin 在 StaffManagementPanel 新增的列才會被標記為 false。
+  if (currentUser.role === 'staff' && isCloudLoaded) {
+    const myRow = staffData.find(
+      (s) => String(s.staff_id).toLowerCase() === String(currentUser.id).toLowerCase(),
+    );
+    if (myRow && myRow.profile_completed === false) {
+      return <ProfileWizard staffRow={myRow} currentUser={currentUser} />;
+    }
   }
 
 

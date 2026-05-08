@@ -53,7 +53,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 `src/api/database.js` — All Firestore CRUD: `subscribeToSettings`, `subscribeToStaff`, `subscribeToSchedule`, `saveGlobalSettings`, `saveGlobalStaff`, `saveMonthlySchedule`, `updateStaffSchedule`, `saveArchiveReport`, `subscribeToArchiveReports`, `clearArchiveReports`, `backupScheduleToArchive`. Also exports `auth` and `db` Firebase instances.
 
 **Component hierarchy:**
-- `App.jsx` → `LoginPanel` (unauthenticated) | `ManagerInterface` (admin) | `StaffDashboard` (staff)
+- `App.jsx` → `LoginPanel` (unauthenticated) | `ManagerInterface` (admin) | `ProfileWizard` (staff first-login, gated by `profile_completed !== true`) | `StaffDashboard` (staff)
 - `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`, `AccessLogPanel` (稽核日誌 — admin-only viewer for `access_logs`)
 
 **Key components:**
@@ -83,6 +83,7 @@ Vercel serverless functions:
 | `sync-accounts.js` | Bulk-creates Firebase Auth accounts (`{id}@hospital.com`) with `disabled: true` and a random throwaway password; issues a one-time activation token (`pending_activation/{sha256(token)}`) and emails the user a `/activate?token=...` link. No more hardcoded `123456`. |
 | `reset-password.js` | Admin triggers a password-reset email. Backend revokes prior tokens, issues a new `purpose: 'reset'` token, and sends the same `/activate` link. Backend never sees or sets the new password. |
 | `activate-account.js` | Public endpoint (token IS the auth). `POST {token, newPassword}` → verifies token, enforces strength, sets the password via Admin SDK; for `purpose: 'activation'` also flips `disabled: false`. CSRF + per-IP rate limit. |
+| `complete-profile.js` | Authenticated endpoint (staff Firebase token). On first login the staff fills name / gender / tenure / 孕哺 / 大夜 / encrypted PII (idNumber, bankAccount, phone). Server validates, AES-encrypts the PII, writes the staff's row in `staffData`, sets `profile_completed: true`, and writes one `access_logs` row (action=`encrypt`). Admin cannot use this endpoint. |
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
 | `cron/check-timeout.js` | Runs daily (Vercel Cron `0 0 * * *`); auto-advances agentic turn after 24h timeout |
 | `auto-relay.js` | Triggered when an agentic turn is force-relayed; uses Gemini to pick the next staff and emails the warning + diagnostics. Accepts `CRON_SECRET` or a Firebase ID token. |
@@ -96,6 +97,7 @@ Vercel serverless functions:
 NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary*, levelBonus, publishedDate)
 NurseApp/Staff             — { staffData: [...], healthStats: [...] }
                              staffData[*] sensitive fields (encrypted blob): idNumber*, bankAccount*, phone*
+                             staffData[*].profile_completed: true once the staff has filled the first-login wizard
 Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }
 archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note, csv? }
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }

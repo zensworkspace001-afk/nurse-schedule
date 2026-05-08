@@ -47,7 +47,9 @@ useEffect(() => {
      is_pregnant_or_nursing: false, can_night_shift: true, accumulated_ot: 0, night_shift_balance: 0,
       annual_leave_used: 0, prevMonthLeave: [false, false, false, false, false, false, false],
       // 敏感欄位（加密前為 ''；寫入後為 {ct, iv, tag, v} 密文 blob）
-      idNumber: '', bankAccount: '', phone: ''
+      idNumber: '', bankAccount: '', phone: '',
+      // false ⇒ 員工首次登入會被導向 ProfileWizard 自填這些欄位
+      profile_completed: false,
     };
 
     setLocalStaff([...localStaff, newStaff]);
