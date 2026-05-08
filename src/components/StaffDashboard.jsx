@@ -9,7 +9,7 @@ import './StaffDashboard.css';
 // 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
 // ============================================================================
 // myStaffRow：員工自己的完整 row（含 leave_status / is_pregnant_or_nursing 等敏感欄位）。
-//             由 App.jsx 從 NurseApp/StaffPrivate/{id} 訂閱後傳入。
+//             由 App.jsx 從 StaffPrivate/{id} 訂閱後傳入。
 //             staffData 現在只含同事的精簡公開投影（staff_id, name, level, is_leader, is_active），
 //             不再含上述敏感欄位 — 故所有「自己的」狀態檢查都改用 myStaffRow。
 const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [] }) => {

@@ -100,8 +100,9 @@ NurseApp/Staff             — { staffData: [...], healthStats: [...] }   admin-
                              staffData[*].profile_completed: true once the staff has filled the first-login wizard
 NurseApp/StaffPublic       — { staffData: [{staff_id,name,level,is_leader,is_active}, ...] }   any authed user reads
                              sanitized projection — no PII, health, or financial fields. mirrored on every saveGlobalStaff.
-NurseApp/StaffPrivate/{id} — full row for a single staff   admin or matching staff uid reads
+StaffPrivate/{id}          — top-level collection; full row for a single staff   admin or matching staff uid reads
                              same shape as a single element of NurseApp/Staff.staffData
+                             (top-level rather than NurseApp/StaffPrivate/* because Firestore doc paths must be even segments)
 Schedules/{YYYY_M}         — { schedule: {...}, finalizedSchedule: {...} }
 archive_reports/{YYYY_M}   — { year, month, schedule_backup, backedUpAt, note, csv? }
 SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }

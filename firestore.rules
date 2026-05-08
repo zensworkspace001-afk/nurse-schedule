@@ -60,12 +60,16 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // 2b. NurseApp/StaffPrivate/{staffId} — 員工自己的完整 row
+    // 2b. StaffPrivate/{staffId} — 員工自己的完整 row（頂層 collection）
     //    內容是該員工在 staffData 陣列裡那一筆的完整副本。
     //    讀取：admin 全部可讀；員工只能讀自己（uid 必須等於 docId）
     //    寫入：僅管理員（含 ProfileWizard 透過 /api/complete-profile 走 Admin SDK）
+    //
+    //    為什麼是頂層而非 NurseApp/StaffPrivate/{id}：Firestore 的 doc 路徑必須是
+    //    偶數段，NurseApp/StaffPrivate/{id} 是 3 段（不合法）；頂層 StaffPrivate/{id}
+    //    是 2 段（合法）。
     // ============================================================
-    match /NurseApp/StaffPrivate/{staffId} {
+    match /StaffPrivate/{staffId} {
       allow read: if isAdmin() || isStaff(staffId);
       allow write: if isAdmin();
     }

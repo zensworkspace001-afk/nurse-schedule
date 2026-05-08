@@ -299,7 +299,7 @@ const [historyYear, setHistoryYear] = useState(() => {
 
     // ★ 角色分流訂閱：
     //   admin → 訂閱完整 NurseApp/Staff（規則限定 admin 才能讀）
-    //   staff → 訂閱 NurseApp/StaffPublic（同事用精簡投影）+ 自己的 NurseApp/StaffPrivate/{id}
+    //   staff → 訂閱 NurseApp/StaffPublic（同事用精簡投影）+ 自己的 StaffPrivate/{id}
     let unsubStaff;
     let unsubMyPrivate = null;
     if (currentUser.role === 'admin') {

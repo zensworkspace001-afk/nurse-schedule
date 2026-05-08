@@ -157,9 +157,9 @@ export default async function handler(req, res) {
     staffData[idx] = updatedRow;
 
     // 三層 doc 同步寫入（與前端 saveGlobalStaff 相同的拆分策略）：
-    //   1. NurseApp/Staff           — 完整名單 (admin 用)
-    //   2. NurseApp/StaffPublic     — 精簡公開投影 (同事看得到的部分)
-    //   3. NurseApp/StaffPrivate/{id} — 該員工自己的完整 row
+    //   1. NurseApp/Staff       — 完整名單 (admin 用)
+    //   2. NurseApp/StaffPublic — 精簡公開投影 (同事看得到的部分)
+    //   3. StaffPrivate/{id}    — 該員工自己的完整 row（頂層 collection；2 段路徑才是合法 doc）
     const publicList = staffData.map((s) => ({
       staff_id: s.staff_id,
       name: s.name,
@@ -172,7 +172,7 @@ export default async function handler(req, res) {
     batch.update(staffRef, { staffData });
     batch.set(admin.firestore().doc('NurseApp/StaffPublic'), { staffData: publicList });
     batch.set(
-      admin.firestore().doc(`NurseApp/StaffPrivate/${updatedRow.staff_id}`),
+      admin.firestore().doc(`StaffPrivate/${updatedRow.staff_id}`),
       updatedRow,
     );
     await batch.commit();

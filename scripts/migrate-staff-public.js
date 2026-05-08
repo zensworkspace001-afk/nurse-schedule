@@ -70,7 +70,7 @@ async function main() {
   publicList.slice(0, 5).forEach((s) => console.log('  -', s));
   if (publicList.length > 5) console.log(`  ...其餘 ${publicList.length - 5} 筆省略`);
 
-  console.log(`\n即將寫入 NurseApp/StaffPrivate/{staff_id} (${fullStaffData.length} 筆)：`);
+  console.log(`\n即將寫入 StaffPrivate/{staff_id} (${fullStaffData.length} 筆)：`);
   fullStaffData.slice(0, 3).forEach((s) => {
     console.log(`  - ${s.staff_id} (${s.name})`);
   });
@@ -93,7 +93,7 @@ async function main() {
     }
     for (const s of slice) {
       if (!s.staff_id) continue;
-      batch.set(db.doc(`NurseApp/StaffPrivate/${s.staff_id}`), s);
+      batch.set(db.doc(`StaffPrivate/${s.staff_id}`), s);
     }
     await batch.commit();
     written += slice.length;

@@ -48,7 +48,8 @@ export const saveGlobalSettings = async (data) => {
 //
 // NurseApp/Staff              — 完整資料（admin only read）
 // NurseApp/StaffPublic        — 同事看的最小投影 {staff_id, name, level, is_leader, is_active}
-// NurseApp/StaffPrivate/{id}  — 員工自己的完整 row（id 對應的 staff 才能讀）
+// StaffPrivate/{id}           — 員工自己的完整 row（頂層 collection；id 對應的 staff 或 admin 才能讀）
+//                                (路徑必須是 2 段才是合法 Firestore doc，不能放在 NurseApp/StaffPrivate/{id})
 //
 // 為什麼要這樣切：原本的 NurseApp/Staff 規則是 isAuthenticated 可讀，
 // 任何登入者都能透過 client SDK 撈到全院的姓名/email/性別/是否懷孕/年資/累積加班…
@@ -81,9 +82,10 @@ export const subscribeToStaffPublic = (callback) => {
 };
 
 // 員工：訂閱自己的完整 row（規則限定 staff_id 對應或 admin）
+// 路徑採頂層 collection StaffPrivate/{staffId}（2 段才是合法 doc 路徑）
 export const subscribeToMyStaffPrivate = (staffId, callback) => {
   if (!staffId) return () => {};
-  return onSnapshot(doc(db, 'NurseApp', 'StaffPrivate', String(staffId)), (snap) => {
+  return onSnapshot(doc(db, 'StaffPrivate', String(staffId)), (snap) => {
     callback(snap.exists() ? snap.data() : null);
   }, (err) => console.error('subscribeToMyStaffPrivate 失敗:', err));
 };
@@ -107,10 +109,10 @@ export const saveGlobalStaff = async (data) => {
   batch.set(doc(db, 'NurseApp', 'Staff'), data, { merge: true });
   // 2. 精簡公開投影
   batch.set(doc(db, 'NurseApp', 'StaffPublic'), { staffData: publicList }, { merge: false });
-  // 3. 每位員工的私有 row（覆蓋寫入）
+  // 3. 每位員工的私有 row（覆蓋寫入；StaffPrivate 為頂層 collection）
   for (const s of fullList) {
     if (!s.staff_id) continue;
-    batch.set(doc(db, 'NurseApp', 'StaffPrivate', String(s.staff_id)), s);
+    batch.set(doc(db, 'StaffPrivate', String(s.staff_id)), s);
   }
   await batch.commit();
 };
