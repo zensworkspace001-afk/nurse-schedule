@@ -101,7 +101,11 @@ export default async function handler(req, res) {
   try {
     const token = authHeader.split('Bearer ')[1];
     const decoded = await admin.auth().verifyIdToken(token);
-    actor = { uid: decoded.uid, email: decoded.email || null };
+    // 從 email 反推 staff_id（同 claim-schedule.js 邏輯，避免 Firebase 自動 UID 污染資料）
+    const email = decoded.email || '';
+    const m = email.match(/^([^@]+)@hospital\.com$/i);
+    const staffId = m ? m[1].toUpperCase() : decoded.uid;
+    actor = { uid: staffId, email, firebaseUid: decoded.uid };
   } catch {
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }

@@ -59,7 +59,12 @@ export default async function handler(req, res) {
   try {
     const token = authHeader.split('Bearer ')[1];
     const decoded = await admin.auth().verifyIdToken(token);
-    actor = { uid: decoded.uid, email: decoded.email || null };
+    // 從 email 反推 staff_id，避免 Firebase Auth 自動產生的 UID（如舊資料 67Volw5UJwexeLXPBd1nj…）
+    // 變成 schedule key。loginEmail 在 sync 時固定為 ${staff_id.toLowerCase()}@hospital.com。
+    const email = decoded.email || '';
+    const m = email.match(/^([^@]+)@hospital\.com$/i);
+    const staffId = m ? m[1].toUpperCase() : decoded.uid;
+    actor = { uid: staffId, email, firebaseUid: decoded.uid };
   } catch {
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }
