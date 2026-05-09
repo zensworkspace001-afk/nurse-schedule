@@ -123,13 +123,13 @@ useEffect(() => {
 
       try {
           const token = await auth.currentUser.getIdToken();
-          const response = await fetch('/api/reset-password', {
+          const response = await fetch('/api/admin-user', {
               method: 'POST',
               headers: {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}`
               },
-              body: JSON.stringify({ staffId: id })
+              body: JSON.stringify({ action: 'reset', staffId: id })
           });
 
           const data = await response.json();
@@ -152,19 +152,20 @@ const handleSave = async () => {
     // 2. 偷偷在背景呼叫 Vercel API，幫大家建帳號！
     try {
         const token = await auth.currentUser.getIdToken();
-        const response = await fetch('/api/sync-accounts', {
+        const response = await fetch('/api/admin-user', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ staffList: localStaff })
+            body: JSON.stringify({ action: 'sync', staffList: localStaff })
         });
 
         const data = await response.json();
 
         if(response.ok) {
-            alert(`✅ 員工資料已成功儲存！\n\n🔑 【系統後台報告】\n- 自動開通新帳號：${data.result.successCount} 人\n- 既有帳號已略過：${data.result.existedCount} 人\n- 發生錯誤：${data.result.errorCount} 人`);
+            const r = data.result || {};
+            alert(`✅ 員工資料已成功儲存！\n\n🔑 【系統後台報告】\n- 自動開通新帳號：${r.invitedCount ?? r.successCount ?? 0} 人\n- 既有帳號已略過：${r.existedCount ?? 0} 人\n- 發生錯誤：${r.errorCount ?? 0} 人`);
         } else {
             alert(`⚠️ 資料已儲存，但建立登入帳號時發生錯誤：${data.error}`);
         }

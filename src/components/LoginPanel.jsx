@@ -43,7 +43,7 @@ try {
                 fetch('/api/log-login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({}),
+                    body: JSON.stringify({ success: true }),
                 }).catch(() => {});
             }
         } catch { /* 寫稽核失敗不影響登入流程 */ }
@@ -65,10 +65,11 @@ try {
         if (onApiStatus) onApiStatus('red', `登入失敗: ${err.code || err.message}`);
 
         // ★ 稽核：登入失敗，fire-and-forget 不阻擋 UI
-        fetch('/api/log-login-failure', {
+        fetch('/api/log-login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+                success: false,
                 attempted_email: emailToLogin,
                 error_code: err.code || 'unknown',
             }),

@@ -1,16 +1,11 @@
 // api/log-login.js
 //
-// 記錄成功登入到 access_logs。
-// LoginPanel 在 signInWithEmailAndPassword 成功後 fire-and-forget 呼叫。
+// 統一登入稽核端點：成功與失敗都走這裡（兩個分支以 body.success 切換）
+// 分開兩支 API 會超過 Vercel Hobby plan 12 個 function 上限。
 //
-// POST /api/log-login   (Bearer Firebase ID token)
-//   Body: 無
-//
-// 安全：
-//   - 必須 token 驗證通過 — 只有真的拿到合法 token 的使用者才能寫成功登入紀錄。
-//   - rate limit per uid（10/min；正常每分鐘最多登入幾次）。
-//
-// 不擋業務流程：寫稽核失敗就只回 500，前端應 fire-and-forget。
+// POST /api/log-login
+//   { success: true }                                   ← 必須 Bearer Firebase token
+//   { success: false, attempted_email, error_code }     ← 無 auth；以 IP rate-limit
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -38,32 +33,51 @@ export default async function handler(req, res) {
   const csrf = checkCsrf(req);
   if (!csrf.allowed) return res.status(403).json({ error: '禁止：非法來源' });
 
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: '未經授權：缺少登入憑證' });
+  const meta = extractClientMeta(req);
+  const { success, attempted_email, error_code } = req.body || {};
+
+  if (success === true) {
+    // —— 成功登入：必須帶 token ——
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: '未經授權：缺少登入憑證' });
+    }
+    let actor;
+    try {
+      const token = authHeader.split('Bearer ')[1];
+      const decoded = await admin.auth().verifyIdToken(token);
+      actor = { uid: decoded.uid, email: decoded.email || null };
+    } catch {
+      return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
+    }
+    const rl = checkRateLimit(`log-login:${actor.uid}`, 10);
+    if (!rl.allowed) return res.status(429).json({ error: '請求過於頻繁' });
+
+    await writeAccessLog({
+      actor,
+      action: 'login',
+      target: { kind: 'auth', id: actor.uid },
+      fields: [],
+      ip: meta.ip, ua: meta.ua,
+      extra: null,
+    });
+    return res.status(200).json({ ok: true });
   }
 
-  let actor;
-  try {
-    const token = authHeader.split('Bearer ')[1];
-    const decoded = await admin.auth().verifyIdToken(token);
-    actor = { uid: decoded.uid, email: decoded.email || null };
-  } catch {
-    return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
-  }
-
-  const rl = checkRateLimit(`log-login:${actor.uid}`, 10);
+  // —— 登入失敗：無 auth；以 IP rate-limit 防灌爆 ——
+  const rl = checkRateLimit(`log-login-fail:${meta.ip || 'unknown'}`, 10);
   if (!rl.allowed) return res.status(429).json({ error: '請求過於頻繁' });
 
-  const meta = extractClientMeta(req);
+  const safeEmail = typeof attempted_email === 'string' ? attempted_email.slice(0, 200) : null;
+  const safeCode = typeof error_code === 'string' ? error_code.slice(0, 100) : null;
+
   await writeAccessLog({
-    actor,
-    action: 'login',
-    target: { kind: 'auth', id: actor.uid },
+    actor: { uid: null, email: null },
+    action: 'login-failure',
+    target: { kind: 'auth', id: null },
     fields: [],
     ip: meta.ip, ua: meta.ua,
-    extra: null,
+    extra: { attempted_email: safeEmail, error_code: safeCode },
   });
-
   return res.status(200).json({ ok: true });
 }
