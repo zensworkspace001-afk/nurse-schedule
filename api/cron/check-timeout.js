@@ -30,7 +30,14 @@ export default async function handler(req, res) {
 
     try {
         console.log("🤖 [巡邏機器人] 啟動巡邏...");
-        
+
+        // ==========================================
+        // ★ 0. 個資法保留期限掃除：access_logs + pending_activation
+        //    每天執行一次，把過期紀錄刪掉。Vercel Hobby plan 12 個 function 上限，
+        //    無法拆獨立 cron，併在這支裡跑。
+        // ==========================================
+        await runRetentionSweep();
+
         // 動態取得當前年月（Vercel Cron 每日執行）
         const now = new Date();
         const currentYear = now.getFullYear();
@@ -117,5 +124,56 @@ export default async function handler(req, res) {
     } catch (error) {
         console.error("巡邏機器人發生錯誤:", error);
         return res.status(500).json({ error: '巡邏機器人發生錯誤' });
+    }
+}
+
+// ============================================================================
+// 個資法保留期限掃除
+// ----------------------------------------------------------------------------
+// access_logs：保留 ACCESS_LOG_RETENTION_DAYS 天（預設 180 天 ≈ 半年）。
+//              PDPA §19 / §27 要求個資「在達成目的後應主動刪除」。
+//              審計追溯通常半年至一年足夠，避免無限增長。
+//
+// pending_activation：token TTL 24 小時，但未消化的 doc 會殘留。安全網設 7 天，
+//                     超過就清掉（即使 token 已逾期也可能還在）。
+//
+// 使用 batched delete（每批最多 400，避免 Firestore 500 上限）。
+// 失敗只 log，不擋主流程（巡邏機器人是 cron 觸發，沒有使用者在等）。
+// ============================================================================
+async function runRetentionSweep() {
+    const ACCESS_LOG_DAYS = Number(process.env.ACCESS_LOG_RETENTION_DAYS) || 180;
+    const ACCESS_LOG_CUTOFF = new Date(Date.now() - ACCESS_LOG_DAYS * 86400000).toISOString();
+    const PENDING_TOKEN_CUTOFF = admin.firestore.Timestamp.fromMillis(Date.now() - 7 * 86400000);
+
+    try {
+        // access_logs 用 ts (ISO string) 索引
+        const oldLogs = await db.collection('access_logs')
+            .where('ts', '<', ACCESS_LOG_CUTOFF)
+            .limit(400)
+            .get();
+        if (!oldLogs.empty) {
+            const batch = db.batch();
+            oldLogs.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            console.log(`🗑 retention: 已刪除 ${oldLogs.size} 筆超過 ${ACCESS_LOG_DAYS} 天的 access_logs`);
+        }
+    } catch (err) {
+        console.warn('access_logs retention sweep 失敗:', err.message);
+    }
+
+    try {
+        // pending_activation 用 createdAt (Firestore Timestamp) 索引
+        const oldTokens = await db.collection('pending_activation')
+            .where('createdAt', '<', PENDING_TOKEN_CUTOFF)
+            .limit(400)
+            .get();
+        if (!oldTokens.empty) {
+            const batch = db.batch();
+            oldTokens.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            console.log(`🗑 retention: 已刪除 ${oldTokens.size} 筆超過 7 天的 pending_activation token`);
+        }
+    } catch (err) {
+        console.warn('pending_activation retention sweep 失敗:', err.message);
     }
 }

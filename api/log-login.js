@@ -64,12 +64,22 @@ export default async function handler(req, res) {
     return res.status(200).json({ ok: true });
   }
 
-  // —— 登入失敗：無 auth；以 IP rate-limit 防灌爆 ——
-  const rl = checkRateLimit(`log-login-fail:${meta.ip || 'unknown'}`, 10);
-  if (!rl.allowed) return res.status(429).json({ error: '請求過於頻繁' });
+  // —— 登入失敗：無 auth；雙軌 rate-limit ——
+  // 1) 同 IP 每分鐘最多 10 筆（防同一機器灌爆）
+  // 2) 同 attempted_email 每分鐘最多 5 筆（防攻擊者輪流換 IP 對單一帳號暴力嘗試）
+  const ipRl = checkRateLimit(`log-login-fail-ip:${meta.ip || 'unknown'}`, 10);
+  if (!ipRl.allowed) return res.status(429).json({ error: '請求過於頻繁' });
 
   const safeEmail = typeof attempted_email === 'string' ? attempted_email.slice(0, 200) : null;
   const safeCode = typeof error_code === 'string' ? error_code.slice(0, 100) : null;
+
+  if (safeEmail) {
+    const emailRl = checkRateLimit(`log-login-fail-email:${safeEmail.toLowerCase()}`, 5);
+    if (!emailRl.allowed) {
+      // 不告訴呼叫者超限的具體原因 — 避免讓攻擊者推測哪個 email 存在
+      return res.status(429).json({ error: '請求過於頻繁' });
+    }
+  }
 
   await writeAccessLog({
     actor: { uid: null, email: null },

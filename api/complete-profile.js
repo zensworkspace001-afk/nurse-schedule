@@ -37,6 +37,14 @@ if (!admin.apps.length) {
   });
 }
 
+// 後端銀行代碼白名單 — 與 src/constants/banks.js 同步
+// 任何新增銀行請兩邊都更新。Set 提供 O(1) lookup。
+const TAIWAN_BANK_CODES = new Set([
+  '700', '004', '005', '006', '007', '008', '009', '011', '012', '013',
+  '016', '017', '050', '052', '053', '081', '102', '103', '108', '147',
+  '803', '805', '806', '807', '808', '809', '810', '812', '816', '822',
+]);
+
 function validate(body) {
   const errors = [];
   const name = String(body.name ?? '').trim();
@@ -53,9 +61,15 @@ function validate(body) {
   if (!idNumber) errors.push('身分證 / 居留證號不可為空');
   if (idNumber.length < 4 || idNumber.length > 20) errors.push('身分證號長度異常');
 
+  // 銀行帳號必須是 "###-##########" 格式，且 ### 在白名單內
   const bankAccount = String(body.bankAccount ?? '').trim();
   if (!bankAccount) errors.push('銀行帳號不可為空');
-  if (!/^[0-9-]{6,30}$/.test(bankAccount)) errors.push('銀行帳號僅限數字與連字號（6–30 碼）');
+  const bankMatch = bankAccount.match(/^(\d{3})-(\d{6,16})$/);
+  if (!bankMatch) {
+    errors.push('銀行帳號格式錯誤（需為「銀行三碼-帳號」如 008-1234567890）');
+  } else if (!TAIWAN_BANK_CODES.has(bankMatch[1])) {
+    errors.push(`銀行代碼 ${bankMatch[1]} 不在合法清單內`);
+  }
 
   const phone = String(body.phone ?? '').trim();
   if (!phone) errors.push('手機號碼不可為空');
