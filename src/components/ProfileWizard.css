@@ -62,19 +62,21 @@
   100% { transform: translate(0, 0)        scale(1)   rotate(360deg); }
 }
 
-/* 卡片視覺與 .app__modal 完全一致，只是 max-width 加寬以容納 3 步表單 */
+/* 卡片視覺與 .app__modal 一致，但透明度更低（讓背景動態色塊透出來） */
 .profwiz__card {
   position: relative;
   z-index: 2;  /* 高於 blob 與粒子背景 */
   width: 100%;
   max-width: 520px;
   padding: 2.5rem;
-  background: rgba(255, 255, 255, 0.2);
-  backdrop-filter: blur(25px);
-  -webkit-backdrop-filter: blur(25px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(30px) saturate(1.5);
+  -webkit-backdrop-filter: blur(30px) saturate(1.5);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 20px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 10px 40px rgba(0, 0, 0, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
   color: #ffffff;
   animation: profwizCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -194,6 +196,42 @@
   box-shadow: 0 0 8px rgba(255, 214, 102, 0.3);
 }
 .profwiz__input::placeholder { color: rgba(255, 255, 255, 0.5); }
+
+/* select 的下拉箭頭與選項配色，視覺對齊 input */
+.profwiz__input--select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  cursor: pointer;
+  /* 自繪下拉箭頭（白色 v 形） */
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path d='M1 1.5l5 5 5-5' stroke='%23ffffff' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+.profwiz__input--select option {
+  background: #1a1a2e;  /* 大多數瀏覽器需實色背景 */
+  color: #ffffff;
+}
+
+/* 「匯款代碼預覽」小行，組合好的「###-#######」會顯示在帳號下方 */
+.profwiz__field-preview {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 6px 10px;
+  background: rgba(255, 214, 102, 0.12);
+  border: 1px solid rgba(255, 214, 102, 0.35);
+  border-radius: 6px;
+  font-size: 12px;
+  color: #ffd666;
+  font-weight: 500;
+}
+.profwiz__field-preview strong {
+  font-family: 'Courier New', monospace;
+  font-weight: 700;
+  margin-left: 4px;
+  letter-spacing: 0.5px;
+}
 
 /* 性別選擇按鈕 — 用 input 同樣的視覺層次 */
 .profwiz__radio-row {

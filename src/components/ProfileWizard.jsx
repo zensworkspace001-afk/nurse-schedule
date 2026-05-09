@@ -5,6 +5,40 @@ import { signOut } from 'firebase/auth';
 import ParticleBackground from './ParticleBackground';
 import './ProfileWizard.css';
 
+// 台灣常見銀行（金管會三碼代碼）— 排序：常見的銀行優先
+const TAIWAN_BANKS = [
+  { code: '700', name: '中華郵政' },
+  { code: '004', name: '臺灣銀行' },
+  { code: '005', name: '土地銀行' },
+  { code: '006', name: '合作金庫' },
+  { code: '007', name: '第一銀行' },
+  { code: '008', name: '華南銀行' },
+  { code: '009', name: '彰化銀行' },
+  { code: '011', name: '上海商銀' },
+  { code: '012', name: '台北富邦' },
+  { code: '013', name: '國泰世華' },
+  { code: '016', name: '高雄銀行' },
+  { code: '017', name: '兆豐國際' },
+  { code: '050', name: '臺灣中小企銀' },
+  { code: '052', name: '渣打國際' },
+  { code: '053', name: '台中商銀' },
+  { code: '081', name: '滙豐(台灣)' },
+  { code: '102', name: '華泰商銀' },
+  { code: '103', name: '臺灣新光商銀' },
+  { code: '108', name: '陽信商銀' },
+  { code: '147', name: '三信商銀' },
+  { code: '803', name: '聯邦銀行' },
+  { code: '805', name: '遠東銀行' },
+  { code: '806', name: '元大銀行' },
+  { code: '807', name: '永豐銀行' },
+  { code: '808', name: '玉山銀行' },
+  { code: '809', name: '凱基銀行' },
+  { code: '810', name: '星展(台灣)' },
+  { code: '812', name: '台新銀行' },
+  { code: '816', name: '安泰銀行' },
+  { code: '822', name: '中國信託' },
+];
+
 // 員工首次啟用後的「完善個人資料」精靈。
 // 三步：
 //   1. 基本資料（姓名 / 性別 / 年資）
@@ -23,7 +57,8 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
     is_pregnant_or_nursing: Boolean(staffRow?.is_pregnant_or_nursing),
     can_night_shift: staffRow?.can_night_shift !== false,
     idNumber: '',
-    bankAccount: '',
+    bankCode: '',     // 銀行代碼（從下拉選單選）
+    bankAccount: '',  // 帳號（純數字）
     phone: '',
   }));
 
@@ -41,10 +76,15 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   const validateStep3 = () => {
     if (!form.idNumber.trim()) return '請輸入身分證 / 居留證號';
     if (form.idNumber.length < 4) return '身分證號過短';
-    if (!/^[0-9-]{6,30}$/.test(form.bankAccount)) return '銀行帳號僅限數字與連字號（6–30 碼）';
+    if (!form.bankCode) return '請選擇匯款銀行';
+    if (!/^\d{6,16}$/.test(form.bankAccount)) return '銀行帳號需為 6–16 碼純數字';
     if (!/^09\d{8}$/.test(form.phone)) return '手機需為 09 開頭共 10 碼';
     return null;
   };
+
+  // 把選定的銀行代碼與帳號合併成後端期待的 "###-#######" 格式
+  const composedBankAccount = () =>
+    form.bankCode && form.bankAccount ? `${form.bankCode}-${form.bankAccount}` : '';
 
   const handleNext = () => {
     setError('');
@@ -78,7 +118,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
           is_pregnant_or_nursing: form.is_pregnant_or_nursing,
           can_night_shift: form.can_night_shift,
           idNumber: form.idNumber.trim(),
-          bankAccount: form.bankAccount.trim(),
+          bankAccount: composedBankAccount(),
           phone: form.phone.trim(),
         }),
       });
@@ -216,16 +256,36 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
             </label>
 
             <label className="profwiz__label">
+              匯款銀行
+              <select
+                value={form.bankCode}
+                onChange={(e) => update('bankCode', e.target.value)}
+                className="profwiz__input profwiz__input--select"
+              >
+                <option value="" disabled>— 請選擇 —</option>
+                {TAIWAN_BANKS.map((b) => (
+                  <option key={b.code} value={b.code}>{b.code}　{b.name}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="profwiz__label">
               銀行帳號（薪資匯入用）
               <input
                 type="text"
                 value={form.bankAccount}
-                onChange={(e) => update('bankAccount', e.target.value)}
+                onChange={(e) => update('bankAccount', e.target.value.replace(/\D/g, ''))}
                 className="profwiz__input"
-                placeholder="僅輸入數字，連字號可選"
+                placeholder="例如：1234567890123（請輸入純數字）"
                 autoComplete="off"
                 inputMode="numeric"
+                maxLength={16}
               />
+              {form.bankCode && form.bankAccount && (
+                <span className="profwiz__field-preview">
+                  匯款代碼：<strong>{form.bankCode}-{form.bankAccount}</strong>
+                </span>
+              )}
             </label>
 
             <label className="profwiz__label">
