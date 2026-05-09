@@ -90,18 +90,22 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
   const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
+  // selectedMonth/Year 預設行為：
+  //   1. localStorage 有 → 用使用者上次手動選的（admin 換月份後該保留）
+  //   2. 沒有 → 暫用「本月」當佔位，等 publishedDate 從雲端載完再 sync 到那個月
+  // 「目前正在被排班的月份」= publishedDate（員工現在認領中的那個月）
   const [selectedMonth, setSelectedMonth] = useState(() => {
     const saved = Number(localStorage.getItem('selectedMonth'));
     if (saved) return saved;
-    const next = new Date().getMonth() + 2; // getMonth() is 0-based, +1 for current, +1 for next
-    return next > 12 ? 1 : next;
+    return new Date().getMonth() + 1; // 佔位
   });
   const [selectedYear, setSelectedYear] = useState(() => {
     const saved = Number(localStorage.getItem('selectedYear'));
     if (saved) return saved;
-    const now = new Date();
-    return now.getMonth() === 11 ? now.getFullYear() + 1 : now.getFullYear();
+    return new Date().getFullYear(); // 佔位
   });
+  // 紀錄「初始有沒有 localStorage」 — 用來決定第一次 publishedDate 載入後要不要覆蓋過去
+  const initialNoSavedMonthRef = React.useRef(!localStorage.getItem('selectedMonth'));
 // ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
   const [historyMonth, setHistoryMonth] = useState(() => {
   const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
@@ -117,6 +121,21 @@ const [historyYear, setHistoryYear] = useState(() => {
   
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
+
+  // 雲端 publishedDate 載入後，若初始時 localStorage 沒值（=admin 沒手動選過），
+  // 把 selectedMonth/Year 同步到 publishedDate（「正在被排班的那個月份」）。
+  // 只跑一次：synced 完就把 ref 標記掉，後續 admin 自己改月份不會再被覆蓋。
+  useEffect(() => {
+    if (
+      initialNoSavedMonthRef.current &&
+      publishedDate?.month &&
+      publishedDate?.year
+    ) {
+      setSelectedMonth(publishedDate.month);
+      setSelectedYear(publishedDate.year);
+      initialNoSavedMonthRef.current = false;
+    }
+  }, [publishedDate]);
 
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [closingStatusDropdown, setClosingStatusDropdown] = useState(false);
