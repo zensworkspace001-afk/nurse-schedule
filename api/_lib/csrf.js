@@ -10,15 +10,31 @@ const ALLOWED_ORIGINS = [
 
 /**
  * 驗證請求來源是否合法
+ *
+ * 規則：
+ *   1. 有 Origin / Referer → 必須在 ALLOWED_ORIGINS 白名單內
+ *   2. 沒有 Origin / Referer → 必須帶 Authorization: Bearer ${CRON_SECRET}
+ *      （這是 cron job 與內部 server-to-server 呼叫的合法路徑）
+ *      否則拒絕。原本「沒 Origin 直接放行」會讓任何 curl/Postman 繞過 CSRF；
+ *      改成這樣後縱深防禦才實際有效。
+ *
  * @param {object} req - Vercel request object
  * @returns {{ allowed: boolean, origin: string }}
  */
 export function checkCsrf(req) {
-  // Cron 或伺服器對伺服器呼叫沒有 Origin header，允許通過
   const origin = req.headers.origin || req.headers.referer;
-  if (!origin) return { allowed: true, origin: 'server-to-server' };
 
-  const normalizedOrigin = origin.replace(/\/+$/, '');
-  const isAllowed = ALLOWED_ORIGINS.some(allowed => normalizedOrigin === allowed);
-  return { allowed: isAllowed, origin };
+  if (origin) {
+    const normalizedOrigin = origin.replace(/\/+$/, '');
+    const isAllowed = ALLOWED_ORIGINS.some(allowed => normalizedOrigin === allowed);
+    return { allowed: isAllowed, origin };
+  }
+
+  // 沒 Origin → 必須是 cron / server-to-server 呼叫，需提供 CRON_SECRET 才放行
+  const auth = req.headers.authorization;
+  if (auth === `Bearer ${process.env.CRON_SECRET}`) {
+    return { allowed: true, origin: 'cron' };
+  }
+
+  return { allowed: false, origin: 'unknown' };
 }
