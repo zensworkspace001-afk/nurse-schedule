@@ -1,3 +1,14 @@
+/* ==========================================================================
+   ProfileWizard — 與「改密碼 modal」(.app__modal) 一致的毛玻璃風格
+   ========================================================================== */
+
+@keyframes profwizCardIn {
+  0%   { opacity: 0; transform: scale(0.85) translateY(30px); }
+  100% { opacity: 1; transform: scale(1)    translateY(0); }
+}
+@keyframes profwizSpin { to { transform: rotate(360deg); } }
+
+/* 全頁深色漸層背景（這頁是登入後第一畫面，沒有底層 panel） */
 .profwiz {
   width: 100vw;
   min-height: 100vh;
@@ -6,67 +17,80 @@
   justify-content: center;
   padding: 20px;
   box-sizing: border-box;
-  background: linear-gradient(135deg, #1f2a3a 0%, #0e151f 100%);
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
   font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
 }
 
+/* 卡片視覺與 .app__modal 完全一致，只是 max-width 加寬以容納 3 步表單 */
 .profwiz__card {
   position: relative;
   width: 100%;
   max-width: 520px;
-  padding: 36px 36px 28px;
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 18px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
-  color: #f5f5f5;
+  padding: 2.5rem;
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(25px);
+  -webkit-backdrop-filter: blur(25px);
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 20px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  animation: profwizCardIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* 右上角登出按鈕 — 跟 .app__modal-close-btn 同款 */
 .profwiz__logout {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: 15px;
+  right: 20px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 11px;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(245, 245, 245, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
+  padding: 6px 12px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  color: #ffffff;
   font-size: 12px;
   cursor: pointer;
+  transition: all 0.3s;
 }
 .profwiz__logout:hover {
-  background: rgba(255, 80, 80, 0.15);
-  color: #ffb3b3;
-  border-color: rgba(255, 80, 80, 0.35);
+  background: rgba(255, 77, 79, 0.25);
+  border-color: rgba(255, 77, 79, 0.6);
+  color: #ff7875;
 }
 
 .profwiz__title {
+  margin: 0 0 12px;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 0 12px;
   font-size: 22px;
-  font-weight: 700;
+  font-weight: 600;
+  color: #ffffff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  text-align: center;
+  justify-content: center;
 }
 
 .profwiz__greeting {
   margin: 0 0 22px;
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1.65;
-  color: rgba(245, 245, 245, 0.82);
+  color: rgba(255, 255, 255, 0.85);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* 步驟指示器 */
 .profwiz__steps {
   display: flex;
   gap: 6px;
   margin-bottom: 22px;
   padding: 4px;
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.18);
   border-radius: 999px;
 }
 .profwiz__step {
@@ -79,51 +103,59 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(245, 245, 245, 0.55);
+  color: rgba(255, 255, 255, 0.6);
   transition: all 0.15s;
 }
 .profwiz__step--active {
-  background: linear-gradient(135deg, #0066cc, #0099ff);
-  color: white;
-  box-shadow: 0 4px 12px rgba(0, 153, 255, 0.35);
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border: 1px solid rgba(255, 214, 102, 0.5);
 }
 .profwiz__step--done {
-  color: #4ade80;
+  color: #95de64;
 }
 
+/* 表單區 */
 .profwiz__form {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 15px;
   margin-bottom: 18px;
+  margin-top: 10px;
 }
 
 .profwiz__label {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  color: rgba(245, 245, 245, 0.85);
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* 與 .app__modal-input 一致：黑色半透明 + 白邊框 + 黃色 focus */
 .profwiz__input {
-  padding: 11px 14px;
-  background: rgba(255, 255, 255, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  width: 100%;
+  padding: 12px;
   border-radius: 8px;
-  color: #fff;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
   font-size: 15px;
   outline: none;
   font-family: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  box-sizing: border-box;
+  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
 }
 .profwiz__input:focus {
-  border-color: #4fb3ff;
-  background: rgba(255, 255, 255, 0.14);
+  border-color: #ffd666;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 8px rgba(255, 214, 102, 0.3);
 }
-.profwiz__input::placeholder { color: rgba(245, 245, 245, 0.4); }
+.profwiz__input::placeholder { color: rgba(255, 255, 255, 0.5); }
 
+/* 性別選擇按鈕 — 用 input 同樣的視覺層次 */
 .profwiz__radio-row {
   display: flex;
   gap: 8px;
@@ -131,72 +163,87 @@
 .profwiz__radio {
   flex: 1;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.45);
   border-radius: 8px;
-  color: rgba(245, 245, 245, 0.75);
+  color: rgba(255, 255, 255, 0.85);
   font-size: 15px;
   cursor: pointer;
   font-family: inherit;
+  transition: all 0.2s;
 }
-.profwiz__radio:hover { background: rgba(255, 255, 255, 0.14); }
+.profwiz__radio:hover {
+  background: rgba(0, 0, 0, 0.4);
+  border-color: rgba(255, 255, 255, 0.6);
+}
 .profwiz__radio--active {
-  background: linear-gradient(135deg, #0066cc, #0099ff);
-  color: white;
-  border-color: #4fb3ff;
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border-color: rgba(255, 214, 102, 0.6);
 }
 
+/* 勾選列 */
 .profwiz__check {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 10px;
   cursor: pointer;
   font-size: 14px;
-  color: rgba(245, 245, 245, 0.9);
+  color: rgba(255, 255, 255, 0.9);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s;
 }
-.profwiz__check:hover { background: rgba(255, 255, 255, 0.1); }
+.profwiz__check:hover {
+  background: rgba(0, 0, 0, 0.35);
+  border-color: rgba(255, 255, 255, 0.45);
+}
 .profwiz__check input[type="checkbox"] {
   width: 18px;
   height: 18px;
-  accent-color: #0099ff;
+  accent-color: #ffd666;
   cursor: pointer;
 }
 
+/* 提示橫條 */
 .profwiz__hint {
   display: flex;
   align-items: flex-start;
   gap: 6px;
   margin: -4px 0 4px;
   padding: 10px 12px;
-  background: rgba(0, 153, 255, 0.1);
-  border: 1px solid rgba(0, 153, 255, 0.3);
+  background: rgba(255, 214, 102, 0.12);
+  border: 1px solid rgba(255, 214, 102, 0.35);
   border-radius: 8px;
   font-size: 12px;
   line-height: 1.55;
-  color: rgba(245, 245, 245, 0.85);
+  color: #ffd666;
 }
 
+/* 錯誤訊息 — 跟 .app__modal-msg--error 一致 */
 .profwiz__error {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-bottom: 12px;
-  padding: 10px 12px;
-  background: rgba(255, 80, 80, 0.15);
-  border: 1px solid rgba(255, 80, 80, 0.35);
-  border-radius: 6px;
-  color: #ffb3b3;
+  padding: 10px;
+  background: rgba(255, 77, 79, 0.25);
+  border: 1px solid rgba(255, 77, 79, 0.5);
+  border-radius: 8px;
+  color: #ff7875;
   font-size: 13px;
+  font-weight: 500;
 }
 
+/* 主／次按鈕 */
 .profwiz__nav {
   display: flex;
   justify-content: space-between;
   gap: 10px;
+  margin-top: 4px;
 }
 
 .profwiz__btn {
@@ -204,39 +251,44 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 11px 20px;
-  border-radius: 8px;
+  padding: 14px 22px;
+  border-radius: 20px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
   font-family: inherit;
-  transition: transform 0.12s, box-shadow 0.12s;
+  transition: all 0.3s;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
+
+/* 主按鈕：跟 .app__modal-submit-btn 同款黃色 */
 .profwiz__btn--primary {
-  background: linear-gradient(135deg, #0066cc, #0099ff);
-  color: #fff;
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border-color: rgba(255, 214, 102, 0.6);
 }
 .profwiz__btn--primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(0, 153, 255, 0.35);
+  background: rgba(255, 214, 102, 0.4);
+  color: #fff;
 }
 .profwiz__btn--primary:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
+  pointer-events: none;
 }
+
+/* 次按鈕：低調白色玻璃 */
 .profwiz__btn--secondary {
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(245, 245, 245, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.85);
+  border-color: rgba(255, 255, 255, 0.4);
 }
 .profwiz__btn--secondary:hover {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
 }
 
 .profwiz__spin {
   animation: profwizSpin 0.9s linear infinite;
 }
-@keyframes profwizSpin { to { transform: rotate(360deg); } }
