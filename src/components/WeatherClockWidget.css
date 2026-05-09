@@ -167,10 +167,100 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
-/* 行動裝置（≤ 640px）整個隱藏，避免跟登入卡片重疊
-   手機系統列已經有時間，天氣屬於 nice-to-have */
+/* 行動裝置（≤ 640px）改成底部置中的薄玻璃條，避免跟登入卡片重疊 */
 @media (max-width: 640px) {
   .weather-clock {
+    /* 重置桌面版的 top/right，改置中底部 */
+    top: auto;
+    right: auto;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: auto;
+    max-width: calc(100vw - 24px);
+    padding: 7px 14px;
+    flex-direction: row;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-radius: 999px;  /* 膠囊狀 */
+  }
+
+  .weather-clock__row { margin: 0; }
+
+  .weather-clock__row--weather {
+    gap: 6px;
+    margin: 0;
+  }
+
+  /* 圖示縮小 + 去掉框 */
+  .weather-clock__icon-btn {
+    width: auto;
+    height: auto;
+    background: transparent;
+    border: none;
+    padding: 0;
+    color: #ffd666;
+  }
+  .weather-clock__icon-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  /* 溫度 + 描述改成單行（隱藏描述） */
+  .weather-clock__weather-info {
+    flex-direction: row;
+    align-items: baseline;
+    line-height: 1;
+  }
+  .weather-clock__temp {
+    font-size: 14px;
+    text-shadow: none;
+  }
+  .weather-clock__desc { display: none; }
+
+  /* 城市按鈕扁平化，去掉自身的 pill 樣式（widget 整體已是 pill） */
+  .weather-clock__city-btn {
+    padding: 0;
+    background: transparent;
+    border: none;
+    font-size: 12px;
+  }
+
+  /* 城市選單在手機上要往上開，因為 widget 在底部 */
+  .weather-clock__city-list {
+    top: auto;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    min-width: 140px;
+  }
+
+  /* 分隔線改成「.」字元樣式（不是 hr） — 直接隱藏 hr */
+  .weather-clock__divider {
     display: none;
   }
+  /* 用偽元素在每組之間放分隔點 */
+  .weather-clock__row--location::before,
+  .weather-clock__row--clock::before {
+    content: '·';
+    color: rgba(255, 255, 255, 0.4);
+    margin-right: 8px;
+    font-size: 14px;
+  }
+
+  /* 時鐘改單行：時間 + 日期橫排，但日期隱藏（保留秒） */
+  .weather-clock__row--clock {
+    flex-direction: row;
+    align-items: baseline;
+    gap: 4px;
+    margin: 0;
+  }
+  .weather-clock__time {
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    text-shadow: none;
+  }
+  .weather-clock__date { display: none; }
 }
