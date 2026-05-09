@@ -1,5 +1,6 @@
 /* ==========================================================================
-   AccessLogPanel — 與其他管理者 panel 一致的 dark glassmorphism 風格
+   AccessLogPanel — 視覺以 StaffManagementPanel 為範本
+   結構：root container + header + filter-bar + table-wrapper + 動作 pill
    ========================================================================== */
 
 @keyframes panelFadeIn {
@@ -7,7 +8,7 @@
   100% { opacity: 1; transform: translateY(0); }
 }
 
-/* 跟 .requirements-panel / .staff-mgmt / .publish__header 完全同一組 token */
+/* --- Root container（與 .staff-mgmt 同 token） --- */
 .acclog {
   background: rgba(255, 255, 255, 0.04);
   backdrop-filter: blur(12px);
@@ -18,7 +19,6 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 14px;
   height: 100%;
   overflow: hidden;
   box-shadow:
@@ -27,25 +27,26 @@
   animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* --- Header bar（與 .staff-mgmt__header 同） --- */
 .acclog__header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .acclog__title {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 1.25rem;
-  font-weight: 700;
+  gap: 8px;
+  margin: 0;
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  margin: 0;
 }
 
+/* --- Stat 計數 pill（資料色，行動類型 colored chips 保留） --- */
 .acclog__stats {
   display: flex;
   gap: 8px;
@@ -53,14 +54,12 @@
 }
 
 .acclog__stat {
-  font-size: 12px;
+  font-size: 0.8rem;
   padding: 4px 12px;
   border-radius: 999px;
   font-weight: 600;
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
-
-/* 各動作的色票（高飽和度文字 + 半透明同色背景，適合 dark backdrop） */
 .acclog__stat--decrypt    { background: rgba(252, 211, 77, 0.18); color: #fcd34d; border-color: rgba(252, 211, 77, 0.35); }
 .acclog__stat--encrypt    { background: rgba(96, 165, 250, 0.18); color: #93c5fd; border-color: rgba(96, 165, 250, 0.35); }
 .acclog__stat--ai         { background: rgba(167, 139, 250, 0.18); color: #c4b5fd; border-color: rgba(167, 139, 250, 0.35); }
@@ -68,67 +67,84 @@
 .acclog__stat--login-fail { background: rgba(248, 113, 113, 0.20); color: #fca5a5; border-color: rgba(248, 113, 113, 0.4); }
 .acclog__stat--other      { background: rgba(255, 255, 255, 0.10); color: rgba(255, 255, 255, 0.85); }
 
-/* 篩選列 — 配合 admin panel 內部元素風格：簡單半透明面板，不再嵌套毛玻璃 */
+/* --- Filter bar（與 .staff-mgmt__filter-bar 同：無容器框） --- */
 .acclog__filter-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 1rem;
+  margin-bottom: 1rem;
   flex-wrap: wrap;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
 }
 
+/* 動作篩選按鈕群組（仿 .staff-mgmt__filter-group 小膠囊） */
 .acclog__filter-group {
   display: flex;
   align-items: center;
   gap: 4px;
-  color: rgba(255, 255, 255, 0.7);
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 10px;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .acclog__filter-btn {
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 5px 12px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 600;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.85);
-  transition: all 0.15s;
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  transition: all 0.2s ease;
 }
 .acclog__filter-btn:hover {
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
 }
 .acclog__filter-btn--active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.7), rgba(139, 92, 246, 0.7));
-  color: #fff;
-  border-color: rgba(139, 92, 246, 0.6);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  font-weight: 600;
 }
 
-.acclog__search-input,
-.acclog__limit-select {
-  padding: 5px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 6px;
-  font-size: 12px;
+/* Search input（與 .staff-mgmt__search-input 同） */
+.acclog__search-input {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  font-size: 0.95rem;
+  background: rgba(0, 0, 0, 0.15);
   color: #ffffff;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  box-sizing: border-box;
+  transition: all 0.3s ease;
 }
-.acclog__search-input::placeholder { color: rgba(255, 255, 255, 0.45); }
-.acclog__search-input { min-width: 220px; }
-.acclog__search-input:focus,
-.acclog__limit-select:focus {
-  border-color: rgba(139, 92, 246, 0.7);
-  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.25);
+.acclog__search-input::placeholder { color: rgba(255, 255, 255, 0.55); }
+.acclog__search-input:focus {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.1);
+}
+
+/* 筆數選單與重新整理 — 與 search input 同款基底 */
+.acclog__limit-select {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
 }
 .acclog__limit-select option {
-  background: #2c3e50; /* select 下拉的選項背景 — 大多數瀏覽器需要實色 */
+  background: #2c3e50;
   color: #ffffff;
 }
 
@@ -136,104 +152,97 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgba(255, 255, 255, 0.18);
-  background: rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
   cursor: pointer;
   color: rgba(255, 255, 255, 0.85);
-  transition: all 0.15s;
+  transition: all 0.2s;
 }
 .acclog__refresh:hover {
-  background: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
 }
 
-/* 空狀態 / 錯誤訊息 */
+/* --- Empty / error 狀態 --- */
 .acclog__empty {
   text-align: center;
   padding: 40px;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.55);
   font-style: italic;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px dashed rgba(255, 255, 255, 0.15);
-  border-radius: 12px;
 }
 .acclog__empty--error {
-  color: #fecaca;
-  background: rgba(248, 113, 113, 0.15);
-  border: 1px solid rgba(248, 113, 113, 0.45);
+  color: #fca5a5;
+  background: rgba(248, 113, 113, 0.12);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  border-radius: 8px;
   font-style: normal;
   font-weight: 500;
 }
 
-/* 表格容器 — 跟 .publish__table-wrapper 同款簡單半透明面板 */
+/* --- Table wrapper（與 .staff-mgmt__table-wrapper 同） --- */
 .acclog__table-wrap {
   flex: 1;
   overflow: auto;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
 }
 
 .acclog__table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.92);
 }
 
+/* Table head — 跟 .staff-mgmt__thead 同款淡白玻璃，不再用綠色 */
 .acclog__table thead th {
   position: sticky;
   top: 0;
-  background: rgba(39, 174, 96, 0.6);   /* 與 .publish__thead-row 同款綠 */
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   text-align: left;
-  padding: 10px 14px;
-  font-weight: 700;
-  color: #ffffff;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  padding: 12px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.9);
+  font-weight: bold;
   z-index: 1;
 }
 
-.acclog__table tbody td {
-  padding: 8px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  vertical-align: top;
-  color: rgba(255, 255, 255, 0.92);
+/* Table rows — 斑馬條紋 + hover（與 .staff-mgmt__row 同） */
+.acclog__row {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.15s ease;
 }
-
+.acclog__row:nth-child(even) {
+  background: rgba(255, 255, 255, 0.10);
+}
 .acclog__row:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.acclog__row--ai-access {
-  background: rgba(167, 139, 250, 0.08);
-}
-.acclog__row--login {
-  background: rgba(74, 222, 128, 0.05);
-}
-.acclog__row--login-failure {
-  background: rgba(248, 113, 113, 0.07);
+.acclog__table tbody td {
+  padding: 8px 12px;
+  color: rgba(255, 255, 255, 0.9);
+  vertical-align: top;
 }
 
 /* 表格內各欄位細節 */
 .acclog__cell-ts {
   font-family: 'Courier New', monospace;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.92);
   font-weight: 500;
 }
 
 .acclog__cell-actor {
   min-width: 180px;
-  color: rgba(255, 255, 255, 0.95);
   font-weight: 500;
 }
 
 .acclog__cell-uid {
-  font-size: 10px;
+  font-size: 0.7rem;
   color: rgba(255, 255, 255, 0.55);
   font-family: 'Courier New', monospace;
   margin-top: 2px;
@@ -247,11 +256,11 @@
 
 .acclog__field-tag {
   display: inline-block;
-  font-size: 10px;
+  font-size: 0.7rem;
   padding: 2px 8px;
-  background: rgba(99, 102, 241, 0.25);
+  background: rgba(99, 102, 241, 0.22);
   color: #c7d2fe;
-  border: 1px solid rgba(99, 102, 241, 0.4);
+  border: 1px solid rgba(99, 102, 241, 0.38);
   border-radius: 3px;
   font-family: 'Courier New', monospace;
   font-weight: 600;
@@ -259,13 +268,13 @@
 
 .acclog__cell-ip {
   font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.78);
 }
 
 .acclog__cell-extra {
   font-family: 'Courier New', monospace;
-  font-size: 11px;
+  font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.65);
   max-width: 280px;
   overflow: hidden;
@@ -273,19 +282,38 @@
   white-space: nowrap;
 }
 
-/* 動作標籤（表格內每列開頭那顆 pill） */
+/* 動作標籤（表格內每列開頭那顆 pill） — 保留功能性顏色 */
 .acclog__action {
   display: inline-block;
-  font-size: 11px;
+  font-size: 0.75rem;
   font-weight: 700;
   padding: 3px 10px;
   border-radius: 4px;
   border: 1px solid transparent;
-  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
-
 .acclog__action--decrypt        { background: rgba(252, 211, 77, 0.22); color: #fde68a; border-color: rgba(252, 211, 77, 0.45); }
 .acclog__action--encrypt        { background: rgba(96, 165, 250, 0.22); color: #bfdbfe; border-color: rgba(96, 165, 250, 0.45); }
 .acclog__action--ai-access      { background: rgba(167, 139, 250, 0.22); color: #ddd6fe; border-color: rgba(167, 139, 250, 0.45); }
 .acclog__action--login          { background: rgba(74, 222, 128, 0.22); color: #bbf7d0; border-color: rgba(74, 222, 128, 0.45); }
 .acclog__action--login-failure  { background: rgba(248, 113, 113, 0.25); color: #fecaca; border-color: rgba(248, 113, 113, 0.5); }
+
+/* --- 行動裝置（≤768px）— 與 .staff-mgmt 同款收合 --- */
+@media screen and (max-width: 768px) {
+  .acclog {
+    padding: 1rem;
+  }
+  .acclog__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .acclog__filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .acclog__search-input {
+    max-width: 100%;
+  }
+  .acclog__filter-group {
+    justify-content: center;
+  }
+}
