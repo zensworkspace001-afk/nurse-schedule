@@ -181,8 +181,9 @@ export default async function handler(req, res) {
     );
     await batch.commit();
 
-    // 為每個加密欄位寫 access_logs（fire-and-forget；存取 log 失敗不該擋使用者）
-    writeAccessLog({
+    // 為每個加密欄位寫 access_logs（must await — Vercel serverless 在 res.json
+    // 後會凍結 lambda，沒 await 的寫入容易掉）
+    await writeAccessLog({
       actor, action: 'encrypt',
       target: { kind: 'staff', id: actor.uid },
       fields: ['idNumber', 'bankAccount', 'phone'],

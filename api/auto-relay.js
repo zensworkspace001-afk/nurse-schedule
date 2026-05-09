@@ -233,7 +233,7 @@ export default async function handler(req, res) {
 
         // 寫稽核：記錄這次有哪些員工的哪些欄位送給了 Gemini，方便事後追溯
         const meta = extractClientMeta(req);
-        writeAccessLog({
+        await writeAccessLog({
             actor,
             action: 'ai-access',
             target: { kind: 'staff', id: null },

@@ -101,7 +101,9 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: '權限不足：只有管理員能執行加密' });
         }
         const blob = encryptField(payload);
-        writeAccessLog({
+        // 必須 await：Vercel serverless 在 res.json() 之後可能凍結 lambda，
+        // 沒 await 的 writeAccessLog 經常導致 access_logs 寫入未完成。
+        await writeAccessLog({
           actor, action: 'encrypt',
           target: target || { kind: null, id: null },
           fields: fields || [],
@@ -118,7 +120,7 @@ export default async function handler(req, res) {
           return res.status(403).json({ error: '權限不足：無法解密此目標' });
         }
         const value = decryptField(payload);
-        writeAccessLog({
+        await writeAccessLog({
           actor, action: 'decrypt',
           target: target || { kind: null, id: null },
           fields: fields || [],
@@ -142,7 +144,7 @@ export default async function handler(req, res) {
             return { idx, error: err.message };
           }
         });
-        writeAccessLog({
+        await writeAccessLog({
           actor, action: 'decrypt',
           target: target || { kind: null, id: null },
           fields: fields || [],
