@@ -167,14 +167,10 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
-/* 視窗較窄時收一下 */
-@media (max-width: 480px) {
+/* 行動裝置（≤ 640px）整個隱藏，避免跟登入卡片重疊
+   手機系統列已經有時間，天氣屬於 nice-to-have */
+@media (max-width: 640px) {
   .weather-clock {
-    width: 180px;
-    top: 12px;
-    right: 12px;
-    padding: 10px 12px;
+    display: none;
   }
-  .weather-clock__time { font-size: 20px; }
-  .weather-clock__temp { font-size: 18px; }
 }
