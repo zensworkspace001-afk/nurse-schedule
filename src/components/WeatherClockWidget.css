@@ -47,13 +47,7 @@
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.18);
   color: #ffd666;
-  cursor: pointer;
-  transition: all 0.15s;
   flex-shrink: 0;
-}
-.weather-clock__icon-btn:hover {
-  background: rgba(255, 214, 102, 0.18);
-  border-color: rgba(255, 214, 102, 0.4);
 }
 
 .weather-clock__weather-info {

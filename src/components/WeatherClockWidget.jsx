@@ -7,7 +7,7 @@ import './WeatherClockWidget.css';
 
 // 登入頁右上角的「天氣 + 時鐘」widget
 // - 城市可由使用者切換（auto = 用 IP 推測；或手選台灣主要城市）
-// - 天氣圖示可點切換手動覆蓋（auto / 晴 / 多雲 / …）
+// - 天氣圖示永遠跟著 API 結果，不可手動覆蓋（保持「真實」狀態）
 // - 時鐘每秒更新
 // - 天氣 10 分鐘 refresh 一次
 //
@@ -28,18 +28,17 @@ const TAIWAN_CITIES = [
   { value: 'Taitung,TW',          label: '台東' },
 ];
 
-// 手動覆蓋選項：點圖示時依序循環
-const OVERRIDE_OPTIONS = [
-  { value: 'auto',     label: '自動',  icon: Sun, },         // auto 不真的用 Sun，只是占位 — render 時看 weather
-  { value: 'sunny',    label: '晴',    icon: Sun, },
-  { value: 'cloudy',   label: '多雲',  icon: Cloudy, },
-  { value: 'overcast', label: '陰',    icon: Cloud, },
-  { value: 'rain',     label: '雨',    icon: CloudRain, },
-  { value: 'drizzle',  label: '毛毛雨', icon: CloudDrizzle, },
-  { value: 'storm',    label: '雷雨',  icon: CloudLightning, },
-  { value: 'snow',     label: '雪',    icon: CloudSnow, },
-  { value: 'fog',      label: '霧',    icon: CloudFog, },
-];
+// 天氣分類 → 圖示與中文標籤對應
+const CATEGORY_ICON = {
+  sunny:    { icon: Sun,             label: '晴' },
+  cloudy:   { icon: Cloudy,          label: '多雲' },
+  overcast: { icon: Cloud,           label: '陰' },
+  rain:     { icon: CloudRain,       label: '雨' },
+  drizzle:  { icon: CloudDrizzle,    label: '毛毛雨' },
+  storm:    { icon: CloudLightning,  label: '雷雨' },
+  snow:     { icon: CloudSnow,       label: '雪' },
+  fog:      { icon: CloudFog,        label: '霧' },
+};
 
 // OpenWeatherMap weather id → 我們的內部分類
 function classifyOwm(id) {
@@ -56,12 +55,14 @@ function classifyOwm(id) {
 const WeatherClockWidget = () => {
   const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
   const [city, setCity] = useState(() => localStorage.getItem('weatherCity') || 'auto');
-  const [override, setOverride] = useState(() => localStorage.getItem('weatherOverride') || 'auto');
   const [weather, setWeather] = useState(null);
   const [now, setNow] = useState(new Date());
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [err, setErr] = useState(null);
   const refreshTimerRef = useRef(null);
+
+  // 一次性清除舊的 weatherOverride localStorage（之前版本的遺留）
+  useEffect(() => { localStorage.removeItem('weatherOverride'); }, []);
 
   // 時鐘 — 每秒一次
   useEffect(() => {
@@ -69,9 +70,8 @@ const WeatherClockWidget = () => {
     return () => clearInterval(t);
   }, []);
 
-  // localStorage 同步
+  // localStorage 同步 — 只存城市選擇
   useEffect(() => { localStorage.setItem('weatherCity', city); }, [city]);
-  useEffect(() => { localStorage.setItem('weatherOverride', override); }, [override]);
 
   // 天氣 — city 改變時重抓，每 10 分鐘 refresh
   useEffect(() => {
@@ -134,19 +134,10 @@ const WeatherClockWidget = () => {
     };
   }, [city, apiKey]);
 
-  // 計算當下要顯示哪個圖示 — 手動 override 優先
-  const effectiveCategory = override !== 'auto'
-    ? override
-    : (weather ? classifyOwm(weather.owmId) : 'cloudy');
-
-  const Icon = OVERRIDE_OPTIONS.find(o => o.value === effectiveCategory)?.icon || Cloud;
-  const label = OVERRIDE_OPTIONS.find(o => o.value === effectiveCategory)?.label || '—';
-
-  const handleIconCycle = () => {
-    const idx = OVERRIDE_OPTIONS.findIndex(o => o.value === override);
-    const next = OVERRIDE_OPTIONS[(idx + 1) % OVERRIDE_OPTIONS.length];
-    setOverride(next.value);
-  };
+  // 圖示永遠跟著 API 分類
+  const category = weather ? classifyOwm(weather.owmId) : 'cloudy';
+  const Icon = CATEGORY_ICON[category]?.icon || Cloud;
+  const label = CATEGORY_ICON[category]?.label || '—';
 
   const formatTime = (d) => {
     const hh = String(d.getHours()).padStart(2, '0');
@@ -162,21 +153,15 @@ const WeatherClockWidget = () => {
   return (
     <div className="weather-clock">
       <div className="weather-clock__row weather-clock__row--weather">
-        <button
-          className="weather-clock__icon-btn"
-          onClick={handleIconCycle}
-          title={`點切換顯示（目前：${override === 'auto' ? '自動' : label}）`}
-        >
+        <div className="weather-clock__icon-btn" title={label}>
           <Icon size={28} />
-        </button>
+        </div>
         <div className="weather-clock__weather-info">
           <div className="weather-clock__temp">
             {weather ? `${weather.temp}°` : '—'}
           </div>
           <div className="weather-clock__desc">
-            {override !== 'auto'
-              ? `${label}（手動）`
-              : (weather?.desc || (err ? '無法載入' : '載入中…'))}
+            {weather?.desc || (err ? '無法載入' : '載入中…')}
           </div>
         </div>
       </div>
