@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import ParticleBackground from './ParticleBackground';
 import './ActivatePage.css';
 
 // 帳號啟用 / 密碼重設頁面
@@ -61,6 +62,10 @@ const ActivatePage = () => {
     const isActivation = success.purpose === 'activation';
     return (
       <div className="activate-page">
+        <ParticleBackground />
+        <div className="activate-page__blob activate-page__blob--1"></div>
+        <div className="activate-page__blob activate-page__blob--2"></div>
+        <div className="activate-page__blob activate-page__blob--3"></div>
         <div className="activate-page__card activate-page__card--success">
           <CheckCircle2 size={56} className="activate-page__success-icon" />
           <h1 className="activate-page__title">
@@ -79,6 +84,10 @@ const ActivatePage = () => {
 
   return (
     <div className="activate-page">
+      <ParticleBackground />
+      <div className="activate-page__blob activate-page__blob--1"></div>
+      <div className="activate-page__blob activate-page__blob--2"></div>
+      <div className="activate-page__blob activate-page__blob--3"></div>
       <div className="activate-page__card">
         <h1 className="activate-page__title">
           <Lock size={22} /> 啟用帳號 / 設定密碼

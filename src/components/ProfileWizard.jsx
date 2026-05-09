@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut } from 'lucide-react';
 import { auth } from '../api/database';
 import { signOut } from 'firebase/auth';
+import ParticleBackground from './ParticleBackground';
 import './ProfileWizard.css';
 
 // 員工首次啟用後的「完善個人資料」精靈。
@@ -98,6 +99,11 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
 
   return (
     <div className="profwiz">
+      {/* 與主應用一致的粒子 + 色塊背景，玻璃卡片下方才真的有東西可以模糊 */}
+      <ParticleBackground />
+      <div className="profwiz__blob profwiz__blob--1"></div>
+      <div className="profwiz__blob profwiz__blob--2"></div>
+      <div className="profwiz__blob profwiz__blob--3"></div>
       <div className="profwiz__card">
         <button onClick={handleLogout} className="profwiz__logout" title="先登出">
           <LogOut size={14} /> 登出

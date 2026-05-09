@@ -9,6 +9,7 @@
 @keyframes activatePageSpin { to { transform: rotate(360deg); } }
 
 .activate-page {
+  position: relative;
   width: 100vw;
   min-height: 100vh;
   display: flex;
@@ -16,13 +17,53 @@
   justify-content: center;
   padding: 20px;
   box-sizing: border-box;
-  background: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background: linear-gradient(135deg, #1a1a2e 0%, #16213e 40%, #0f3460 100%);
+  overflow: hidden;
   font-family: 'Noto Sans TC', system-ui, -apple-system, sans-serif;
 }
 
+/* 漂浮色塊 — 與主應用 .app__blob 同款動畫 */
+.activate-page__blob {
+  position: absolute;
+  filter: blur(80px);
+  z-index: 0;
+  opacity: 0.6;
+  pointer-events: none;
+  animation: activatePageFloatBlobs 15s infinite ease-in-out alternate;
+}
+.activate-page__blob--1 {
+  width: 500px; height: 500px;
+  background: #ff4785;
+  top: -100px; left: -100px;
+  border-radius: 40% 60% 70% 30% / 40% 50% 60% 50%;
+  animation-delay: 0s;
+}
+.activate-page__blob--2 {
+  width: 450px; height: 450px;
+  background: #00d2ff;
+  bottom: -150px; right: -100px;
+  border-radius: 60% 40% 30% 70% / 60% 30% 70% 40%;
+  animation-duration: 18s;
+  animation-delay: -2s;
+}
+.activate-page__blob--3 {
+  width: 400px; height: 400px;
+  background: #7b2cbf;
+  top: 40%; left: 30%;
+  border-radius: 50%;
+  animation-duration: 20s;
+  animation-delay: -5s;
+}
+@keyframes activatePageFloatBlobs {
+  0%   { transform: translate(0, 0)        scale(1)   rotate(0deg); }
+  33%  { transform: translate(40px, -60px) scale(1.1) rotate(90deg); }
+  66%  { transform: translate(-30px, 30px) scale(0.9) rotate(180deg); }
+  100% { transform: translate(0, 0)        scale(1)   rotate(360deg); }
+}
+
 .activate-page__card {
+  position: relative;
+  z-index: 2;  /* 高於 blob 與粒子背景 */
   width: 100%;
   max-width: 420px;
   padding: 2.5rem;
