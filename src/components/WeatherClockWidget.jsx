@@ -74,6 +74,26 @@ const WeatherClockWidget = () => {
   const [showCityPicker, setShowCityPicker] = useState(false);
   const [err, setErr] = useState(null);
   const refreshTimerRef = useRef(null);
+  const cityPickerRef = useRef(null);
+
+  // 點選單外面 / 按 Esc 都自動收起
+  useEffect(() => {
+    if (!showCityPicker) return;
+    const handleClickOutside = (e) => {
+      if (cityPickerRef.current && !cityPickerRef.current.contains(e.target)) {
+        setShowCityPicker(false);
+      }
+    };
+    const handleEsc = (e) => {
+      if (e.key === 'Escape') setShowCityPicker(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [showCityPicker]);
 
   // 一次性清除舊的 weatherOverride localStorage（之前版本的遺留）
   useEffect(() => { localStorage.removeItem('weatherOverride'); }, []);
@@ -216,7 +236,7 @@ const WeatherClockWidget = () => {
         </div>
       </div>
 
-      <div className="weather-clock__row weather-clock__row--location">
+      <div className="weather-clock__row weather-clock__row--location" ref={cityPickerRef}>
         <button
           className="weather-clock__city-btn"
           onClick={() => setShowCityPicker(s => !s)}
