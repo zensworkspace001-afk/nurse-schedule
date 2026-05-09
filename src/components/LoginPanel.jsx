@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { AlertCircle, LogIn, Shield } from 'lucide-react';
 import { auth } from '../api/database';
+import WeatherClockWidget from './WeatherClockWidget';
 import './LoginPanel.css';
 
 // ============================================================================
@@ -105,6 +106,9 @@ try {
 
   return (
     <div className="login-panel">
+      {/* 右上角天氣 + 時鐘 widget */}
+      <WeatherClockWidget />
+
       {/* 🌟 背景動畫色塊 */}
       <div className="login-panel__blob login-panel__blob--1"></div>
       <div className="login-panel__blob login-panel__blob--2"></div>

@@ -1,0 +1,186 @@
+/* ==========================================================================
+   WeatherClockWidget — 登入頁右上角玻璃 widget
+   ========================================================================== */
+
+.weather-clock {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 10;
+  width: 220px;
+  padding: 14px 16px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 14px;
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  color: #ffffff;
+  font-family: 'Noto Sans TC', system-ui, sans-serif;
+  animation: weatherClockIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes weatherClockIn {
+  0%   { opacity: 0; transform: translateY(-10px) scale(0.96); }
+  100% { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.weather-clock__row {
+  display: flex;
+  align-items: center;
+}
+
+.weather-clock__row--weather {
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.weather-clock__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffd666;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.weather-clock__icon-btn:hover {
+  background: rgba(255, 214, 102, 0.18);
+  border-color: rgba(255, 214, 102, 0.4);
+}
+
+.weather-clock__weather-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+  min-width: 0;
+  flex: 1;
+}
+
+.weather-clock__temp {
+  font-size: 22px;
+  font-weight: 700;
+  color: #ffffff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.weather-clock__desc {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.weather-clock__row--location {
+  position: relative;
+  margin-bottom: 6px;
+}
+
+.weather-clock__city-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 11px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.weather-clock__city-btn:hover {
+  background: rgba(0, 0, 0, 0.3);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.weather-clock__city-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: rgba(26, 26, 46, 0.95);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.weather-clock__city-item {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.weather-clock__city-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+.weather-clock__city-item--active {
+  background: rgba(255, 214, 102, 0.2);
+  color: #ffd666;
+  font-weight: 600;
+}
+
+.weather-clock__divider {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(255, 255, 255, 0.18),
+    transparent
+  );
+  margin: 8px 0;
+}
+
+.weather-clock__row--clock {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.weather-clock__time {
+  font-family: 'Courier New', monospace;
+  font-size: 24px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: 1px;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+}
+
+.weather-clock__date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* 視窗較窄時收一下 */
+@media (max-width: 480px) {
+  .weather-clock {
+    width: 180px;
+    top: 12px;
+    right: 12px;
+    padding: 10px 12px;
+  }
+  .weather-clock__time { font-size: 20px; }
+  .weather-clock__temp { font-size: 18px; }
+}
