@@ -14,18 +14,32 @@ import './WeatherClockWidget.css';
 // 環境變數：VITE_OPENWEATHER_API_KEY  （在 OpenWeatherMap 免費註冊後取得）
 
 const TAIWAN_CITIES = [
-  { value: 'auto',                label: '自動偵測 (IP)' },
+  { value: 'auto',                label: '自動偵測（GPS / IP）' },
+  // 直轄市
   { value: 'Taipei,TW',           label: '台北' },
   { value: 'New Taipei City,TW',  label: '新北' },
   { value: 'Taoyuan,TW',          label: '桃園' },
   { value: 'Taichung,TW',         label: '台中' },
   { value: 'Tainan,TW',           label: '台南' },
   { value: 'Kaohsiung,TW',        label: '高雄' },
+  // 縣市
   { value: 'Keelung,TW',          label: '基隆' },
   { value: 'Hsinchu,TW',          label: '新竹' },
+  { value: 'Hsinchu County,TW',   label: '新竹縣' },
+  { value: 'Miaoli,TW',           label: '苗栗' },
+  { value: 'Changhua,TW',         label: '彰化' },
+  { value: 'Nantou,TW',           label: '南投' },
+  { value: 'Yunlin,TW',           label: '雲林' },
   { value: 'Chiayi,TW',           label: '嘉義' },
+  { value: 'Chiayi County,TW',    label: '嘉義縣' },
+  { value: 'Pingtung,TW',         label: '屏東' },
+  { value: 'Yilan,TW',            label: '宜蘭' },
   { value: 'Hualien,TW',          label: '花蓮' },
   { value: 'Taitung,TW',          label: '台東' },
+  // 離島
+  { value: 'Penghu,TW',           label: '澎湖' },
+  { value: 'Kinmen,TW',           label: '金門' },
+  { value: 'Lienchiang,TW',       label: '連江' },
 ];
 
 // 天氣分類 → 圖示與中文標籤對應
@@ -81,18 +95,54 @@ const WeatherClockWidget = () => {
     }
     let cancelled = false;
 
+    // 包成 Promise 以便在 await 環境用
+    function tryGeolocation() {
+      return new Promise((resolve, reject) => {
+        if (!('geolocation' in navigator)) {
+          return reject(new Error('瀏覽器不支援 geolocation'));
+        }
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+          err => reject(err),
+          { timeout: 5000, maximumAge: 5 * 60 * 1000 },
+        );
+      });
+    }
+
+    // OWM 反查地名：lat/lng → "苑裡鎮" 之類的精確地名
+    async function reverseGeocode(lat, lon) {
+      try {
+        const r = await fetch(
+          `https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${apiKey}`,
+        );
+        if (!r.ok) return null;
+        const arr = await r.json();
+        return arr?.[0]?.local_names?.zh_tw || arr?.[0]?.name || null;
+      } catch {
+        return null;
+      }
+    }
+
     async function fetchWeather() {
       try {
         let lat, lon, displayName;
 
         if (city === 'auto') {
-          // IP 定位 — ipapi.co 免費無 key
-          const ipRes = await fetch('https://ipapi.co/json/');
-          if (!ipRes.ok) throw new Error('IP 定位失敗');
-          const ipData = await ipRes.json();
-          lat = ipData.latitude;
-          lon = ipData.longitude;
-          displayName = ipData.city || ipData.region || '所在地';
+          // 1) 先試 GPS（瀏覽器會彈窗請求權限；同意 → 精確到 township）
+          // 2) 拒絕 / 失敗 / 不支援 → 回退 ipapi.co IP 定位（city 級）
+          try {
+            const gps = await tryGeolocation();
+            lat = gps.lat;
+            lon = gps.lon;
+            displayName = await reverseGeocode(lat, lon) || '目前位置';
+          } catch {
+            const ipRes = await fetch('https://ipapi.co/json/');
+            if (!ipRes.ok) throw new Error('IP 定位失敗');
+            const ipData = await ipRes.json();
+            lat = ipData.latitude;
+            lon = ipData.longitude;
+            displayName = ipData.city || ipData.region || '所在地';
+          }
         } else {
           // 用 OWM 的 geocoding 把城市字串轉座標
           const geoRes = await fetch(
