@@ -106,9 +106,6 @@ try {
 
   return (
     <div className="login-panel">
-      {/* 右上角天氣 + 時鐘 widget */}
-      <WeatherClockWidget />
-
       {/* 🌟 背景動畫色塊 */}
       <div className="login-panel__blob login-panel__blob--1"></div>
       <div className="login-panel__blob login-panel__blob--2"></div>
@@ -116,6 +113,9 @@ try {
       <div className="login-panel__blob login-panel__blob--4"></div>
 
       <div className="login-panel__card">
+        {/* 天氣 + 時鐘 widget — CSS 控制：桌面 fixed 在右上角；手機改靜態、嵌在卡片內最上方 */}
+        <WeatherClockWidget />
+
         <h2 className="login-panel__title">排班系統 <span className="login-panel__badge"><Shield size={12} /> 安全版</span></h2>
 
         <form onSubmit={handleLogin} className="login-panel__form">

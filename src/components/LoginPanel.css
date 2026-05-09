@@ -156,7 +156,7 @@
 
 @keyframes loginCardIn {
   0%   { opacity: 0; transform: scale(0.92) translateY(25px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* --- Card (毛玻璃面板 — 與 app__header 同風格) --- */

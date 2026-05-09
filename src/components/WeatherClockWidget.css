@@ -167,23 +167,30 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
-/* 行動裝置（≤ 640px）改成底部置中的薄玻璃條，避免跟登入卡片重疊 */
+/* 行動裝置（≤ 640px）改成嵌入登入卡片內、置中、薄玻璃條 */
 @media (max-width: 640px) {
   .weather-clock {
-    /* 重置桌面版的 top/right，改置中底部 */
+    /* 取消桌面版的 fixed，回到正常文件流，置中嵌在卡片內 */
+    position: static;
     top: auto;
     right: auto;
-    bottom: 12px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: auto;
-    max-width: calc(100vw - 24px);
+    bottom: auto;
+    left: auto;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    margin: 0 auto 18px;     /* 下方留間距，分離 title */
     padding: 7px 14px;
     flex-direction: row;
     display: flex;
     align-items: center;
+    justify-content: center; /* 內容置中 */
     gap: 10px;
-    border-radius: 999px;  /* 膠囊狀 */
+    border-radius: 999px;    /* 膠囊狀 */
+    /* 在卡片內就用更淡的玻璃感（卡片本身已是玻璃） */
+    background: rgba(0, 0, 0, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
   }
 
   .weather-clock__row { margin: 0; }
