@@ -3,41 +3,8 @@ import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, Lo
 import { auth } from '../api/database';
 import { signOut } from 'firebase/auth';
 import ParticleBackground from './ParticleBackground';
+import { TAIWAN_BANKS } from '../constants/banks';
 import './ProfileWizard.css';
-
-// 台灣常見銀行（金管會三碼代碼）— 排序：常見的銀行優先
-const TAIWAN_BANKS = [
-  { code: '700', name: '中華郵政' },
-  { code: '004', name: '臺灣銀行' },
-  { code: '005', name: '土地銀行' },
-  { code: '006', name: '合作金庫' },
-  { code: '007', name: '第一銀行' },
-  { code: '008', name: '華南銀行' },
-  { code: '009', name: '彰化銀行' },
-  { code: '011', name: '上海商銀' },
-  { code: '012', name: '台北富邦' },
-  { code: '013', name: '國泰世華' },
-  { code: '016', name: '高雄銀行' },
-  { code: '017', name: '兆豐國際' },
-  { code: '050', name: '臺灣中小企銀' },
-  { code: '052', name: '渣打國際' },
-  { code: '053', name: '台中商銀' },
-  { code: '081', name: '滙豐(台灣)' },
-  { code: '102', name: '華泰商銀' },
-  { code: '103', name: '臺灣新光商銀' },
-  { code: '108', name: '陽信商銀' },
-  { code: '147', name: '三信商銀' },
-  { code: '803', name: '聯邦銀行' },
-  { code: '805', name: '遠東銀行' },
-  { code: '806', name: '元大銀行' },
-  { code: '807', name: '永豐銀行' },
-  { code: '808', name: '玉山銀行' },
-  { code: '809', name: '凱基銀行' },
-  { code: '810', name: '星展(台灣)' },
-  { code: '812', name: '台新銀行' },
-  { code: '816', name: '安泰銀行' },
-  { code: '822', name: '中國信託' },
-];
 
 // 員工首次啟用後的「完善個人資料」精靈。
 // 三步：
@@ -264,7 +231,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
               >
                 <option value="" disabled>— 請選擇 —</option>
                 {TAIWAN_BANKS.map((b) => (
-                  <option key={b.code} value={b.code}>{b.code}　{b.name}</option>
+                  <option key={b.code} value={b.code}>{b.code} {b.name}</option>
                 ))}
               </select>
             </label>

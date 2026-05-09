@@ -194,7 +194,7 @@ const handleSave = async () => {
     { key: 'night_shift_balance', label: '夜餘', type: 'number', width: '65px' },
     // —— 加密欄位 —— Firestore 端僅存 {ct,iv,tag,v} 密文，UI 點開才解
     { key: 'idNumber',    label: '🔒 身分證',   type: 'encrypted', width: '160px' },
-    { key: 'bankAccount', label: '🔒 銀行帳號', type: 'encrypted', width: '180px' },
+    { key: 'bankAccount', label: '🔒 銀行帳號', type: 'encrypted', encryptedKind: 'bank-account', width: '260px' },
     { key: 'phone',       label: '🔒 手機',     type: 'encrypted', width: '140px' },
   ];
 
@@ -334,6 +334,7 @@ const handleSave = async () => {
                         value={staff[col.key]}
                         target={{ kind: 'staff', id: staff.staff_id }}
                         fieldName={col.key}
+                        kind={col.encryptedKind || 'text'}
                         onSave={(blobOrEmpty) => handleChange(staff.staff_id, col.key, blobOrEmpty)}
                       />
                     ) : col.type === 'streak_display' ? (

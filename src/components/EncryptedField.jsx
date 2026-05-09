@@ -1,6 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, Unlock, Eye, EyeOff, Loader2, Save } from 'lucide-react';
 import { decryptField, encryptFieldRemote, isEncryptedBlob } from '../api/secureField';
+import {
+  TAIWAN_BANKS,
+  parseBankAccount,
+  formatBankAccount,
+  displayBankAccount,
+  maskBankAccount,
+} from '../constants/banks';
 import './EncryptedField.css';
 
 // 統一的密文欄位 UI
@@ -14,6 +21,8 @@ import './EncryptedField.css';
 //   autoLockMs — 解密後幾毫秒自動再鎖回去（預設 30 秒，0 = 不自動鎖）
 //   editable   — 是否允許編輯（預設 true）
 //   formatter  — 顯示明文時的可選遮罩（例如身分證只露末四碼）
+//   kind       — 'text' (預設) | 'bank-account'
+//                bank-account：edit 用銀行下拉 + 帳號輸入；display 顯示「008 華南銀行 / 1234567890」
 const EncryptedField = ({
   value,
   onSave,
@@ -23,11 +32,17 @@ const EncryptedField = ({
   autoLockMs = 30000,
   editable = true,
   formatter,
+  kind = 'text',
 }) => {
+  const isBank = kind === 'bank-account';
+
   const [decrypted, setDecrypted] = useState(null);   // null = 鎖定狀態
   const [showFull, setShowFull] = useState(false);    // 顯示完整明文 vs 遮罩
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
+  // bank-account 模式下另外保存銀行代碼/帳號分離狀態（編輯 UI 用）
+  const [bankCodeDraft, setBankCodeDraft] = useState('');
+  const [bankAcctDraft, setBankAcctDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const lockTimerRef = useRef(null);
@@ -62,7 +77,13 @@ const EncryptedField = ({
   };
 
   const handleStartEdit = () => {
-    setDraft(decrypted ?? (typeof value === 'string' ? value : ''));
+    const initialPlain = decrypted ?? (typeof value === 'string' ? value : '');
+    setDraft(initialPlain);
+    if (isBank) {
+      const { code, account } = parseBankAccount(initialPlain);
+      setBankCodeDraft(code);
+      setBankAcctDraft(account);
+    }
     setEditing(true);
     setShowFull(true);
   };
@@ -70,19 +91,36 @@ const EncryptedField = ({
   const handleCancelEdit = () => {
     setEditing(false);
     setDraft('');
+    setBankCodeDraft('');
+    setBankAcctDraft('');
   };
 
   const handleSave = async () => {
     setBusy(true); setErr(null);
     try {
+      // 確認要存的明文：bank-account 模式組合代碼 + 帳號；其他模式用 draft
+      const plain = isBank ? formatBankAccount(bankCodeDraft, bankAcctDraft) : draft;
+
+      if (isBank) {
+        if (!bankCodeDraft && !bankAcctDraft) {
+          // 兩個都空 → 視為清除
+          await onSave('');
+          setDecrypted('');
+          setEditing(false);
+          return;
+        }
+        if (!bankCodeDraft) throw new Error('請選擇匯款銀行');
+        if (!/^\d{6,16}$/.test(bankAcctDraft)) throw new Error('銀行帳號需為 6–16 碼純數字');
+      }
+
       // 空字串視為清除：直接讓父層寫 null / 空字串
-      if (draft === '') {
+      if (plain === '') {
         await onSave('');
       } else {
-        const blob = await encryptFieldRemote(draft, target, [fieldName]);
+        const blob = await encryptFieldRemote(plain, target, [fieldName]);
         await onSave(blob);
       }
-      setDecrypted(draft);
+      setDecrypted(plain);
       setEditing(false);
     } catch (e) {
       setErr(e.message);
@@ -93,18 +131,45 @@ const EncryptedField = ({
 
   // —— 渲染 ——
 
+  // 共用的「銀行下拉 + 帳號輸入」編輯區塊（empty / unlocked 兩種狀態都會用到）
+  const renderBankEditor = () => (
+    <>
+      <select
+        className="encfield__input encfield__input--bank-select"
+        value={bankCodeDraft}
+        onChange={(e) => setBankCodeDraft(e.target.value)}
+      >
+        <option value="" disabled>— 銀行 —</option>
+        {TAIWAN_BANKS.map((b) => (
+          <option key={b.code} value={b.code}>{b.code} {b.name}</option>
+        ))}
+      </select>
+      <input
+        className="encfield__input encfield__input--bank-account"
+        value={bankAcctDraft}
+        onChange={(e) => setBankAcctDraft(e.target.value.replace(/\D/g, ''))}
+        placeholder="帳號（純數字）"
+        inputMode="numeric"
+        maxLength={16}
+        autoComplete="off"
+      />
+    </>
+  );
+
   // 完全沒有值 → 直接顯示「設定」按鈕（若可編輯）
   if (!hasValue) {
     if (editing) {
       return (
         <div className="encfield encfield--editing">
-          <input
-            className="encfield__input"
-            value={draft}
-            placeholder="輸入明文後加密儲存"
-            onChange={(e) => setDraft(e.target.value)}
-            autoFocus
-          />
+          {isBank ? renderBankEditor() : (
+            <input
+              className="encfield__input"
+              value={draft}
+              placeholder="輸入明文後加密儲存"
+              onChange={(e) => setDraft(e.target.value)}
+              autoFocus
+            />
+          )}
           <button className="encfield__btn encfield__btn--save" onClick={handleSave} disabled={busy}>
             {busy ? <Loader2 size={12} className="encfield__spin" /> : <Save size={12} />}
           </button>
@@ -146,19 +211,25 @@ const EncryptedField = ({
   }
 
   // 已解密：顯示明文（可遮罩切換 + 編輯）
+  // bank-account 模式有自己的 display / mask formatter
+  const plainStr = decrypted ?? '';
   const display = showFull
-    ? (decrypted ?? '')
-    : (formatter ? formatter(decrypted ?? '') : maskMiddle(decrypted ?? ''));
+    ? (isBank ? displayBankAccount(plainStr) : plainStr)
+    : (isBank
+        ? maskBankAccount(plainStr)
+        : (formatter ? formatter(plainStr) : maskMiddle(plainStr)));
 
   if (editing) {
     return (
       <div className="encfield encfield--editing">
-        <input
-          className="encfield__input"
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          autoFocus
-        />
+        {isBank ? renderBankEditor() : (
+          <input
+            className="encfield__input"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            autoFocus
+          />
+        )}
         <button className="encfield__btn encfield__btn--save" onClick={handleSave} disabled={busy}>
           {busy ? <Loader2 size={12} className="encfield__spin" /> : <Save size={12} />}
         </button>

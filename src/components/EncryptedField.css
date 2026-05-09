@@ -47,6 +47,24 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
+/* bank-account 模式：銀行下拉選單 */
+.encfield__input--bank-select {
+  min-width: 100px;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%231f2937' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 22px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* bank-account 模式：帳號輸入框 */
+.encfield__input--bank-account {
+  min-width: 110px;
+}
+
 .encfield__btn {
   display: inline-flex;
   align-items: center;
