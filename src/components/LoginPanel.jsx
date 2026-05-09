@@ -7,7 +7,7 @@ import './LoginPanel.css';
 // ============================================================================
 // 1. LoginPanel (安全升級版 - 串接 Firebase Auth)
 // ============================================================================
-const LoginPanel = ({ onLogin, onApiStatus, isExiting = false }) => {
+const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [employeeId, setEmployeeId] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -48,18 +48,19 @@ try {
             }
         } catch { /* 寫稽核失敗不影響登入流程 */ }
 
-        // 2. 登入成功後，判斷角色權限
-        if (inputId === 'admin') {
-            onLogin({ id: 'ADMIN', name: '管理人員', role: 'admin' });
-        } else {
-            // 登入瞬間先給一個「載入中」的假名字，不要去依賴空的 staffData
-            onLogin({
-                id: inputId.toUpperCase(),
-                name: '載入中...',
-                role: 'staff',
-                rule: 'Standard',
-            });
-        }
+        // 2. 登入成功 → 建立毛玻璃蓋板（與登出同款動畫，方向相反）
+        //    glassFadeIn：35% 蓋滿 → 60% 持續 → 100% 退開，總長 1.5s
+        //    在 750ms（畫面被蓋滿）時切換 currentUser，主畫面在蓋板退開時逐漸顯露
+        const cover = document.createElement('div');
+        cover.className = 'app__transition-cover';
+        document.body.appendChild(cover);
+
+        const userPayload = inputId === 'admin'
+            ? { id: 'ADMIN', name: '管理人員', role: 'admin' }
+            : { id: inputId.toUpperCase(), name: '載入中...', role: 'staff', rule: 'Standard' };
+
+        setTimeout(() => onLogin(userPayload), 750);
+        setTimeout(() => cover.remove(), 1500);
     } catch (err) {
         // ★ 登入失敗 → API 狀態紅燈
         if (onApiStatus) onApiStatus('red', `登入失敗: ${err.code || err.message}`);
@@ -103,7 +104,7 @@ try {
   };
 
   return (
-    <div className={`login-panel${isExiting ? ' login-panel--exiting' : ''}`}>
+    <div className="login-panel">
       {/* 🌟 背景動畫色塊 */}
       <div className="login-panel__blob login-panel__blob--1"></div>
       <div className="login-panel__blob login-panel__blob--2"></div>
