@@ -1,9 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { AlertCircle, LogIn, Shield } from 'lucide-react';
 import { auth } from '../api/database';
 import WeatherClockWidget from './WeatherClockWidget';
 import './LoginPanel.css';
+
+// Hook：偵測是否為行動版尺寸（≤640px）
+// 桌面：widget 渲染在卡片外（position: fixed 才能黏到 viewport 右上角）
+// 行動：widget 渲染在卡片內（嵌進去當頂端的薄玻璃條）
+// 不能單純用 CSS 控制 — 卡片有 backdrop-filter 會建立 containing block，
+// 把裡面的 position: fixed 鎖在卡片內。
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== 'undefined' ? window.innerWidth <= breakpoint : false,
+  );
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= breakpoint);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
 
 // ============================================================================
 // 1. LoginPanel (安全升級版 - 串接 Firebase Auth)
@@ -13,6 +30,7 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const isMobile = useIsMobile(640);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -106,6 +124,9 @@ try {
 
   return (
     <div className="login-panel">
+      {/* 桌面版：widget 渲染在卡片外，可正常 fixed 在 viewport 右上角 */}
+      {!isMobile && <WeatherClockWidget />}
+
       {/* 🌟 背景動畫色塊 */}
       <div className="login-panel__blob login-panel__blob--1"></div>
       <div className="login-panel__blob login-panel__blob--2"></div>
@@ -113,8 +134,9 @@ try {
       <div className="login-panel__blob login-panel__blob--4"></div>
 
       <div className="login-panel__card">
-        {/* 天氣 + 時鐘 widget — CSS 控制：桌面 fixed 在右上角；手機改靜態、嵌在卡片內最上方 */}
-        <WeatherClockWidget />
+        {/* 行動版：widget 渲染在卡片內、置中（卡片的 backdrop-filter 會造成 containing block，
+            所以這個位置只能用 position: static，不能用 fixed） */}
+        {isMobile && <WeatherClockWidget />}
 
         <h2 className="login-panel__title">排班系統 <span className="login-panel__badge"><Shield size={12} /> 安全版</span></h2>
 
