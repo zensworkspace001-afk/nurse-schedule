@@ -201,6 +201,25 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       );
   }
 
+  // 防呆 4-pre: 班表已被認領完畢，但本人未獲得班次（例如新加入員工、人比班次多）
+  // 條件：本人沒認領 + 班表確實有資料（claimedSlots > 0）+ 沒有任何 D 空缺剩下
+  const claimedCount   = aiSlots.filter(opt => opt.isClaimed).length;
+  const unclaimedCount = aiSlots.filter(opt => !opt.isClaimed).length;
+  if (!hasClaimed && claimedCount > 0 && unclaimedCount === 0) {
+      return (
+          <div className="dashboard__guard">
+              <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
+              <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
+              <div className="dashboard__guard-info">
+                  非常抱歉，<strong>{targetYear} 年 {targetMonth} 月</strong> 的班表已被同仁全數認領完畢。<br/><br/>
+                  您本月未獲得班次，系統會優先在下個月安排您選班。<br/>
+                  如有疑問請聯絡護理長。
+              </div>
+              <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
+          </div>
+      );
+  }
+
   // 防呆 4: AI 接力選班引擎鎖定 (最核心！)
   // 若引擎有指定人 (active_staff_id 有值)，且那個人不是我，我就不能選！
   // ★ 但已經認領過的員工不受此限制，允許他們查看自己的班表
