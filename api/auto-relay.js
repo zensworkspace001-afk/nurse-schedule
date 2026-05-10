@@ -81,12 +81,16 @@ export default async function handler(req, res) {
             ]);
         }
 
+        // 統一正規化 helper — 所有比對都用大寫，避免 'N003' / 'n003' 不匹配導致重派
+        const norm = (s) => String(s || '').trim().toUpperCase();
+
         // 0-b. 如果有指定剛完成的員工，先將其加入黑名單 (SelectionProgress)
         if (finishedStaffId) {
-            console.log(`📌 標記員工 ${finishedStaffId} 為已完成選班`);
+            const normalizedFinished = norm(finishedStaffId);
+            console.log(`📌 標記員工 ${normalizedFinished} 為已完成選班`);
             const progressRef = db.collection('SelectionProgress').doc(`${year}_${month}`);
             await progressRef.set({
-                submitted_staff: admin.firestore.FieldValue.arrayUnion(finishedStaffId)
+                submitted_staff: admin.firestore.FieldValue.arrayUnion(normalizedFinished)
             }, { merge: true });
         }
 
@@ -97,34 +101,45 @@ export default async function handler(req, res) {
         // 2. 抓取「已經選過」的黑名單 (SelectionProgress)
         const progressRef = db.collection('SelectionProgress').doc(`${year}_${month}`);
         const progressSnap = await progressRef.get();
-        let submittedList = progressSnap.exists ? (progressSnap.data().submitted_staff || []) : [];
+        // 全部正規化成大寫做比對基準
+        const rawSubmitted = progressSnap.exists ? (progressSnap.data().submitted_staff || []) : [];
+        let submittedList = rawSubmitted.map(norm);
+        const scheduleKeysUpper = currentSchedule ? Object.keys(currentSchedule).map(norm) : [];
 
         // 2-a. 🧹 自我修復：如果 submittedList 裡有人已不在班表中（被管理員拔除釋出），
         //      把它們從黑名單移除，讓 AI 有機會重新輪到他們
-        const scheduleKeys = currentSchedule ? Object.keys(currentSchedule) : [];
-        const ghosts = submittedList.filter(sid => !scheduleKeys.includes(sid));
+        //      比對前都正規化成大寫，避免 N003 / n003 大小寫差導致誤判為幽靈
+        const ghosts = rawSubmitted.filter(sid => !scheduleKeysUpper.includes(norm(sid)));
         if (ghosts.length > 0) {
             console.log(`🧹 清除 ${ghosts.length} 位幽靈員工（已從班表拔除但仍在黑名單）: ${ghosts.join(', ')}`);
             await progressRef.set({
                 submitted_staff: admin.firestore.FieldValue.arrayRemove(...ghosts)
             }, { merge: true });
-            submittedList = submittedList.filter(sid => !ghosts.includes(sid));
+            const ghostsUpper = ghosts.map(norm);
+            submittedList = submittedList.filter(sid => !ghostsUpper.includes(sid));
         }
 
         // 3. 篩選出「尚未選班」的活躍員工
         //    - is_active: 只排除明確為 false 的 (undefined/null 當作在職)
         //    - leave_status: 只排除真正在休假的 (OnLeave / Maternal)，Student 仍可選班
-        const remainingDSlots = scheduleKeys.filter(k => typeof k === 'string' && k.startsWith('D'));
+        //    - 大小寫一律正規化做 includes 比對
+        const remainingDSlots = (currentSchedule ? Object.keys(currentSchedule) : []).filter(k => typeof k === 'string' && k.startsWith('D'));
         const excludedReasons = [];
         const isOnLeave = (ls) => ls === 'OnLeave' || ls === 'Maternal';
         const unassignedStaff = staffData.filter(s => {
-            if (!s.staff_id || s.staff_id === 'admin' || s.staff_id.startsWith('D')) return false;
-            if (s.is_active === false || String(s.is_active).toLowerCase() === 'false') { excludedReasons.push(`${s.staff_id}=已停用`); return false; }
-            if (isOnLeave(s.leave_status)) { excludedReasons.push(`${s.staff_id}=休假中(${s.leave_status})`); return false; }
-            if (submittedList.includes(s.staff_id)) return false;
-            if (scheduleKeys.includes(s.staff_id)) return false;
+            const sid = norm(s.staff_id);
+            if (!sid || sid === 'ADMIN' || sid.startsWith('D')) return false;
+            if (s.is_active === false || String(s.is_active).toLowerCase() === 'false') { excludedReasons.push(`${sid}=已停用`); return false; }
+            if (isOnLeave(s.leave_status)) { excludedReasons.push(`${sid}=休假中(${s.leave_status})`); return false; }
+            if (submittedList.includes(sid)) { excludedReasons.push(`${sid}=已在 submittedList`); return false; }
+            if (scheduleKeysUpper.includes(sid)) { excludedReasons.push(`${sid}=已認領班表`); return false; }
             return true;
         });
+
+        console.log(`📊 候選人盤點: 黑名單 ${submittedList.length} 位 / 已認領 ${scheduleKeysUpper.filter(k=>!k.startsWith('D')).length} 位 / 候選 ${unassignedStaff.length} 位`);
+        if (unassignedStaff.length > 0) {
+            console.log(`   候選 staff_id：${unassignedStaff.map(s => s.staff_id).join(', ')}`);
+        }
 
         // 4. 終止條件：所有人都選完了！
         if (unassignedStaff.length === 0) {
@@ -284,8 +299,13 @@ export default async function handler(req, res) {
             decision = { selected_staff_id: unassignedStaff[0].staff_id, reason: "AI 回應解析失敗，預設首位。" };
         }
 
-        // 7. 驗證並執行寫入
-        const finalStaffId = unassignedStaff.find(s => s.staff_id === decision.selected_staff_id) ? decision.selected_staff_id : unassignedStaff[0].staff_id;
+        // 7. 驗證並執行寫入 — 大小寫一律正規化比對
+        const decidedNorm = String(decision.selected_staff_id || '').trim().toUpperCase();
+        const matchedCandidate = unassignedStaff.find(s => String(s.staff_id).trim().toUpperCase() === decidedNorm);
+        const finalStaffId = matchedCandidate ? matchedCandidate.staff_id : unassignedStaff[0].staff_id;
+        if (!matchedCandidate) {
+            console.warn(`⚠️ AI 選擇 ${decision.selected_staff_id} 不在候選名單中，回退到 ${finalStaffId}`);
+        }
         
         // 更新 SelectionTurn (Admin SDK 繞過 Firestore Rules)
         const turnData = {
