@@ -95,10 +95,11 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   //   - publishedDate 從雲端載完後，一次性 sync 到「正在被排班的月份」
   //   - admin 在 session 內手動切月份後不會被覆蓋（用 ref 鎖住）
   //   - 不存 localStorage：每次重整 / 重登都重新對齊 publishedDate
-  //     （之前用 localStorage 反而讓舊 session 的選擇卡住，無法回到 publishedDate）
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const initialNoSavedMonthRef = React.useRef(true);
+  // 防止「publishedDate 還沒從雲端載入時就用 hardcoded 初始值同步」— 必須等 cloud 真的給值才動
+  const publishedDateLoadedRef = React.useRef(false);
   // 結算與歷史 panel 的月份狀態 — 同 selectedMonth/Year 邏輯
   //（每次重整都重新對齊 publishedDate；session 內手動切換不會被覆蓋）
   const [historyMonth, setHistoryMonth] = useState(new Date().getMonth() + 1);
@@ -118,10 +119,11 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
 
   // 雲端 publishedDate 載入後，把 selectedMonth/Year + historyMonth/Year 一次性同步到
   // publishedDate（「正在被排班的那個月份」）。
-  // synced 完就把 ref 標記掉，後續 admin 自己改月份不會再被覆蓋。
-  // 由於沒存 localStorage，每次重整 / 重登都會重新觸發這個同步，達成「登入永遠對齊
-  // publishedDate」的需求。
+  // 兩道閘門：
+  //   1. publishedDateLoadedRef.current  — 防止 hardcoded 初始值就觸發同步
+  //   2. initialNoSavedMonthRef.current  — 防止 admin 手動切月份後又被自動覆蓋
   useEffect(() => {
+    if (!publishedDateLoadedRef.current) return;  // 等雲端真的載入
     if (!publishedDate?.month || !publishedDate?.year) return;
     if (initialNoSavedMonthRef.current) {
       setSelectedMonth(publishedDate.month);
@@ -305,6 +307,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       }
       if (data.levelBonus) setLevelBonus(data.levelBonus);
       if (data.publishedDate) {
+        publishedDateLoadedRef.current = true;
         setPublishedDate(prev => {
           if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
           return data.publishedDate;
