@@ -277,47 +277,43 @@ const [historyYear, setHistoryYear] = useState(() => {
     }
   }, [schedule, finalizedSchedule, staffData, selectedYear, selectedMonth, publicHolidays, historyData]);
 // ☁️ 雲端引擎 1：即時讀取 (使用抽象化 API)
+  // ☁️ 雲端訂閱拆成三條獨立 useEffect，避免月份切換時把 6 條 listener 一次拆光重建
+  // 之前遇過 Firebase 12.9.0 在 listener churn 太快時拋 INTERNAL ASSERTION FAILED (b815/ca9)
+  //
+  // useEffect 1：身份相關訂閱（Settings + Staff/Public + MyPrivate + Reports）
+  //              只跟 currentUser 綁，跨月不會拆
+  // useEffect 2：當前月份班表訂閱（admin → selectedYear/Month；staff → publishedDate）
+  // useEffect 3：歷史月份班表訂閱（historyYear/Month，給結算頁用）
+
+  // ----- 訂閱 1：身份相關（一次性，登入登出才 churn） -----
   useEffect(() => {
-    // 🌟 1. 核心修復：把安全門加回來！沒有登入的人，絕對不准去要資料！
-    if (!currentUser) return; 
+    if (!currentUser) return;
 
-    let isSettingsLoaded = false; let isStaffLoaded = false; let isScheduleLoaded = false;
-    const checkAllLoaded = () => { if (isSettingsLoaded && isStaffLoaded && isScheduleLoaded) setIsCloudLoaded(true); };
-
-    // 2. 登入成功後，開始安全地下載所有資料
     const unsubSettings = subscribeToSettings((data) => {
-      if (data) {
-        if (data.shiftOptions) setShiftOptions(data.shiftOptions);
-        if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
-        if (data.requirements) setRequirements(data.requirements);
-        if (data.bedConfig) setBedConfig(data.bedConfig);
-        // baseSalary：辨識密文 vs 明文（為遷移期間做向下相容）
-        if (data.baseSalary !== undefined && data.baseSalary !== null) {
-          const v = data.baseSalary;
-          const isCipher = v && typeof v === 'object' && typeof v.ct === 'string' && typeof v.iv === 'string';
-          if (isCipher) {
-            setBaseSalaryEnc(v);
-            // baseSalary 維持 null，等管理員主動解鎖
-          } else {
-            // 舊版明文（migration 前）
-            setBaseSalary(Number(v) || 40000);
-            setBaseSalaryEnc(null);
-          }
-        }
-        if (data.levelBonus) setLevelBonus(data.levelBonus);
-        if (data.publishedDate) {
-          setPublishedDate(prev => {
-            if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
-            return data.publishedDate;
-          });
+      if (!data) return;
+      if (data.shiftOptions) setShiftOptions(data.shiftOptions);
+      if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
+      if (data.requirements) setRequirements(data.requirements);
+      if (data.bedConfig) setBedConfig(data.bedConfig);
+      if (data.baseSalary !== undefined && data.baseSalary !== null) {
+        const v = data.baseSalary;
+        const isCipher = v && typeof v === 'object' && typeof v.ct === 'string' && typeof v.iv === 'string';
+        if (isCipher) {
+          setBaseSalaryEnc(v);
+        } else {
+          setBaseSalary(Number(v) || 40000);
+          setBaseSalaryEnc(null);
         }
       }
-      isSettingsLoaded = true; checkAllLoaded();
+      if (data.levelBonus) setLevelBonus(data.levelBonus);
+      if (data.publishedDate) {
+        setPublishedDate(prev => {
+          if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
+          return data.publishedDate;
+        });
+      }
     });
 
-    // ★ 角色分流訂閱：
-    //   admin → 訂閱完整 NurseApp/Staff（規則限定 admin 才能讀）
-    //   staff → 訂閱 NurseApp/StaffPublic（同事用精簡投影）+ 自己的 StaffPrivate/{id}
     let unsubStaff;
     let unsubMyPrivate = null;
     if (currentUser.role === 'admin') {
@@ -326,59 +322,67 @@ const [historyYear, setHistoryYear] = useState(() => {
           if (data.staffData) setStaffData(data.staffData);
           if (data.healthStats) setHealthStats(data.healthStats);
         }
-        isStaffLoaded = true; checkAllLoaded();
       });
     } else {
       unsubStaff = subscribeToStaffPublic((data) => {
         if (data && data.staffData) setStaffData(data.staffData);
-        isStaffLoaded = true; checkAllLoaded();
       });
       unsubMyPrivate = subscribeToMyStaffPrivate(currentUser.id, (data) => {
         setMyStaffRow(data || null);
       });
     }
 
-    const scheduleYear  = currentUser.role === 'admin' ? selectedYear  : publishedDate.year;
-    const scheduleMonth = currentUser.role === 'admin' ? selectedMonth : publishedDate.month;
+    let unsubReports = null;
+    if (currentUser.role === 'admin') {
+      unsubReports = subscribeToArchiveReports((data) => setAccumulatedReports(data));
+    }
 
-    // ★ 角色分流訂閱班表：
-    //   admin → Schedules/{ym}（含完整 schedule + finalizedSchedule，含原始請假類型）
-    //   staff → SchedulesPublic/{ym}（只含 finalizedSchedule，事假/病假/特休 已遮成 OFF）
-    const unsubSchedule = currentUser.role === 'admin'
-      ? subscribeToSchedule(scheduleYear, scheduleMonth, (data) => {
+    // 身份訂閱建立後即視為「身份資料就緒」— 班表 listener 那條會自己 setIsCloudLoaded
+    setIsCloudLoaded(true);
+
+    return () => {
+      unsubSettings();
+      unsubStaff?.();
+      unsubMyPrivate?.();
+      unsubReports?.();
+      setMyStaffRow(null);
+      setIsCloudLoaded(false);
+    };
+  }, [currentUser]);
+
+  // ----- 訂閱 2：當月班表（admin 用 selectedYear/Month；staff 用 publishedDate） -----
+  useEffect(() => {
+    if (!currentUser) return;
+    const isAdmin = currentUser.role === 'admin';
+    const y = isAdmin ? selectedYear  : publishedDate.year;
+    const m = isAdmin ? selectedMonth : publishedDate.month;
+    if (!y || !m) return;
+
+    const unsub = isAdmin
+      ? subscribeToSchedule(y, m, (data) => {
           if (data) {
             setSchedule(data.schedule || {});
             setFinalizedSchedule(data.finalizedSchedule || null);
           } else {
             setSchedule({}); setFinalizedSchedule(null);
           }
-          isScheduleLoaded = true; checkAllLoaded();
         })
-      : subscribeToSchedulePublic(scheduleYear, scheduleMonth, (data) => {
-          // 員工不需要看草稿 schedule，只需 finalizedSchedule（已遮罩過）
+      : subscribeToSchedulePublic(y, m, (data) => {
           setSchedule({});
           setFinalizedSchedule(data?.finalizedSchedule || null);
-          isScheduleLoaded = true; checkAllLoaded();
         });
+    return () => unsub();
+  }, [currentUser, selectedYear, selectedMonth, publishedDate.year, publishedDate.month]);
 
-    const unsubHistory = subscribeToSchedule(historyYear, historyMonth, (data) => {
-        setHistorySchedule(data?.finalizedSchedule || {});
+  // ----- 訂閱 3：歷史月班表（給結算頁用） -----
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!historyYear || !historyMonth) return;
+    const unsub = subscribeToSchedule(historyYear, historyMonth, (data) => {
+      setHistorySchedule(data?.finalizedSchedule || {});
     });
-    
-    let unsubReports = null;
-    if (currentUser?.role === 'admin') {
-        unsubReports = subscribeToArchiveReports((data) => {
-            setAccumulatedReports(data);
-        });
-    }
-
-    return () => {
-      unsubSettings(); unsubStaff(); unsubSchedule(); unsubHistory();
-      unsubReports?.(); unsubMyPrivate?.();
-      setIsCloudLoaded(false); setMyStaffRow(null);
-    };
-    
-  }, [selectedYear, selectedMonth, historyYear, historyMonth, currentUser, publishedDate.year, publishedDate.month]);
+    return () => unsub();
+  }, [currentUser, historyYear, historyMonth]);
   // ☁️ 雲端引擎 2：自動寫入 (加入終極安全防護)
   useEffect(() => {
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
