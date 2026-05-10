@@ -205,18 +205,6 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
   // 條件：本人沒認領 + 班表確實有資料（claimedSlots > 0）+ 沒有任何 D 空缺剩下
   const claimedCount   = aiSlots.filter(opt => opt.isClaimed).length;
   const unclaimedCount = aiSlots.filter(opt => !opt.isClaimed).length;
-
-  // 暫時診斷 log（之後可移除）— 看看 N031 之類員工為什麼沒進入 4-pre 分支
-  console.log('[StaffDashboard 診斷]', {
-    userId: currentUser?.id,
-    hasClaimed,
-    claimedCount,
-    unclaimedCount,
-    aiSlotsLen: aiSlots.length,
-    currentScheduleKeys: currentSchedule ? Object.keys(currentSchedule) : null,
-    targetYear, targetMonth,
-  });
-
   if (!hasClaimed && claimedCount > 0 && unclaimedCount === 0) {
       return (
           <div className="dashboard__guard">
