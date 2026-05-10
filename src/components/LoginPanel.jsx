@@ -140,17 +140,21 @@ try {
 
         <h2 className="login-panel__title">排班系統 <span className="login-panel__badge"><Shield size={12} /> 安全版</span></h2>
 
-        <form onSubmit={handleLogin} className="login-panel__form">
+        <form onSubmit={handleLogin} className="login-panel__form" autoComplete="on">
           <input
             type="text" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)}
             placeholder="請輸入工號 (例如: N001 或 admin)"
             required
+            autoComplete="username"
+            name="username"
             className="login-panel__input"
           />
           <input
             type="password" value={password} onChange={(e) => setPassword(e.target.value)}
             placeholder="請輸入密碼"
             required
+            autoComplete="current-password"
+            name="password"
             className="login-panel__input login-panel__input--password"
           />
 
