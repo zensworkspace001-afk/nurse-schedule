@@ -106,34 +106,46 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   });
   // 紀錄「初始有沒有 localStorage」 — 用來決定第一次 publishedDate 載入後要不要覆蓋過去
   const initialNoSavedMonthRef = React.useRef(!localStorage.getItem('selectedMonth'));
-// ★★★ 新增以下這三行：專供「結算與歷史(Tab 3)」使用的獨立狀態 ★★★
+  // 結算與歷史 panel 的月份狀態 — 跟 selectedMonth/Year 同步邏輯：
+  //   localStorage 有 → 用使用者上次手動選的
+  //   沒有 → 暫用本月當佔位，等 publishedDate 載入後 sync 過去
+  // 這樣三個有月份選單的 panel（排班工作桌 / 發布與認領 / 結算與歷史）登入時都會
+  // 預設停在「目前正在被排班的那個月」(publishedDate)，跟使用者直覺一致。
   const [historyMonth, setHistoryMonth] = useState(() => {
-  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
-  return m === 1 ? 12 : m - 1;
-});
-const [historyYear, setHistoryYear] = useState(() => {
-  const m = Number(localStorage.getItem('selectedMonth')) || new Date().getMonth() + 1;
-  const y = Number(localStorage.getItem('selectedYear'))  || new Date().getFullYear();
-  return m === 1 ? y - 1 : y;
-});
+    const saved = Number(localStorage.getItem('historyMonth'));
+    if (saved) return saved;
+    return new Date().getMonth() + 1;
+  });
+  const [historyYear, setHistoryYear] = useState(() => {
+    const saved = Number(localStorage.getItem('historyYear'));
+    if (saved) return saved;
+    return new Date().getFullYear();
+  });
+  // 紀錄初始 localStorage 狀態，讓 publishedDate sync useEffect 知道要不要覆蓋
+  const initialNoSavedHistoryRef = React.useRef(!localStorage.getItem('historyMonth'));
   const [historySchedule, setHistorySchedule] = useState({});
   const [accumulatedReports, setAccumulatedReports] = useState({});
   
   useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
   useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
+  useEffect(() => { localStorage.setItem('historyYear', historyYear); }, [historyYear]);
+  useEffect(() => { localStorage.setItem('historyMonth', historyMonth); }, [historyMonth]);
 
   // 雲端 publishedDate 載入後，若初始時 localStorage 沒值（=admin 沒手動選過），
-  // 把 selectedMonth/Year 同步到 publishedDate（「正在被排班的那個月份」）。
+  // 把 selectedMonth/Year + historyMonth/Year 同步到 publishedDate
+  //（「正在被排班的那個月份」）。
   // 只跑一次：synced 完就把 ref 標記掉，後續 admin 自己改月份不會再被覆蓋。
   useEffect(() => {
-    if (
-      initialNoSavedMonthRef.current &&
-      publishedDate?.month &&
-      publishedDate?.year
-    ) {
+    if (!publishedDate?.month || !publishedDate?.year) return;
+    if (initialNoSavedMonthRef.current) {
       setSelectedMonth(publishedDate.month);
       setSelectedYear(publishedDate.year);
       initialNoSavedMonthRef.current = false;
+    }
+    if (initialNoSavedHistoryRef.current) {
+      setHistoryMonth(publishedDate.month);
+      setHistoryYear(publishedDate.year);
+      initialNoSavedHistoryRef.current = false;
     }
   }, [publishedDate]);
 
