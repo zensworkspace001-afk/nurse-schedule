@@ -1,5 +1,8 @@
-// 診斷腳本：直接讀 Firestore 看 9 月排班接力的實際狀態
-// 用法：node --env-file=.env.local scripts/diagnose-relay.js
+// 診斷腳本：直接讀 Firestore 看任一月份排班接力的實際狀態
+// 用法：
+//   node --env-file=.env.local scripts/diagnose-relay.js                # 預設 9 月
+//   node --env-file=.env.local scripts/diagnose-relay.js 2026 5         # 指定 2026 年 5 月
+//   node --env-file=.env.local scripts/diagnose-relay.js 2026 9 N003    # 同時檢查 N003 是否該被排除
 
 import admin from 'firebase-admin';
 
@@ -16,13 +19,20 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const YM = '2026_9';
+
+// 命令列：node script.js [year] [month] [staffId]
+const argYear = Number(process.argv[2]);
+const argMonth = Number(process.argv[3]);
+const TARGET_STAFF = (process.argv[4] || 'N001').toUpperCase();
+const YEAR = Number.isFinite(argYear) ? argYear : 2026;
+const MONTH = Number.isFinite(argMonth) ? argMonth : 9;
+const YM = `${YEAR}_${MONTH}`;
 
 const norm = (s) => String(s || '').trim().toUpperCase();
 const line = '─'.repeat(60);
 
 async function main() {
-  console.log('🔍 診斷 9月接力狀態 (' + YM + ')');
+  console.log(`🔍 診斷 ${YEAR}/${MONTH} 接力狀態 (${YM})  | 目標檢查員工：${TARGET_STAFF}`);
   console.log(line);
 
   // 1) SelectionTurn — 誰是現任 active
@@ -42,9 +52,9 @@ async function main() {
   console.log('\n[2] SelectionProgress/' + YM + '.submitted_staff：');
   console.log('  原始 (' + submittedList.length + ' 筆)：', JSON.stringify(submittedList));
   console.log('  正規化 upper：', JSON.stringify(submittedList.map(norm)));
-  console.log('  N001 在裡面嗎？', submittedList.map(norm).includes('N001') ? '✅ YES' : '❌ NO');
+  console.log('  TARGET_STAFF 在裡面嗎？', submittedList.map(norm).includes(TARGET_STAFF) ? '✅ YES' : '❌ NO');
 
-  // 3) Schedules.finalizedSchedule — 看 N001 是否真的有 key
+  // 3) Schedules.finalizedSchedule — 看 TARGET_STAFF 是否真的有 key
   const schedSnap = await db.doc(`Schedules/${YM}`).get();
   const finalized = schedSnap.exists ? (schedSnap.data().finalizedSchedule || {}) : {};
   const allKeys = Object.keys(finalized);
@@ -53,24 +63,24 @@ async function main() {
   console.log('\n[3] Schedules/' + YM + '.finalizedSchedule：');
   console.log('  總 key 數：' + allKeys.length + ' (虛擬 D：' + dKeys.length + '、已認領：' + nKeys.length + ')');
   console.log('  已認領 key：', nKeys.join(', '));
-  console.log('  N001 有 key 嗎？', allKeys.map(norm).includes('N001') ? '✅ YES' : '❌ NO');
-  if (allKeys.map(norm).includes('N001')) {
-    const exactKey = allKeys.find(k => norm(k) === 'N001');
+  console.log('  TARGET_STAFF 有 key 嗎？', allKeys.map(norm).includes(TARGET_STAFF) ? '✅ YES' : '❌ NO');
+  if (allKeys.map(norm).includes(TARGET_STAFF)) {
+    const exactKey = allKeys.find(k => norm(k) === TARGET_STAFF);
     console.log('     exact key 寫法：' + JSON.stringify(exactKey));
     console.log('     第 1-5 天的 cell：', JSON.stringify(Object.fromEntries(
       Object.entries(finalized[exactKey] || {}).slice(0, 5)
     )));
   }
 
-  // 4) NurseApp/Staff — N001 的 staffData 紀錄
+  // 4) NurseApp/Staff — TARGET_STAFF 的 staffData 紀錄
   const staffSnap = await db.doc('NurseApp/Staff').get();
   const staffData = staffSnap.exists ? (staffSnap.data().staffData || []) : [];
-  const n001 = staffData.find(s => norm(s.staff_id) === 'N001');
-  console.log('\n[4] NurseApp/Staff.staffData 中 N001：');
+  const n001 = staffData.find(s => norm(s.staff_id) === TARGET_STAFF);
+  console.log('\n[4] NurseApp/Staff.staffData 中 TARGET_STAFF：');
   if (!n001) {
-    console.log('  ❌ 找不到 N001 / n001');
+    console.log('  ❌ 找不到 TARGET_STAFF / n001');
   } else {
-    console.log('  staff_id   =', JSON.stringify(n001.staff_id), '(' + (n001.staff_id === 'N001' ? '大寫正確' : '⚠️ 大小寫異常！') + ')');
+    console.log('  staff_id   =', JSON.stringify(n001.staff_id), '(' + (n001.staff_id === TARGET_STAFF ? '大寫正確' : '⚠️ 大小寫異常！') + ')');
     console.log('  name       =', n001.name);
     console.log('  is_active  =', n001.is_active);
     console.log('  leave_status =', n001.leave_status);
@@ -93,8 +103,8 @@ async function main() {
   });
   if (nineMonthCount === 0) console.log('  (無紀錄)');
 
-  // 6) 推論：模擬 auto-relay.js 的篩選邏輯，看 N001 應該被排除嗎？
-  console.log('\n[6] 模擬 auto-relay 篩選 N001 是否會被選中：');
+  // 6) 推論：模擬 auto-relay.js 的篩選邏輯，看 TARGET_STAFF 應該被排除嗎？
+  console.log('\n[6] 模擬 auto-relay 篩選 TARGET_STAFF 是否會被選中：');
   if (n001) {
     const sid = norm(n001.staff_id);
     const submittedUpper = submittedList.map(norm);
@@ -106,11 +116,11 @@ async function main() {
     if (submittedUpper.includes(sid)) reasons.push('在 submittedList');
     if (scheduleKeysUpper.includes(sid)) reasons.push('已認領班表');
     if (reasons.length === 0) {
-      console.log('  ⚠️ N001 不會被排除 → AI 仍可能選到她');
+      console.log('  ⚠️ TARGET_STAFF 不會被排除 → AI 仍可能選到她');
       console.log('     這就是 bug 來源！');
     } else {
-      console.log('  ✅ N001 應該被排除，原因：' + reasons.join(', '));
-      console.log('     若 AI 仍指向 N001，可能是 SelectionTurn 沒更新 / 前端讀到舊值');
+      console.log('  ✅ TARGET_STAFF 應該被排除，原因：' + reasons.join(', '));
+      console.log('     若 AI 仍指向 TARGET_STAFF，可能是 SelectionTurn 沒更新 / 前端讀到舊值');
     }
   }
 
