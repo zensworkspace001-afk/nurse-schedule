@@ -90,51 +90,37 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   const [preferences, setPreferences] = useState({});
   const [violations, setViolations] = useState([]);
   const [scheduleRisks, setScheduleRisks] = useState([]); // ★ 新增這行
-  // selectedMonth/Year 預設行為：
-  //   1. localStorage 有 → 用使用者上次手動選的（admin 換月份後該保留）
-  //   2. 沒有 → 暫用「本月」當佔位，等 publishedDate 從雲端載完再 sync 到那個月
-  // 「目前正在被排班的月份」= publishedDate（員工現在認領中的那個月）
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const saved = Number(localStorage.getItem('selectedMonth'));
-    if (saved) return saved;
-    return new Date().getMonth() + 1; // 佔位
-  });
-  const [selectedYear, setSelectedYear] = useState(() => {
-    const saved = Number(localStorage.getItem('selectedYear'));
-    if (saved) return saved;
-    return new Date().getFullYear(); // 佔位
-  });
-  // 紀錄「初始有沒有 localStorage」 — 用來決定第一次 publishedDate 載入後要不要覆蓋過去
-  const initialNoSavedMonthRef = React.useRef(!localStorage.getItem('selectedMonth'));
-  // 結算與歷史 panel 的月份狀態 — 跟 selectedMonth/Year 同步邏輯：
-  //   localStorage 有 → 用使用者上次手動選的
-  //   沒有 → 暫用本月當佔位，等 publishedDate 載入後 sync 過去
-  // 這樣三個有月份選單的 panel（排班工作桌 / 發布與認領 / 結算與歷史）登入時都會
-  // 預設停在「目前正在被排班的那個月」(publishedDate)，跟使用者直覺一致。
-  const [historyMonth, setHistoryMonth] = useState(() => {
-    const saved = Number(localStorage.getItem('historyMonth'));
-    if (saved) return saved;
-    return new Date().getMonth() + 1;
-  });
-  const [historyYear, setHistoryYear] = useState(() => {
-    const saved = Number(localStorage.getItem('historyYear'));
-    if (saved) return saved;
-    return new Date().getFullYear();
-  });
-  // 紀錄初始 localStorage 狀態，讓 publishedDate sync useEffect 知道要不要覆蓋
-  const initialNoSavedHistoryRef = React.useRef(!localStorage.getItem('historyMonth'));
+  // selectedMonth/Year 預設邏輯：
+  //   - 初始用「本月」當佔位
+  //   - publishedDate 從雲端載完後，一次性 sync 到「正在被排班的月份」
+  //   - admin 在 session 內手動切月份後不會被覆蓋（用 ref 鎖住）
+  //   - 不存 localStorage：每次重整 / 重登都重新對齊 publishedDate
+  //     （之前用 localStorage 反而讓舊 session 的選擇卡住，無法回到 publishedDate）
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const initialNoSavedMonthRef = React.useRef(true);
+  // 結算與歷史 panel 的月份狀態 — 同 selectedMonth/Year 邏輯
+  //（每次重整都重新對齊 publishedDate；session 內手動切換不會被覆蓋）
+  const [historyMonth, setHistoryMonth] = useState(new Date().getMonth() + 1);
+  const [historyYear, setHistoryYear] = useState(new Date().getFullYear());
+  const initialNoSavedHistoryRef = React.useRef(true);
   const [historySchedule, setHistorySchedule] = useState({});
   const [accumulatedReports, setAccumulatedReports] = useState({});
   
-  useEffect(() => { localStorage.setItem('selectedYear', selectedYear); }, [selectedYear]);
-  useEffect(() => { localStorage.setItem('selectedMonth', selectedMonth); }, [selectedMonth]);
-  useEffect(() => { localStorage.setItem('historyYear', historyYear); }, [historyYear]);
-  useEffect(() => { localStorage.setItem('historyMonth', historyMonth); }, [historyMonth]);
+  // 順手清掉舊版遺留的 localStorage key（之前曾用 selectedMonth/Year/historyMonth/Year
+  // 這幾個 key 持久化月份，現在不存了。沒清的話對使用者沒實際影響，但乾淨點）
+  useEffect(() => {
+    localStorage.removeItem('selectedMonth');
+    localStorage.removeItem('selectedYear');
+    localStorage.removeItem('historyMonth');
+    localStorage.removeItem('historyYear');
+  }, []);
 
-  // 雲端 publishedDate 載入後，若初始時 localStorage 沒值（=admin 沒手動選過），
-  // 把 selectedMonth/Year + historyMonth/Year 同步到 publishedDate
-  //（「正在被排班的那個月份」）。
-  // 只跑一次：synced 完就把 ref 標記掉，後續 admin 自己改月份不會再被覆蓋。
+  // 雲端 publishedDate 載入後，把 selectedMonth/Year + historyMonth/Year 一次性同步到
+  // publishedDate（「正在被排班的那個月份」）。
+  // synced 完就把 ref 標記掉，後續 admin 自己改月份不會再被覆蓋。
+  // 由於沒存 localStorage，每次重整 / 重登都會重新觸發這個同步，達成「登入永遠對齊
+  // publishedDate」的需求。
   useEffect(() => {
     if (!publishedDate?.month || !publishedDate?.year) return;
     if (initialNoSavedMonthRef.current) {
