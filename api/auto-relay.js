@@ -136,12 +136,54 @@ export default async function handler(req, res) {
             return true;
         });
 
-        console.log(`📊 候選人盤點: 黑名單 ${submittedList.length} 位 / 已認領 ${scheduleKeysUpper.filter(k=>!k.startsWith('D')).length} 位 / 候選 ${unassignedStaff.length} 位`);
+        console.log(`📊 候選人盤點: 黑名單 ${submittedList.length} 位 / 已認領 ${scheduleKeysUpper.filter(k=>!k.startsWith('D')).length} 位 / 候選 ${unassignedStaff.length} 位 / 剩餘空缺 ${remainingDSlots.length}`);
         if (unassignedStaff.length > 0) {
             console.log(`   候選 staff_id：${unassignedStaff.map(s => s.staff_id).join(', ')}`);
         }
 
-        // 4. 終止條件：所有人都選完了！
+        // 4-pre. 終止條件 A：班表已被填滿（沒有 D 空缺），但還有活躍員工沒選到
+        //         → 結束接力 + 通知 admin 哪些員工沒拿到班
+        //         不能繼續叫 AI 挑人，因為沒空缺給他們認領，會卡死。
+        if (remainingDSlots.length === 0 && unassignedStaff.length > 0) {
+            const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'zensworkspace001@gmail.com';
+
+            await db.collection('SelectionTurn').doc(`${year}_${month}`).set({
+                active_staff_id: null, year, month,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            await db.collection('SelectionTurn').doc('latest').set({
+                active_staff_id: null, year, month,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            const missedList = unassignedStaff.map(s => `${s.staff_id} ${s.name || ''}`.trim());
+            const missedHtml = missedList.map(m => `<li>${m}</li>`).join('');
+
+            await sendSystemEmail(
+                adminEmail,
+                `✅ ${month}月 班表已全數認領完畢（但有 ${unassignedStaff.length} 位員工未排到）`,
+                `<h3>報告護理長：</h3>
+                 <p>本月班表的 D 空缺已全數被認領，接力選班正式結束。</p>
+                 <p>但人力比班次多，<strong>${unassignedStaff.length}</strong> 位活躍員工本月未獲得班次：</p>
+                 <ul>${missedHtml}</ul>
+                 <hr/>
+                 <p><strong>📊 結算盤點：</strong></p>
+                 <ul>
+                   <li>已認領班次：<strong>${scheduleKeysUpper.filter(k => !k.startsWith('D')).length}</strong> 位</li>
+                   <li>未排到員工：<strong>${unassignedStaff.length}</strong> 位（清單如上）</li>
+                 </ul>
+                 <p>請依照排班輪替原則考慮下個月優先安排這幾位同仁。</p>`
+            );
+
+            console.log(`✅ 班表已滿，結束接力。${unassignedStaff.length} 位員工未排到：${missedList.join(', ')}`);
+            return res.status(200).json({
+                message: '班表已全數認領，接力結束。',
+                schedule_full: true,
+                missed_staff: unassignedStaff.map(s => s.staff_id),
+            });
+        }
+
+        // 4. 終止條件 B：所有人都選完了（候選人耗盡）
         if (unassignedStaff.length === 0) {
             const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'zensworkspace001@gmail.com';
             // 清除 latest 指標
