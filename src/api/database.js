@@ -66,6 +66,41 @@ export const saveGlobalSettings = async (data) => {
 };
 
 // ============================================================================
+// 系統公告 — NurseApp/Announcement
+// ----------------------------------------------------------------------------
+// 單條全域公告。所有 authed user 可讀，admin 可寫。
+// 結構：{ text, kind: 'info'|'warning'|'urgent', active, updatedAt, updatedBy }
+// active=false 視為已清除（前端不顯示 banner）。
+// updatedAt 用來搭配 sessionStorage 判斷「使用者上次 dismiss 的是不是同一條」。
+// ============================================================================
+export const subscribeToAnnouncement = (callback) => {
+  return onSnapshot(
+    doc(db, 'NurseApp', 'Announcement'),
+    wrapDataCb('subscribeToAnnouncement', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToAnnouncement'),
+  );
+};
+
+export const saveAnnouncement = async ({ text, kind, updatedBy }) => {
+  await setDoc(doc(db, 'NurseApp', 'Announcement'), {
+    text: String(text || '').slice(0, 500), // 上限 500 字防 abuse
+    kind: ['info', 'warning', 'urgent'].includes(kind) ? kind : 'info',
+    active: true,
+    updatedAt: new Date().toISOString(),
+    updatedBy: updatedBy || null,
+  });
+};
+
+export const clearAnnouncement = async () => {
+  await setDoc(doc(db, 'NurseApp', 'Announcement'), {
+    active: false,
+    updatedAt: new Date().toISOString(),
+  }, { merge: true });
+};
+
+// ============================================================================
 // 2. 員工資料 — 三層拆分以符合個資法
 // ============================================================================
 //

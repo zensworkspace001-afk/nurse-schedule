@@ -1,0 +1,178 @@
+/* ==========================================================================
+   AnnouncementEditor — admin 編輯系統公告（嵌在 RequirementsPanel）
+   ========================================================================== */
+
+.ann-editor {
+  margin-top: 24px;
+  padding: 18px 20px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  font-family: 'Noto Sans TC', system-ui, sans-serif;
+}
+
+.ann-editor__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.ann-editor__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ann-editor__live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  background: rgba(80, 200, 130, 0.18);
+  border: 1px solid rgba(80, 200, 130, 0.4);
+  border-radius: 999px;
+  font-size: 11.5px;
+  color: #a8e6c4;
+}
+.ann-editor__live-dot {
+  width: 7px; height: 7px;
+  background: #69d394;
+  border-radius: 50%;
+  animation: ann-pulse-dot 1.6s ease-in-out infinite;
+}
+@keyframes ann-pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.3); }
+}
+
+.ann-editor__desc {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, 0.65);
+  line-height: 1.5;
+}
+
+/* ─── Kind selector ─── */
+.ann-editor__kind-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ann-editor__kind-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.ann-editor__kind-card:hover { background: rgba(255, 255, 255, 0.07); }
+.ann-editor__kind-card input { display: none; }
+
+.ann-editor__kind-card--selected {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+.ann-editor__kind-card--info.ann-editor__kind-card--selected    { border-color: rgba(70, 130, 200, 0.65); }
+.ann-editor__kind-card--warning.ann-editor__kind-card--selected { border-color: rgba(200, 140, 50, 0.65); }
+.ann-editor__kind-card--urgent.ann-editor__kind-card--selected  { border-color: rgba(190, 60, 60, 0.7); }
+
+.ann-editor__kind-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.ann-editor__kind-hint {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.3;
+}
+
+/* ─── Textarea ─── */
+.ann-editor__textarea {
+  width: 100%;
+  padding: 12px 14px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  resize: vertical;
+  min-height: 90px;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.ann-editor__textarea::placeholder { color: rgba(255, 255, 255, 0.35); }
+.ann-editor__textarea:focus {
+  outline: none;
+  border-color: rgba(120, 180, 255, 0.6);
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.ann-editor__meta-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.5);
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.ann-editor__char-count--low { color: #ffa86b; }
+
+/* ─── Actions ─── */
+.ann-editor__actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.ann-editor__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+}
+.ann-editor__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ann-editor__btn:not(:disabled):active { transform: translateY(1px); }
+
+.ann-editor__btn--primary {
+  background: rgba(70, 130, 200, 0.4);
+  color: #ffffff;
+  border-color: rgba(120, 180, 255, 0.5);
+}
+.ann-editor__btn--primary:not(:disabled):hover { background: rgba(70, 130, 200, 0.6); }
+
+.ann-editor__btn--ghost {
+  background: transparent;
+  color: rgba(255, 200, 200, 0.85);
+  border-color: rgba(255, 120, 120, 0.4);
+}
+.ann-editor__btn--ghost:not(:disabled):hover { background: rgba(255, 80, 80, 0.15); }
+
+@media (max-width: 640px) {
+  .ann-editor__kind-row { grid-template-columns: 1fr; }
+}

@@ -13,6 +13,7 @@ import AccessLogPanel from './AccessLogPanel';
 import ComplianceDashboard from './ComplianceDashboard';
 
 const ManagerInterface = ({
+  currentUser, announcement,
   staffData, setStaffData, requirements, setRequirements,
   schedule, violations,
   scheduleRisks,bedConfig, setBedConfig,
@@ -211,6 +212,8 @@ const ManagerInterface = ({
                   onGenerateSchedule={onGenerateSchedule}
                   onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
                   selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
+                  currentUser={currentUser}
+                  announcement={announcement}
                 />
               } />
 

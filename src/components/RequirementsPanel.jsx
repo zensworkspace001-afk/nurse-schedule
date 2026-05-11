@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import AnnouncementEditor from './AnnouncementEditor';
 import './RequirementsPanel.css';
 
 // ============================================================================
@@ -7,6 +8,7 @@ import './RequirementsPanel.css';
 const RequirementsPanel = ({
   setRequirements,
   bedConfig, setBedConfig, // ★ 接收從雲端與最高層傳來的狀態
+  currentUser, announcement,
 }) => {
 
   // ★ 解構目前的設定值 (若無則給預設值防呆)
@@ -74,6 +76,8 @@ const RequirementsPanel = ({
             </div>
         </div>
       </div>
+
+      <AnnouncementEditor announcement={announcement} currentUser={currentUser} />
     </div>
   );
 };

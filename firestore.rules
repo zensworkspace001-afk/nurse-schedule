@@ -34,6 +34,17 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // 1a. NurseApp/Announcement — 系統公告
+    //    讀取：所有已登入使用者（員工首頁顯示 banner）
+    //    寫入：僅管理員
+    //    內容：{ text, kind: 'info'|'warning'|'urgent', active, updatedAt, updatedBy }
+    // ============================================================
+    match /NurseApp/Announcement {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // ============================================================
     // 2. NurseApp/Staff — 員工完整資料（含 PII / 健康 / 財務欄位）
     //    讀取：僅管理員（員工同事看的是 NurseApp/StaffPublic 精簡投影）
     //    寫入：僅管理員（前端 saveGlobalStaff 會 batch 同步到 StaffPublic 與 StaffPrivate/{id}）

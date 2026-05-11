@@ -3,7 +3,7 @@ import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut } from "firebase/auth";
-import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive } from './api/database';
+import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive, subscribeToAnnouncement } from './api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
@@ -12,6 +12,7 @@ import ProfileWizard from './components/ProfileWizard';
 import ParticleBackground from './components/ParticleBackground';
 import WeatherClockWidget from './components/WeatherClockWidget';
 import ConnectionStatusBanner from './components/ConnectionStatusBanner';
+import AnnouncementBanner from './components/AnnouncementBanner';
 import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
@@ -38,7 +39,10 @@ const NurseSchedulingSystem = () => {
     setTimeout(() => { setShowAdminPwdModal(false); setClosingAdminPwdModal(false); }, 300);
   };
   // ★★★ 新增 1：儲存健康度歷史數據的狀態 ★★★
-  const [healthStats, setHealthStats] = useState([]); 
+  const [healthStats, setHealthStats] = useState([]);
+
+  // 系統公告（全員可讀；admin 在 RequirementsPanel 編輯）
+  const [announcement, setAnnouncement] = useState(null);
 
   // ★★★ 新增 2：計算並更新當月健康度的函式 ★★★
   const handleUpdateHealthStats = (year, month, avg, median) => {
@@ -362,6 +366,9 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       unsubReports = subscribeToArchiveReports((data) => setAccumulatedReports(data));
     }
 
+    // 全員都訂閱系統公告 — Firestore rule 允許所有 authed user 讀
+    const unsubAnnouncement = subscribeToAnnouncement((data) => setAnnouncement(data));
+
     // 身份訂閱建立後即視為「身份資料就緒」— 班表 listener 那條會自己 setIsCloudLoaded
     setIsCloudLoaded(true);
 
@@ -370,6 +377,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       unsubStaff?.();
       unsubMyPrivate?.();
       unsubReports?.();
+      unsubAnnouncement?.();
       setMyStaffRow(null);
       setIsCloudLoaded(false);
     };
@@ -804,6 +812,7 @@ const handleSaveAndPublish = async () => {
   return (
     <>
     <ConnectionStatusBanner />
+    <AnnouncementBanner announcement={announcement} />
     <div className="app">
       {/* 🌟 Canvas 粒子動態背景 */}
       <ParticleBackground />
@@ -901,6 +910,8 @@ const handleSaveAndPublish = async () => {
       <div className="app__content">
         {currentUser.role === 'admin' ? (
           <ManagerInterface
+            currentUser={currentUser}
+            announcement={announcement}
             staffData={staffData} setStaffData={setStaffData} historyData={historyData}
             requirements={requirements} setRequirements={setRequirements}
             bedConfig={bedConfig} setBedConfig={setBedConfig} // ★ 新增這行傳遞
