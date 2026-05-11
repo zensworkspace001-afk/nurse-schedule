@@ -12,7 +12,6 @@ import ProfileWizard from './components/ProfileWizard';
 import ParticleBackground from './components/ParticleBackground';
 import WeatherClockWidget from './components/WeatherClockWidget';
 import ConnectionStatusBanner from './components/ConnectionStatusBanner';
-import AnnouncementBanner from './components/AnnouncementBanner';
 import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
@@ -812,7 +811,8 @@ const handleSaveAndPublish = async () => {
   return (
     <>
     <ConnectionStatusBanner />
-    <AnnouncementBanner announcement={announcement} />
+    {/* AnnouncementBanner 只顯示在登入頁（LoginPanel 自己 subscribe）— dashboard 上不再呈現，
+        留給 admin 自己在 RequirementsPanel 的編輯器看到「目前正在顯示」狀態徽章 */}
     <div className="app">
       {/* 🌟 Canvas 粒子動態背景 */}
       <ParticleBackground />

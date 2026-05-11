@@ -35,12 +35,14 @@ service cloud.firestore {
 
     // ============================================================
     // 1a. NurseApp/Announcement — 系統公告
-    //    讀取：所有已登入使用者（員工首頁顯示 banner）
+    //    讀取：完全公開（含未登入訪客）— banner 顯示於登入頁，必須在
+    //          登入前就讀得到。內容是醫院公告級別（演習、政策提醒等），
+    //          非機密；admin 撰寫時應假設「全世界都看得到」。
     //    寫入：僅管理員
     //    內容：{ text, kind: 'info'|'warning'|'urgent', active, updatedAt, updatedBy }
     // ============================================================
     match /NurseApp/Announcement {
-      allow read: if isAuthenticated();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

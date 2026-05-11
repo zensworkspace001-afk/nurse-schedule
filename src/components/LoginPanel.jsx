@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { AlertCircle, LogIn, Shield } from 'lucide-react';
-import { auth } from '../api/database';
+import { auth, subscribeToAnnouncement } from '../api/database';
 import WeatherClockWidget from './WeatherClockWidget';
+import AnnouncementBanner from './AnnouncementBanner';
 import './LoginPanel.css';
 
 // Hook：偵測是否為行動版尺寸（≤640px）
@@ -31,6 +32,13 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const isMobile = useIsMobile(640);
+
+  // 系統公告（Firestore rule 允許未登入讀取此 doc — 登入頁也能拿到）
+  const [announcement, setAnnouncement] = useState(null);
+  useEffect(() => {
+    const unsub = subscribeToAnnouncement(setAnnouncement);
+    return () => unsub && unsub();
+  }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -126,6 +134,9 @@ try {
 
   return (
     <div className="login-panel">
+      {/* 系統公告 — 登入頁專屬。Firestore rule 開放未登入讀取此 doc */}
+      <AnnouncementBanner announcement={announcement} />
+
       {/* 桌面版：widget 渲染在卡片外，可正常 fixed 在 viewport 右上角 */}
       {!isMobile && <WeatherClockWidget />}
 
