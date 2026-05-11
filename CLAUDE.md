@@ -121,6 +121,8 @@ access_logs                — audit trail; { ts, actor:{uid,email}, action:'dec
 
 **Staff data three-doc split (PDPA §6 compliance):** the original single `NurseApp/Staff` doc was readable by any authenticated user, leaking colleagues' is_pregnant_or_nursing / leave_status / accumulated_ot etc. Now split into three: full doc admin-only, public sanitized projection for colleague-name lookups, per-staff private doc for own sensitive data. The frontend `saveGlobalStaff` and the backend `api/complete-profile.js` both batch-write all three to keep them in sync. To migrate existing deployments: `node scripts/migrate-staff-public.js` (dry-run) → `--commit`. Run **before** deploying the new firestore.rules so staff don't see empty data during the gap.
 
+**Firebase Auth UID realignment:** older Auth accounts (pre `admin-user.js` unification) carry a random 28-char UID instead of the matching `staff_id`. Firestore rule `match /StaffPrivate/{staffId}` requires `request.auth.uid == staffId`, so those staff get permission-denied on their private row. To fix existing deployments: `node --env-file=.env.local scripts/migrate-realign-auth-uid.js` (dry-run) → `--commit`. The script deletes each misaligned Auth user, recreates with `uid: staff_id`, and issues a new activation token — affected staff need to re-activate from email. Add `--skip-email` to print tokens to stdout instead of sending.
+
 ### Field-Level Encryption Setup (one-time)
 
 ```bash
