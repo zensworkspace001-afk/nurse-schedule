@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { checkCsrf } from './_lib/csrf.js';
 
 // 初始化 Firebase Admin (確保只初始化一次)
 if (!admin.apps.length) {
@@ -33,6 +34,12 @@ export default async function handler(req, res) {
     } catch (err) {
       return res.status(503).json({ ok: false, service: 'auto-settle', error: err.message });
     }
+  }
+
+  // ★ CSRF 防護（與其他 11 支 API 一致；checkCsrf 也允許「無 Origin + 帶 CRON_SECRET」的 cron 路徑）
+  const csrf = checkCsrf(req);
+  if (!csrf.allowed) {
+    return res.status(403).json({ error: '禁止：非法來源' });
   }
 
   // ★★★ 資安守衛：雙軌驗證 (CRON_SECRET 或 Firebase Admin Token) ★★★

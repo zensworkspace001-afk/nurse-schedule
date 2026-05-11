@@ -99,14 +99,16 @@ try {
         console.error("登入錯誤:", err.code);
         }
         // 翻譯 Firebase 的錯誤訊息
+        // OWASP A07: 不洩漏帳號是否存在 — invalid-credential / wrong-password /
+        // user-not-found / user-disabled 一律統一為「帳號或密碼錯誤」，避免
+        // 攻擊者用 disabled 與 wrong-password 的訊息差異列舉合法工號。
+        // 若使用者忘記啟用，UI 預期他會聯絡管理員 / 重新去收啟用信。
         switch (err.code) {
             case 'auth/invalid-credential':
             case 'auth/wrong-password':
             case 'auth/user-not-found':
-                setError('帳號或密碼錯誤！');
-                break;
             case 'auth/user-disabled':
-                setError('此帳號尚未啟用，請至 Email 收信並點擊啟用連結。');
+                setError('帳號或密碼錯誤，或帳號狀態異常，請聯絡管理員。');
                 break;
             case 'auth/too-many-requests':
                 setError('失敗次數過多，請稍後再試。');

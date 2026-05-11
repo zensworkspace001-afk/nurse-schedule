@@ -85,6 +85,9 @@ export default async function handler(req, res) {
       updates.disabled = false;
     }
     await admin.auth().updateUser(tokenData.uid, updates);
+    // 撤銷該 uid 既有的所有 refresh token — 防止攻擊者拿到舊 session（XSS / 共用電腦）
+    // 繼續用到 ID token 過期（1h）。reset 流程的意義就是「之前的訪問權都作廢」。
+    await admin.auth().revokeRefreshTokens(tokenData.uid);
   } catch (err) {
     console.error('啟用 / 重設失敗:', err);
     if (err.code === 'auth/user-not-found') {
