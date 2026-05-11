@@ -1,8 +1,9 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import admin from 'firebase-admin';
 import { checkRateLimit } from './_lib/rateLimit.js';
-import { validatePromptLength } from './_lib/sanitize.js';
+import { validatePromptLength, detectSensitivePii } from './_lib/sanitize.js';
 import { checkCsrf } from './_lib/csrf.js';
+import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 
 // 初始化 Firebase Admin (確保只初始化一次)
 if (!admin.apps.length) {
@@ -76,6 +77,24 @@ export default async function handler(req, res) {
     const promptCheck = validatePromptLength(prompt, 50000);
     if (!promptCheck.valid) {
       return res.status(400).json({ error: promptCheck.message });
+    }
+
+    // ★ 個資法 §8 + 醫療法 §72 守門：身分證 / 手機絕不能跨境送 Google。
+    //   偵測到就拒絕，並寫一筆 access_logs 留軌跡。
+    const pii = detectSensitivePii(prompt);
+    if (pii.hasPii) {
+      const meta = extractClientMeta(req);
+      writeAccessLog({
+        actor: { uid: decodedToken.uid, email: decodedToken.email || null },
+        action: 'ai-access-blocked',
+        target: { kind: 'chat', id: null },
+        fields: pii.hits,
+        ip: meta.ip, ua: meta.ua,
+        extra: { vendor: 'google-gemini', reason: 'pii-detected', hits: pii.hits },
+      }).catch(() => {});
+      return res.status(400).json({
+        error: `偵測到敏感個資（${pii.hits.join(', ')}），為符合個資法 §8 跨境傳輸規範，已阻擋送出。請改寫後重試。`,
+      });
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);

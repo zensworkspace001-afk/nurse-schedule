@@ -374,6 +374,7 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
           // 個資法稽核：admin 自由輸入的 chat 內容無法事前匿名（可能含工號 / 姓名等）；
           // 至少留下「誰、何時、把多少 prompt 預覽 送給了 Gemini」的軌跡。fire-and-forget
           // 不阻擋業務 — 寫 log 失敗只 console.warn。
+          // preview 加長至 500 字以提升事後溯源完整度（原本 80 字幾乎只夠看到開頭問句）。
           fetch('/api/secure-field', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -384,7 +385,8 @@ ${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` 
                   extra: {
                       source: 'SchedulePanel.handleUserChat',
                       vendor: 'google-gemini',
-                      prompt_preview: userMsg.slice(0, 80),
+                      prompt_preview: userMsg.slice(0, 500),
+                      prompt_truncated: userMsg.length > 500,
                       prompt_length: userMsg.length,
                   },
               }),
