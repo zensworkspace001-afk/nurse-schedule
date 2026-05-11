@@ -398,9 +398,12 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     return () => unsub();
   }, [currentUser, selectedYear, selectedMonth, publishedDate.year, publishedDate.month]);
 
-  // ----- 訂閱 3：歷史月班表（給結算頁用） -----
+  // ----- 訂閱 3：歷史月班表（給結算頁用，僅 admin 可讀） -----
+  // 歷史月份的 Schedules/{ym} 完整 doc 在 firestore.rules 是 admin-only，
+  // staff 角色訂閱會被 rules 擋下噴 "Missing or insufficient permissions"。
+  // 結算頁本身也只有 admin 路由能看到，所以 staff 不需要這條訂閱。
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser || currentUser.role !== 'admin') return;
     if (!historyYear || !historyMonth) return;
     const unsub = subscribeToSchedule(historyYear, historyMonth, (data) => {
       setHistorySchedule(data?.finalizedSchedule || {});
