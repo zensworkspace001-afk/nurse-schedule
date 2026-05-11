@@ -16,6 +16,9 @@ import './ConnectionStatusBanner.css';
 // Banner 是 slide-down 半透明條，不擋滑鼠互動。
 
 const HEALTHY_FLASH_MS = 3000;
+const HEARTBEAT_INTERVAL_MS = 10000; // 每 10 秒打一次
+const HEARTBEAT_TIMEOUT_MS = 4000;   // 4 秒沒回應算 fail
+const HEARTBEAT_FAILS_TO_OFFLINE = 2; // 連續失敗 2 次才宣告 offline
 
 const ConnectionStatusBanner = () => {
   const [isOnline, setIsOnline] = useState(
@@ -26,10 +29,12 @@ const ConnectionStatusBanner = () => {
   const [closing, setClosing] = useState(false);
   const healthyTimerRef = useRef(null);
   const errorSourcesRef = useRef(new Set());
+  const failCountRef = useRef(0);
 
-  // 瀏覽器網路狀態
+  // 瀏覽器網路狀態 — navigator.onLine 在 Chrome DevTools 切 offline 時不一定觸發，
+  // 真正可靠的訊號是下面那個 fetch heartbeat。這裡只是輔助。
   useEffect(() => {
-    const onOnline = () => setIsOnline(true);
+    const onOnline = () => { setIsOnline(true); failCountRef.current = 0; };
     const onOffline = () => setIsOnline(false);
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
@@ -38,6 +43,51 @@ const ConnectionStatusBanner = () => {
       window.removeEventListener('offline', onOffline);
     };
   }, []);
+
+  // 主動 fetch heartbeat — 比 navigator.onLine 可靠（後者在 DevTools Network → Offline
+  // 切換時常常不會更新）。打 /favicon.ico + cache-busting query；本來就會被瀏覽器要，
+  // payload < 1KB，影響可忽略。連續 2 次失敗才宣告 offline，避免單次抖動誤判。
+  useEffect(() => {
+    let cancelled = false;
+    const probe = async () => {
+      if (cancelled) return;
+      const controller = new AbortController();
+      const tid = setTimeout(() => controller.abort(), HEARTBEAT_TIMEOUT_MS);
+      try {
+        const res = await fetch(`/favicon.ico?_hb=${Date.now()}`, {
+          method: 'HEAD',
+          signal: controller.signal,
+          cache: 'no-store',
+        });
+        clearTimeout(tid);
+        if (cancelled) return;
+        if (res.ok || res.status === 304) {
+          // 任何 2xx / 304 都算 OK（favicon 可能 304）
+          if (failCountRef.current > 0 || !isOnline) {
+            failCountRef.current = 0;
+            setIsOnline(true);
+          }
+        } else {
+          // 4xx/5xx 仍是「網路通」，不算 offline
+          failCountRef.current = 0;
+          if (!isOnline) setIsOnline(true);
+        }
+      } catch {
+        clearTimeout(tid);
+        if (cancelled) return;
+        failCountRef.current += 1;
+        if (failCountRef.current >= HEARTBEAT_FAILS_TO_OFFLINE && isOnline) {
+          setIsOnline(false);
+        }
+      }
+    };
+    probe(); // 立即打一次
+    const interval = setInterval(probe, HEARTBEAT_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isOnline]);
 
   // Firestore 事件
   useEffect(() => {
