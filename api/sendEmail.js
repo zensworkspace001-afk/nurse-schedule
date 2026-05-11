@@ -55,9 +55,9 @@ export default async function handler(req, res) {
     const token = authHeader.split('Bearer ')[1];
     // 管道 1：Cron 內部呼叫使用 CRON_SECRET
     const isCronCall = token === process.env.CRON_SECRET;
+    let decodedToken = null;
     if (!isCronCall) {
         // 管道 2：前端使用者必須持有合法的 Firebase Token
-        var decodedToken;
         try {
             decodedToken = await admin.auth().verifyIdToken(token);
         } catch {

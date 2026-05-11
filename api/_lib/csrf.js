@@ -8,11 +8,18 @@ const ALLOWED_ORIGINS = [
   'http://localhost:3000',
 ];
 
+// Vercel preview deployment：本專案分支 / PR 的預覽網址通常長這樣
+// 例如 https://nurse-schedule-bachelor-git-feature-x-zensworkspace001-afk.vercel.app
+// 用 regex 而非寫死，避免每開 PR 都要動 csrf.js。
+const PREVIEW_ORIGIN_PATTERN =
+  /^https:\/\/nurse-schedule-bachelor(?:-[a-z0-9-]+)?\.vercel\.app$/;
+
 /**
  * 驗證請求來源是否合法
  *
  * 規則：
- *   1. 有 Origin / Referer → 必須在 ALLOWED_ORIGINS 白名單內
+ *   1. 有 Origin / Referer → 必須在 ALLOWED_ORIGINS 白名單內，或符合
+ *      本專案的 vercel preview pattern。
  *   2. 沒有 Origin / Referer → 必須帶 Authorization: Bearer ${CRON_SECRET}
  *      （這是 cron job 與內部 server-to-server 呼叫的合法路徑）
  *      否則拒絕。原本「沒 Origin 直接放行」會讓任何 curl/Postman 繞過 CSRF；
@@ -26,8 +33,10 @@ export function checkCsrf(req) {
 
   if (origin) {
     const normalizedOrigin = origin.replace(/\/+$/, '');
-    const isAllowed = ALLOWED_ORIGINS.some(allowed => normalizedOrigin === allowed);
-    return { allowed: isAllowed, origin };
+    // 嚴格白名單先比，preview pattern 後比（避免外部偽冒 vercel.app 子網域繞過）
+    const isExactMatch = ALLOWED_ORIGINS.some(allowed => normalizedOrigin === allowed);
+    const isPreview = PREVIEW_ORIGIN_PATTERN.test(normalizedOrigin);
+    return { allowed: isExactMatch || isPreview, origin };
   }
 
   // 沒 Origin → 必須是 cron / server-to-server 呼叫，需提供 CRON_SECRET 才放行
