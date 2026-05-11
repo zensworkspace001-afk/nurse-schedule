@@ -41,11 +41,20 @@ const COMMIT = process.argv.includes('--commit');
 const SKIP_EMAIL = process.argv.includes('--skip-email');
 
 if (!admin.apps.length) {
+  // 先嘗試 FIREBASE_SERVICE_ACCOUNT（單一 JSON blob），失敗就 fallback 到三件組。
+  // 失敗常見原因：.env.local 把多行 JSON 直接貼進去，但 Node 的 --env-file 不支援跨行值。
+  let usedServiceAccount = false;
   if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    let sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-    if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n');
-    admin.initializeApp({ credential: admin.credential.cert(sa) });
-  } else {
+    try {
+      let sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      if (sa.private_key) sa.private_key = sa.private_key.replace(/\\n/g, '\n');
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+      usedServiceAccount = true;
+    } catch (err) {
+      console.warn(`⚠️  FIREBASE_SERVICE_ACCOUNT 解析失敗（${err.message}），改用 PROJECT_ID/CLIENT_EMAIL/PRIVATE_KEY 三件組`);
+    }
+  }
+  if (!usedServiceAccount) {
     let pk = process.env.FIREBASE_PRIVATE_KEY;
     if (pk) pk = pk.replace(/^"|"$/g, '').replace(/\\n/g, '\n');
     if (!process.env.FIREBASE_PROJECT_ID || !process.env.FIREBASE_CLIENT_EMAIL || !pk) {
