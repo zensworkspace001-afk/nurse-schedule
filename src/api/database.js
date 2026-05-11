@@ -13,6 +13,25 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
+import { reportFirestoreError, reportFirestoreHealthy } from './connectionStatus';
+
+// 包裝 onSnapshot data callback：第一次成功就回報 healthy（讓 banner 自動消失）
+function wrapDataCb(source, cb) {
+  let reportedHealthy = false;
+  return (snap) => {
+    if (!reportedHealthy) {
+      reportedHealthy = true;
+      reportFirestoreHealthy(source);
+    }
+    cb(snap);
+  };
+}
+function wrapErrorCb(source) {
+  return (err) => {
+    console.error(`${source} 失敗:`, err);
+    reportFirestoreError(err, source);
+  };
+}
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -33,9 +52,13 @@ export const db   = getFirestore(app);
 // 1. 全域設定
 // ============================================================================
 export const subscribeToSettings = (callback) => {
-  return onSnapshot(doc(db, 'NurseApp', 'Settings'), (snap) => {
-    callback(snap.exists() ? snap.data() : null);
-  }, (err) => console.error('subscribeToSettings 失敗:', err));
+  return onSnapshot(
+    doc(db, 'NurseApp', 'Settings'),
+    wrapDataCb('subscribeToSettings', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToSettings'),
+  );
 };
 
 export const saveGlobalSettings = async (data) => {
@@ -69,25 +92,37 @@ export const buildStaffPublicProjection = (fullStaffData = []) => {
 
 // 管理員：訂閱完整 Staff doc（規則限定 admin）
 export const subscribeToStaff = (callback) => {
-  return onSnapshot(doc(db, 'NurseApp', 'Staff'), (snap) => {
-    callback(snap.exists() ? snap.data() : null);
-  }, (err) => console.error('subscribeToStaff 失敗:', err));
+  return onSnapshot(
+    doc(db, 'NurseApp', 'Staff'),
+    wrapDataCb('subscribeToStaff', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToStaff'),
+  );
 };
 
 // 員工：訂閱同事用的精簡公開投影
 export const subscribeToStaffPublic = (callback) => {
-  return onSnapshot(doc(db, 'NurseApp', 'StaffPublic'), (snap) => {
-    callback(snap.exists() ? snap.data() : null);
-  }, (err) => console.error('subscribeToStaffPublic 失敗:', err));
+  return onSnapshot(
+    doc(db, 'NurseApp', 'StaffPublic'),
+    wrapDataCb('subscribeToStaffPublic', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToStaffPublic'),
+  );
 };
 
 // 員工：訂閱自己的完整 row（規則限定 staff_id 對應或 admin）
 // 路徑採頂層 collection StaffPrivate/{staffId}（2 段才是合法 doc 路徑）
 export const subscribeToMyStaffPrivate = (staffId, callback) => {
   if (!staffId) return () => {};
-  return onSnapshot(doc(db, 'StaffPrivate', String(staffId)), (snap) => {
-    callback(snap.exists() ? snap.data() : null);
-  }, (err) => console.error('subscribeToMyStaffPrivate 失敗:', err));
+  return onSnapshot(
+    doc(db, 'StaffPrivate', String(staffId)),
+    wrapDataCb('subscribeToMyStaffPrivate', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToMyStaffPrivate'),
+  );
 };
 
 // 管理員寫 staff 資料 — 自動同步到三個 doc，使用 batch write 確保原子性
@@ -161,18 +196,26 @@ export const buildSchedulePublicProjection = (finalizedSchedule) => {
 export const subscribeToSchedule = (year, month, callback) => {
   if (!year || !month) return () => {};
   const docId = `${year}_${month}`;
-  return onSnapshot(doc(db, 'Schedules', docId), (snap) => {
-    callback(snap.exists() ? snap.data() : null);
-  }, (err) => console.error('subscribeToSchedule 失敗:', err));
+  return onSnapshot(
+    doc(db, 'Schedules', docId),
+    wrapDataCb('subscribeToSchedule', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToSchedule'),
+  );
 };
 
 // 員工：訂閱遮罩過的 SchedulesPublic（只含 finalizedSchedule，且不含請假類型）
 export const subscribeToSchedulePublic = (year, month, callback) => {
   if (!year || !month) return () => {};
   const docId = `${year}_${month}`;
-  return onSnapshot(doc(db, 'SchedulesPublic', docId), (snap) => {
-    callback(snap.exists() ? snap.data() : null);
-  }, (err) => console.error('subscribeToSchedulePublic 失敗:', err));
+  return onSnapshot(
+    doc(db, 'SchedulesPublic', docId),
+    wrapDataCb('subscribeToSchedulePublic', (snap) => {
+      callback(snap.exists() ? snap.data() : null);
+    }),
+    wrapErrorCb('subscribeToSchedulePublic'),
+  );
 };
 
 // 管理員寫整份班表（schedule + finalizedSchedule）— 自動 batch 同步到 SchedulesPublic
@@ -230,11 +273,15 @@ export const saveArchiveReport = async (year, month, csvData) => {
 };
 
 export const subscribeToArchiveReports = (callback) => {
-  return onSnapshot(collection(db, 'archive_reports'), (snapshot) => {
-    const reports = {};
-    snapshot.forEach(d => { reports[d.id] = d.data(); });
-    callback(reports);
-  }, (err) => console.error('subscribeToArchiveReports 失敗:', err));
+  return onSnapshot(
+    collection(db, 'archive_reports'),
+    wrapDataCb('subscribeToArchiveReports', (snapshot) => {
+      const reports = {};
+      snapshot.forEach(d => { reports[d.id] = d.data(); });
+      callback(reports);
+    }),
+    wrapErrorCb('subscribeToArchiveReports'),
+  );
 };
 
 export const clearArchiveReports = async () => {

@@ -1,0 +1,100 @@
+/* ==========================================================================
+   ConnectionStatusBanner — 頂部 slide-down 連線狀態提示
+   - 不擋住底下的互動（只佔頂端一條）
+   - 玻璃感配色與 app 其他 overlay 一致
+   - kind=recovered 自動 3s 後 fade-out
+   ========================================================================== */
+
+.conn-banner {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9000;
+  padding: 8px 16px;
+  display: flex;
+  justify-content: center;
+  pointer-events: none; /* outer 不擋滑鼠；按鈕另外設 auto */
+  animation: conn-slide-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+  font-family: 'Noto Sans TC', system-ui, sans-serif;
+}
+
+.conn-banner--closing {
+  animation: conn-slide-out 0.28s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.conn-banner__inner {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  font-size: 13px;
+  font-weight: 500;
+  color: #ffffff;
+  pointer-events: auto; /* 內部可點擊 */
+  max-width: calc(100% - 32px);
+}
+
+.conn-banner__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.conn-banner__text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.conn-banner__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.conn-banner__action:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* 顏色：每種 state 一個底色 */
+.conn-banner--offline      .conn-banner__inner { background: rgba(120, 110, 110, 0.85); }
+.conn-banner--perm-denied  .conn-banner__inner { background: rgba(180, 70, 70, 0.85); }
+.conn-banner--unavailable  .conn-banner__inner { background: rgba(200, 130, 50, 0.85); }
+.conn-banner--recovered    .conn-banner__inner { background: rgba(60, 150, 100, 0.85); }
+
+@keyframes conn-slide-in {
+  0%   { opacity: 0; transform: translateY(-100%); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes conn-slide-out {
+  0%   { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-100%); }
+}
+
+@media (max-width: 640px) {
+  .conn-banner {
+    padding: 6px 8px;
+  }
+  .conn-banner__inner {
+    font-size: 12px;
+    padding: 6px 10px;
+    gap: 8px;
+  }
+  .conn-banner__text {
+    white-space: normal;
+  }
+}

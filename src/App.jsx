@@ -11,6 +11,7 @@ import ManagerInterface from './components/ManagerInterface';
 import ProfileWizard from './components/ProfileWizard';
 import ParticleBackground from './components/ParticleBackground';
 import WeatherClockWidget from './components/WeatherClockWidget';
+import ConnectionStatusBanner from './components/ConnectionStatusBanner';
 import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
@@ -794,6 +795,7 @@ const handleSaveAndPublish = async () => {
 
   return (
     <>
+    <ConnectionStatusBanner />
     <div className="app">
       {/* 🌟 Canvas 粒子動態背景 */}
       <ParticleBackground />
