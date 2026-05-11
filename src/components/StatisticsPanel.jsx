@@ -265,25 +265,45 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
           const token = await auth.currentUser?.getIdToken();
           const formData = new FormData();
 
-let combinedData = "";
+// 個資法 §8 + 醫療法 §72 + 護理人員法 §28 跨境傳輸保護：
+          // 送至 Google Gemini (US) 前剝離員工姓名 — 工號 staff_id 作為內部假名，
+          // CSV 第 2 欄「姓名」資料列洗成空（保留標題列以維持 AI 對欄位的理解）。
+          // 對照 api/auto-relay.js:278-289 已套用相同策略。
+          const anonymizeCsvForAI = (csv) => {
+              if (!csv || typeof csv !== 'string') return csv;
+              const lines = csv.split(/\r\n|\n/);
+              return lines.map(line => {
+                  if (!line) return line;
+                  // 標題列保留（內含 "工號,姓名"），其餘把第二欄資料洗成空
+                  if (line.includes('工號') && line.includes('姓名')) return line;
+                  const hasBom = line.startsWith('﻿');
+                  const body = hasBom ? line.slice(1) : line;
+                  const parts = body.split(',');
+                  if (parts.length >= 2) parts[1] = '';
+                  return (hasBom ? '﻿' : '') + parts.join(',');
+              }).join('\n');
+          };
+
+          let combinedData = "";
           loadedMonths.forEach(month => {
               combinedData += `\n\n========== 【${month} 結算報表】 ==========\n`;
               // ★ 修改這裡，讓 AI 同時支援分析 CSV 與 JSON
               const fileData = accumulatedReports[month];
               if (fileData.csv) {
-                  combinedData += fileData.csv;
+                  combinedData += anonymizeCsvForAI(fileData.csv);
               } else if (fileData.schedule_backup) {
+                  // schedule_backup 的 key 是 staff_id 假名，無姓名欄位，直接送
                   combinedData += "本月尚未結算，以下為班表原始紀錄(JSON)：\n" + JSON.stringify(fileData.schedule_backup);
               }
           });
-          // 偷塞底層跨月歷史總結給 AI
+          // 偷塞底層跨月歷史總結給 AI — 用 staff_id 假名取代 name
           const crossMonthContext = {
               staffAccumulatedHistory: staffData.map(s => ({
-                  name: s.name,
+                  staff_id: s.staff_id,
                   total_OT_Balance: s.accumulated_ot,
                   total_Night_Balance: s.night_shift_balance
               })),
-              healthTrends: healthStats
+              healthTrends: healthStats // 已是月度聚合 {year, month, avg, median}，不含個人識別
           };
           combinedData += `\n\n========== 【系統底層跨月歷史總結庫】 ==========\n${JSON.stringify(crossMonthContext)}`;
 
@@ -292,7 +312,7 @@ let combinedData = "";
           formData.append('file', fileBlob, 'cross_month_big_data.txt');
           formData.append('prompt', userMsg);
 
-          // ★ 稽核：在送 AI 前先記下「誰、何時、把哪幾個月的明文薪資資料丟給 Gemini」。
+          // ★ 稽核：在送 AI 前先記下「誰、何時、把哪幾個月的（已匿名化）薪資資料丟給 Gemini」。
           //   不阻擋業務 — 寫 log 失敗只 console.warn。
           try {
             await fetch('/api/secure-field', {
@@ -301,8 +321,13 @@ let combinedData = "";
               body: JSON.stringify({
                 action: 'logAiAccess',
                 target: { kind: 'archive', id: null },
-                fields: ['cross_month_csv', 'staff_balances', 'health_trends'],
-                extra: { months: loadedMonths, prompt_preview: userMsg.slice(0, 80) },
+                fields: ['cross_month_csv_anonymized', 'staff_balances_anonymized', 'health_trends_aggregate'],
+                extra: {
+                  months: loadedMonths,
+                  prompt_preview: userMsg.slice(0, 80),
+                  vendor: 'google-gemini',
+                  anonymization: 'CSV col 2 (姓名) blanked; staffAccumulatedHistory.name replaced by staff_id pseudonym',
+                },
               }),
             });
           } catch (e) {
