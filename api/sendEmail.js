@@ -79,9 +79,16 @@ export default async function handler(req, res) {
     // ★ HTML 清理：移除 script、事件屬性等危險內容
     const safeHtml = sanitizeHtml(html);
 
+    // 寄件人：優先用 RESEND_FROM_EMAIL（驗證過的自有 domain，SPF/DKIM/DMARC 完整），
+    // 沒設則 fallback 到 Resend 共享 sandbox（onboarding@resend.dev）。
+    // 後者可寄但常進垃圾信箱，正式部署應在 Resend dashboard 新增並驗證自有 domain
+    // 後把該地址放進 RESEND_FROM_EMAIL，例如 '護理排班系統 <noreply@your-hospital.tw>'。
+    const fromAddress = process.env.RESEND_FROM_EMAIL
+        || '護理排班系統 <onboarding@resend.dev>';
+
     try {
         const data = await resend.emails.send({
-            from: '護理排班系統 <onboarding@resend.dev>', // Resend 免費方案預設寄件地址
+            from: fromAddress,
             to: [to],
             subject: subject,
             html: safeHtml

@@ -73,8 +73,11 @@ export default async function handler(req, res) {
   try {
     const prompt = req.body.prompt;
 
-    // ★ Prompt 長度限制
-    const promptCheck = validatePromptLength(prompt, 50000);
+    // ★ Prompt 長度限制：典型排班 prompt < 4000 字元，5x 安全餘裕設 20000。
+    //   原 50000 偏寬鬆，主要風險是有人迴圈打超長 prompt 把 Gemini quota 與
+    //   Vercel 函式時間吃光。analyze-excel.js 上傳檔案那條路徑另設 100000，不受此影響。
+    const MAX_PROMPT_LENGTH = Number(process.env.GEMINI_MAX_PROMPT_LENGTH) || 20000;
+    const promptCheck = validatePromptLength(prompt, MAX_PROMPT_LENGTH);
     if (!promptCheck.valid) {
       return res.status(400).json({ error: promptCheck.message });
     }

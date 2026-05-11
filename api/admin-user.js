@@ -56,13 +56,15 @@ async function sendActivationLink(baseUrl, { email, name, plainToken, isReset })
     ? '管理員已為您觸發密碼重設。請點擊以下連結設定新的登入密碼：'
     : '管理員已為您建立護理排班系統帳號。請點擊以下連結設定您的登入密碼以啟用帳號：';
   const buttonText = isReset ? '點我重設密碼' : '點我啟用帳號並設定密碼';
+  // TTL 與 activationToken.js 同步取自 env（預設 2 小時）
+  const ttlHours = Number(process.env.ACTIVATION_TOKEN_TTL_HOURS) || 2;
   const html = `
     <h2>您好 ${escapeHtml(name)}：</h2>
     <p>${intro}</p>
     <p><a href="${link}" style="display:inline-block;padding:10px 20px;background:#0066cc;color:#fff;text-decoration:none;border-radius:4px;">${buttonText}</a></p>
     <p>或複製以下網址至瀏覽器開啟：<br/><code>${link}</code></p>
     <hr/>
-    <p style="color:#888;font-size:12px;">此連結 24 小時內有效，僅可使用一次。<br/>若您未請求此操作，請忽略此信。</p>
+    <p style="color:#888;font-size:12px;">此連結 ${ttlHours} 小時內有效，僅可使用一次。<br/>若您未請求此操作，請忽略此信。</p>
   `;
   const r = await fetch(`${baseUrl}/api/sendEmail`, {
     method: 'POST',

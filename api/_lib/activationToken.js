@@ -4,7 +4,8 @@
 //   1. 明文 token 只在「URL 連結」與「使用者點擊後」流通；Firestore 端只存 sha256 雜湊。
 //      → 即使 Firestore 外洩，攻擊者也無法直接拿到 token 啟用帳號。
 //   2. 一次性使用：成功消化後立即刪除 doc。
-//   3. 24 小時逾期：超過即無效，使用者需請管理員重新發送。
+//   3. 預設 2 小時逾期（可透過 ACTIVATION_TOKEN_TTL_HOURS 環境變數調整）：
+//      超過即無效，使用者需請管理員重新發送。
 //   4. 雙用途：purpose = 'activation' | 'reset'，使用 token 時須比對。
 //
 // Doc 結構：pending_activation/{tokenHash}
@@ -19,7 +20,11 @@
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 
-const TTL_MS = 24 * 60 * 60 * 1000; // 24 小時
+// Token TTL：預設 2 小時。原本 24h 在 OWASP ASVS / NIST 800-63B 看來偏長 —
+// 啟用 / 重設信件若失竊，攻擊者最多有 2h 視窗（而非一整天）可使用。
+// 操作員可透過環境變數 ACTIVATION_TOKEN_TTL_HOURS 調整（如員工反映收信偏慢可改回 6-12）。
+const TTL_HOURS = Number(process.env.ACTIVATION_TOKEN_TTL_HOURS) || 2;
+const TTL_MS = TTL_HOURS * 60 * 60 * 1000;
 
 function sha256Hex(input) {
   return crypto.createHash('sha256').update(input).digest('hex');
