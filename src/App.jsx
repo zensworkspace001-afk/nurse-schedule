@@ -436,12 +436,20 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
           levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
         });
 
-        saveGlobalStaff({
-          staffData: staffData || [],
-          healthStats: healthStats || []
-        });
-        
-    }, 2000); 
+        // ★ 與 schedule 的「不寫空」guard 同款：staffData 從 useState([]) 起步，
+        //   subscribeToStaff 的 snapshot 若比 2s timeout 慢回來，這裡會把
+        //   [] 寫進雲端，瞬間清空整個 NurseApp/Staff 與 StaffPublic（StaffPrivate
+        //   doc 因為 saveGlobalStaff 的 for loop 不會跑空陣列所以倖存）。
+        //   只在 staffData 至少有一筆時才寫，初次 wipe 過 staffData 的場景請從
+        //   StaffPrivate/* 跑 scripts/restore-staff-from-private.js 還原。
+        if (Array.isArray(staffData) && staffData.length > 0) {
+          saveGlobalStaff({
+            staffData,
+            healthStats: healthStats || []
+          });
+        }
+
+    }, 2000);
 
     return () => clearTimeout(timeoutId);
 
