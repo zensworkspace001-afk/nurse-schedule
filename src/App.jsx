@@ -318,6 +318,28 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     let unsubStaff;
     let unsubMyPrivate = null;
     if (currentUser.role === 'admin') {
+      // 個資法 §27 稽核：admin 訂閱含全院 §6 特種個資（孕哺 / leave_status /
+      // 加密 PII 密文）的 Staff doc，每個 session 留一筆「誰、何時、從哪」軌跡。
+      // fire-and-forget — 寫 log 失敗不阻擋業務。
+      (async () => {
+        try {
+          const token = await auth.currentUser?.getIdToken();
+          if (!token) return;
+          await fetch('/api/secure-field', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            body: JSON.stringify({
+              action: 'logAdminRead',
+              target: { kind: 'staff-collection', id: 'NurseApp/Staff' },
+              fields: ['staffData(full)', 'healthStats'],
+              extra: { source: 'App.subscribeToStaff', subscription: 'onSnapshot' },
+            }),
+          });
+        } catch (e) {
+          console.warn('admin-read 稽核寫入失敗（不阻擋）:', e.message);
+        }
+      })();
+
       unsubStaff = subscribeToStaff((data) => {
         if (data) {
           if (data.staffData) setStaffData(data.staffData);

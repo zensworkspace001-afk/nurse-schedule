@@ -169,6 +169,23 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      case 'logAdminRead': {
+        // 當 admin 訂閱 NurseApp/Staff（含全院孕哺/leave_status/PII 密文）時，
+        // 前端呼叫此 action 留下「誰、何時、從哪個 IP」的軌跡。
+        // §6 特種個資的存取應可追溯（個資法 §27 安全維護義務）。
+        if (!isAdmin) {
+          return res.status(403).json({ error: '權限不足' });
+        }
+        await writeAccessLog({
+          actor, action: 'admin-read',
+          target: target || { kind: 'staff-collection', id: null },
+          fields: fields || [],
+          ip: meta.ip, ua: meta.ua,
+          extra: extra || null,
+        });
+        return res.status(200).json({ ok: true });
+      }
+
       default:
         return res.status(400).json({ error: `未知的 action：${action}` });
     }
