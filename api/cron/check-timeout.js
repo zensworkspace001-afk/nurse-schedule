@@ -32,7 +32,7 @@ export default async function handler(req, res) {
         console.log("🤖 [巡邏機器人] 啟動巡邏...");
 
         // ==========================================
-        // ★ 0. 個資法保留期限掃除：access_logs + pending_activation
+        // ★ 0. 個資法保留期限掃除：access_logs + AI_Decision_Logs + pending_activation
         //    每天執行一次，把過期紀錄刪掉。Vercel Hobby plan 12 個 function 上限，
         //    無法拆獨立 cron，併在這支裡跑。
         // ==========================================
@@ -134,6 +134,10 @@ export default async function handler(req, res) {
 //              PDPA §19 / §27 要求個資「在達成目的後應主動刪除」。
 //              審計追溯通常半年至一年足夠，避免無限增長。
 //
+// AI_Decision_Logs：保留 AI_DECISION_LOG_RETENTION_DAYS 天（預設 180 天）。
+//                    每筆 doc 的 candidates_data 內含 "孕/哺乳:是" 等 §6 特種個資的
+//                    明文 prompt，雖然 admin-only 讀，仍應主動清除（§11/§27）。
+//
 // pending_activation：token TTL 24 小時，但未消化的 doc 會殘留。安全網設 7 天，
 //                     超過就清掉（即使 token 已逾期也可能還在）。
 //
@@ -142,7 +146,9 @@ export default async function handler(req, res) {
 // ============================================================================
 async function runRetentionSweep() {
     const ACCESS_LOG_DAYS = Number(process.env.ACCESS_LOG_RETENTION_DAYS) || 180;
+    const AI_LOG_DAYS = Number(process.env.AI_DECISION_LOG_RETENTION_DAYS) || 180;
     const ACCESS_LOG_CUTOFF = new Date(Date.now() - ACCESS_LOG_DAYS * 86400000).toISOString();
+    const AI_LOG_CUTOFF = admin.firestore.Timestamp.fromMillis(Date.now() - AI_LOG_DAYS * 86400000);
     const PENDING_TOKEN_CUTOFF = admin.firestore.Timestamp.fromMillis(Date.now() - 7 * 86400000);
 
     try {
@@ -159,6 +165,22 @@ async function runRetentionSweep() {
         }
     } catch (err) {
         console.warn('access_logs retention sweep 失敗:', err.message);
+    }
+
+    try {
+        // AI_Decision_Logs 用 timestamp (Firestore Timestamp via serverTimestamp) 索引
+        const oldAiLogs = await db.collection('AI_Decision_Logs')
+            .where('timestamp', '<', AI_LOG_CUTOFF)
+            .limit(400)
+            .get();
+        if (!oldAiLogs.empty) {
+            const batch = db.batch();
+            oldAiLogs.docs.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            console.log(`🗑 retention: 已刪除 ${oldAiLogs.size} 筆超過 ${AI_LOG_DAYS} 天的 AI_Decision_Logs`);
+        }
+    } catch (err) {
+        console.warn('AI_Decision_Logs retention sweep 失敗:', err.message);
     }
 
     try {
