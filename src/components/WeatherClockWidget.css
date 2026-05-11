@@ -254,7 +254,7 @@
 .weather-clock--inline .weather-clock__row--clock {
   flex-direction: row;
   align-items: baseline;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
 }
 .weather-clock--inline .weather-clock__time {
@@ -262,7 +262,11 @@
   letter-spacing: 0.5px;
   text-shadow: none;
 }
-.weather-clock--inline .weather-clock__date { display: none; }
+.weather-clock--inline .weather-clock__date {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.72);
+  white-space: nowrap;
+}
 
 /* 行動裝置（≤ 640px）改成嵌入登入卡片內、置中、薄玻璃條 */
 @media (max-width: 640px) {

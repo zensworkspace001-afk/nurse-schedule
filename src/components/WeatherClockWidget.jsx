@@ -219,7 +219,7 @@ const WeatherClockWidget = ({ inline = false }) => {
   };
   const formatDate = (d) => {
     const week = ['日', '一', '二', '三', '四', '五', '六'][d.getDay()];
-    return `${d.getMonth() + 1}月${d.getDate()}日 (週${week})`;
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 (週${week})`;
   };
 
   return (
