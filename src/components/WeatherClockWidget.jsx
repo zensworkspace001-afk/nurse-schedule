@@ -66,7 +66,8 @@ function classifyOwm(id) {
   return 'cloudy';
 }
 
-const WeatherClockWidget = () => {
+// inline=true → 走 pill 樣式（給 dashboard header 用），不受桌面 fixed 定位影響。
+const WeatherClockWidget = ({ inline = false }) => {
   const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY;
   const [city, setCity] = useState(() => localStorage.getItem('weatherCity') || 'auto');
   const [weather, setWeather] = useState(null);
@@ -149,19 +150,20 @@ const WeatherClockWidget = () => {
 
         if (city === 'auto') {
           // 1) 先試 GPS（瀏覽器會彈窗請求權限；同意 → 精確到 township）
-          // 2) 拒絕 / 失敗 / 不支援 → 回退 ipapi.co IP 定位（city 級）
+          // 2) 拒絕 / 失敗 / 不支援 → silent fallback 到台北
+          //    （舊版會打 ipapi.co，但該服務的 CORS 不對 production domain 開放，
+          //     production 上必定失敗；移除以避免 console error 與一秒延遲。
+          //     使用者若想用其他城市，從 city picker 手動選即可。）
           try {
             const gps = await tryGeolocation();
             lat = gps.lat;
             lon = gps.lon;
             displayName = await reverseGeocode(lat, lon) || '目前位置';
           } catch {
-            const ipRes = await fetch('https://ipapi.co/json/');
-            if (!ipRes.ok) throw new Error('IP 定位失敗');
-            const ipData = await ipRes.json();
-            lat = ipData.latitude;
-            lon = ipData.longitude;
-            displayName = ipData.city || ipData.region || '所在地';
+            // 預設台北
+            lat = 25.0330;
+            lon = 121.5654;
+            displayName = '台北';
           }
         } else {
           // 用 OWM 的 geocoding 把城市字串轉座標
@@ -221,7 +223,7 @@ const WeatherClockWidget = () => {
   };
 
   return (
-    <div className="weather-clock">
+    <div className={`weather-clock${inline ? ' weather-clock--inline' : ''}`}>
       <div className="weather-clock__row weather-clock__row--weather">
         <div className="weather-clock__icon-btn" title={label}>
           <Icon size={28} />

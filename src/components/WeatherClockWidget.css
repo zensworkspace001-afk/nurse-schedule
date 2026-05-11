@@ -167,6 +167,103 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* ==========================================================================
+   Inline 變體：嵌入 dashboard header bar 用
+   --------------------------------------------------------------------------
+   同樣是 pill 樣式（與手機版共享 spec），但不靠 media query 觸發。
+   由 prop inline=true 加上 .weather-clock--inline class 啟用。
+   ========================================================================== */
+.weather-clock--inline {
+  position: static;
+  top: auto;
+  right: auto;
+  width: auto;
+  max-width: 100%;
+  margin: 0;
+  padding: 6px 14px;
+  flex-direction: row;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: none; /* header 是常駐元件，不要每次 re-render 都做進場動畫 */
+}
+
+.weather-clock--inline .weather-clock__row { margin: 0; }
+
+.weather-clock--inline .weather-clock__row--weather {
+  gap: 6px;
+  margin: 0;
+}
+
+.weather-clock--inline .weather-clock__icon-btn {
+  width: auto;
+  height: auto;
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: #ffd666;
+}
+.weather-clock--inline .weather-clock__icon-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.weather-clock--inline .weather-clock__weather-info {
+  flex-direction: row;
+  align-items: baseline;
+  line-height: 1;
+  gap: 4px;
+}
+.weather-clock--inline .weather-clock__temp {
+  font-size: 14px;
+  text-shadow: none;
+}
+.weather-clock--inline .weather-clock__desc { display: none; }
+
+.weather-clock--inline .weather-clock__city-btn {
+  padding: 0;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+}
+
+/* header 的 widget 在頂端，城市選單往下開（不像手機版往上開） */
+.weather-clock--inline .weather-clock__city-list {
+  top: calc(100% + 6px);
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+  min-width: 140px;
+}
+
+.weather-clock--inline .weather-clock__divider { display: none; }
+
+.weather-clock--inline .weather-clock__row--location::before,
+.weather-clock--inline .weather-clock__row--clock::before {
+  content: '·';
+  color: rgba(255, 255, 255, 0.4);
+  margin-right: 8px;
+  font-size: 14px;
+}
+
+.weather-clock--inline .weather-clock__row--clock {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 4px;
+  margin: 0;
+}
+.weather-clock--inline .weather-clock__time {
+  font-size: 13px;
+  letter-spacing: 0.5px;
+  text-shadow: none;
+}
+.weather-clock--inline .weather-clock__date { display: none; }
+
 /* 行動裝置（≤ 640px）改成嵌入登入卡片內、置中、薄玻璃條 */
 @media (max-width: 640px) {
   .weather-clock {

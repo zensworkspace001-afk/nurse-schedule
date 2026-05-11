@@ -10,6 +10,7 @@ import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
 import ProfileWizard from './components/ProfileWizard';
 import ParticleBackground from './components/ParticleBackground';
+import WeatherClockWidget from './components/WeatherClockWidget';
 import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
@@ -838,6 +839,8 @@ const handleSaveAndPublish = async () => {
             <h1 className="app__header-title">排班系統</h1>
           </div>
           <div className="app__header-right">
+            {/* 天氣 + 時鐘 widget — header 嵌入式 pill 樣式 */}
+            <WeatherClockWidget inline />
             {/* ★ 系統連線狀態 — 下拉選單 ★ */}
             <div className="app__status-dropdown-wrapper">
               <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => showStatusDropdown ? handleCloseStatusDropdown() : setShowStatusDropdown(true)}>
