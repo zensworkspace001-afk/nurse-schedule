@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { motion, useMotionValue, animate } from 'framer-motion';
-import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Menu, X } from 'lucide-react';
+import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Scale, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
@@ -10,6 +10,7 @@ import PublishPanel from './PublishPanel';
 import ScheduleReviewPanel from './ScheduleReviewPanel';
 import StatisticsPanel from './StatisticsPanel';
 import AccessLogPanel from './AccessLogPanel';
+import ComplianceDashboard from './ComplianceDashboard';
 
 const ManagerInterface = ({
   staffData, setStaffData, requirements, setRequirements,
@@ -31,6 +32,7 @@ const ManagerInterface = ({
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
     { id: 'publish', path: '/publish', label: '發布與認領', icon: Megaphone },
     { id: 'review', path: '/review', label: '結算與歷史', icon: ClipboardCheck },
+    { id: 'compliance', path: '/compliance', label: '法遵警示', icon: Scale },
     { id: 'statistics', path: '/statistics', label: '統計報表', icon: BarChart3 },
     { id: 'audit', path: '/audit', label: '稽核日誌', icon: ShieldAlert },
   ];
@@ -279,6 +281,18 @@ const ManagerInterface = ({
                     finalizedSchedule={finalizedSchedule}
                     selectedYear={selectedYear}
                     selectedMonth={selectedMonth}
+                />
+              } />
+
+              <Route path="/compliance" element={
+                <ComplianceDashboard
+                  staffData={staffData}
+                  schedule={schedule}
+                  finalizedSchedule={finalizedSchedule}
+                  violations={violations}
+                  scheduleRisks={scheduleRisks}
+                  selectedYear={selectedYear}
+                  selectedMonth={selectedMonth}
                 />
               } />
 

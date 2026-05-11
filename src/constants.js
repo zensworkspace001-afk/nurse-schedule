@@ -221,6 +221,129 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
 };
 
 // ============================================================================
+// 接近上限警示 (黃燈)
+// ----------------------------------------------------------------------------
+// checkLaborLawCompliance 只報「已違規」(紅)。這支補上「逼近但還沒違規」(黃)：
+//   - 連續工作 5 天 (距七休一 1 天)
+//   - 月工時 ≥ 192 小時 (= 標準 176 + OT 16，距 46h 月加班上限剩 30h；高度負荷期)
+//   - 距上次 RG 已 5 天 (Standard) / 11 天 (BiWeekly) — 各距上限 1 天
+//   - 例假累計 < 4 但月份還沒走完（提前提醒）
+//   - 月份過半但 RG+RC 累計不到 4 天
+//
+// 回傳格式與 checkLaborLawCompliance 相同的 violation row，但多 severity: 'warning'。
+// 同時把 stats（總工時、RG/RC 數、最大連續天數）也吐出來給 dashboard 用。
+// ============================================================================
+export const computeProximityWarnings = (schedule, staffData, year, month) => {
+  const warnings = [];
+  const perStaffStats = {};
+  const daysInMonth = new Date(year, month, 0).getDate();
+  const SHIFT_HOURS = { 'D': 8, 'E': 8, 'N': 8, '支援': 8, 'OFF': 0, 'RG': 0, 'RC': 0 };
+
+  Object.keys(schedule || {}).forEach(staffId => {
+    if (staffId.startsWith('D')) return; // 略過 virtual D-slot
+    const staff = staffData.find(s => s.staff_id === staffId);
+    if (!staff) return;
+
+    const monthSchedule = schedule[staffId] || {};
+    let consecutiveDays = 0;
+    let maxConsecutive = 0;
+    let totalMonthlyHours = 0;
+    let totalRG = 0;
+    let totalRC = 0;
+    let daysSinceLastRG = 0;
+    let maxDaysSinceLastRG = 0;
+    let warnedConsecutive = false;
+    let warnedRgInterval = false;
+
+    const maxRgInterval = staff.special_status === 'BiWeekly' ? 12 : 6;
+    const consecutiveWarnAt = 5;            // 距 6 天 1 天
+    const rgIntervalWarnAt = maxRgInterval - 1; // 距上限 1 天
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const cell = monthSchedule[day] || 'OFF';
+      const shiftType = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
+      const dailyHours = SHIFT_HOURS[shiftType] || 0;
+      totalMonthlyHours += dailyHours;
+
+      if (dailyHours > 0) {
+        consecutiveDays++;
+        maxConsecutive = Math.max(maxConsecutive, consecutiveDays);
+        if (consecutiveDays === consecutiveWarnAt && !warnedConsecutive) {
+          warnings.push({
+            staffId, staffName: staff.name, day, type: 'CONSECUTIVE_DAYS_WARNING',
+            severity: 'warning',
+            message: `🟡 接近七休一上限：${day} 號已連續 ${consecutiveDays} 天 (再 1 天就違規)`,
+          });
+          warnedConsecutive = true;
+        }
+      } else {
+        consecutiveDays = 0;
+        warnedConsecutive = false;
+      }
+
+      if (shiftType === 'RG') {
+        totalRG++;
+        daysSinceLastRG = 0;
+        warnedRgInterval = false;
+      } else {
+        daysSinceLastRG++;
+        maxDaysSinceLastRG = Math.max(maxDaysSinceLastRG, daysSinceLastRG);
+        if (daysSinceLastRG === rgIntervalWarnAt && !warnedRgInterval) {
+          warnings.push({
+            staffId, staffName: staff.name, day, type: 'RG_INTERVAL_WARNING',
+            severity: 'warning',
+            message: `🟡 距上次例假已 ${daysSinceLastRG} 天 (上限 ${maxRgInterval} 天，再 1 天就違規)`,
+          });
+          warnedRgInterval = true;
+        }
+      }
+      if (shiftType === 'RC') totalRC++;
+    }
+
+    // 月加總黃線：>192h (標準 176 + ~16h OT，相當於 OT 已用 ~35%)
+    const OT_WARN_THRESHOLD = 192;
+    if (totalMonthlyHours >= OT_WARN_THRESHOLD && totalMonthlyHours < 222) {
+      const usedOt = totalMonthlyHours - 176;
+      warnings.push({
+        staffId, staffName: staff.name, day: '整月', type: 'MONTHLY_OT_WARNING',
+        severity: 'warning',
+        message: `🟡 月工時 ${totalMonthlyHours}h (約 OT ${usedOt}h / 上限 46h)，逼近月加班上限`,
+      });
+    }
+
+    // 母性保護：懷孕/哺乳員工被排 D 班視為觀察（D 班雖合法，但建議減量）
+    const isPregnant = staff.is_pregnant_or_nursing === true
+      || staff.is_pregnant_or_nursing === 'True'
+      || staff.is_pregnant_or_nursing === 'true';
+    if (isPregnant) {
+      let dShiftCount = 0;
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cell = monthSchedule[day] || 'OFF';
+        const shiftType = (typeof cell === 'object') ? (cell.type || 'OFF') : cell;
+        if (shiftType === 'D' || shiftType === '支援') dShiftCount++;
+      }
+      if (dShiftCount > 0) {
+        warnings.push({
+          staffId, staffName: staff.name, day: '整月', type: 'MATERNITY_OBSERVE',
+          severity: 'info',
+          message: `🟢 懷孕/哺乳期觀察：本月排 ${dShiftCount} 天日班/支援 (E/N 已嚴格禁止)`,
+        });
+      }
+    }
+
+    perStaffStats[staffId] = {
+      totalMonthlyHours,
+      totalRG, totalRC,
+      maxConsecutive,
+      maxDaysSinceLastRG,
+      isPregnant,
+    };
+  });
+
+  return { warnings, perStaffStats };
+};
+
+// ============================================================================
 // 護理專業安全檢查：資歷搭配 (Skill Mix)
 // ============================================================================
 export const checkSkillMixSafety = (schedule, staffData, year, month) => {
