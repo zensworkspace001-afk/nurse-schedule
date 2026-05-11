@@ -174,5 +174,33 @@
 .ann-editor__btn--ghost:not(:disabled):hover { background: rgba(255, 80, 80, 0.15); }
 
 @media (max-width: 640px) {
-  .ann-editor__kind-row { grid-template-columns: 1fr; }
+  .ann-editor {
+    margin-top: 16px;
+    padding: 14px 14px;
+    border-radius: 10px;
+  }
+  .ann-editor__title { font-size: 15px; }
+  .ann-editor__desc { font-size: 12px; margin-bottom: 10px; }
+  .ann-editor__live-badge { font-size: 10.5px; padding: 2px 8px; }
+  .ann-editor__kind-row {
+    grid-template-columns: 1fr;
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  .ann-editor__kind-card { padding: 8px 10px; gap: 8px; }
+  .ann-editor__kind-label { font-size: 12.5px; }
+  .ann-editor__kind-hint { font-size: 10.5px; }
+  .ann-editor__textarea {
+    font-size: 13px;
+    padding: 10px 12px;
+    min-height: 76px;
+  }
+  .ann-editor__meta-row { font-size: 10.5px; }
+  .ann-editor__actions { gap: 8px; }
+  .ann-editor__btn {
+    flex: 1 1 auto;
+    padding: 9px 12px;
+    font-size: 12.5px;
+    justify-content: center;
+  }
 }
