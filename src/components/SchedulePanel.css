@@ -720,6 +720,23 @@
   border-radius: 8px;
   flex: 1;
   min-height: 0;
+  position: relative;
+  /* iOS 平滑捲動 + 提示「可橫向滑動」 */
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+}
+
+/* 右側漸層提示「還有內容可以滑動」— 僅手機顯示，避免桌面端被遮蓋 */
+.schedule-panel__table-container::after {
+  content: '';
+  position: sticky;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 16px;
+  pointer-events: none;
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.25), transparent);
+  display: none; /* 桌面預設關閉 */
 }
 
 .schedule-panel__table {
@@ -865,9 +882,16 @@
   color: white;
 }
 
-/* --- Table footer (stats) --- */
+/* --- Table footer (stats) — sticky on bottom 讓滑到最後也看得到每日人力統計 --- */
 .schedule-panel__tfoot {
   border-top: 2px solid rgba(255, 255, 255, 0.15);
+  position: sticky;
+  bottom: 0;
+  z-index: 8;
+  background: rgba(20, 30, 45, 0.92);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
 }
 
 .schedule-panel__stats-row {
@@ -948,4 +972,77 @@
     flex: 1 1 auto;
     text-align: center;
   }
+
+  /* ─── 排班表手機優化 ─────────────────────────────────────
+     桌面為主的格子在小螢幕上會擠成一團；下面這段把：
+       1. 每格 tap 區擴到 ≥ 52×52（符合 Apple HIG / Material Design 觸控建議）
+       2. 員工欄加寬到 110px 並縮小字級，避免遮太多日期
+       3. 日期標題字級放大，週末天標籤更明顯
+       4. select 變回明顯的按鈕外觀（移除 native arrow），按下時整格回饋
+       5. 右側顯示「可橫向滑」漸層
+       6. 觸控 sliding 改成 momentum-style
+  ─────────────────────────────────────────────────────── */
+  .schedule-panel__table {
+    font-size: 0.85rem;
+  }
+
+  .schedule-panel__table-container::after {
+    display: block;
+  }
+
+  .schedule-panel__header-cell {
+    min-width: 80px;
+    padding: 6px 4px;
+    font-size: 0.85rem;
+  }
+
+  .schedule-panel__header-day {
+    min-width: 52px;
+    padding: 6px 2px;
+  }
+  .schedule-panel__header-day-num { font-size: 1.05rem; font-weight: 700; }
+  .schedule-panel__header-day-name { font-size: 0.7rem; opacity: 0.85; }
+
+  .schedule-panel__staff-cell {
+    padding: 8px 6px;
+    min-width: 110px;
+    max-width: 110px;
+  }
+  .schedule-panel__staff-name { font-size: 0.9rem; line-height: 1.2; }
+  .schedule-panel__staff-id { font-size: 0.75rem; }
+
+  .schedule-panel__cell {
+    min-width: 52px;
+    height: 52px; /* 行高放大讓 tap 區夠大 */
+  }
+
+  .schedule-panel__cell-select {
+    font-size: 1.05rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    /* 整格都當 button 用 */
+    -webkit-tap-highlight-color: rgba(255, 255, 255, 0.2);
+    transition: filter 0.1s;
+  }
+  .schedule-panel__cell-select:active {
+    filter: brightness(1.15);
+  }
+
+  .schedule-panel__stats-cell { font-size: 0.95rem; padding: 6px 2px; }
+  .schedule-panel__stats-label { font-size: 0.85rem; padding: 6px; }
+  .schedule-panel__stats-req { display: block; font-size: 0.7rem; }
+}
+
+/* 更窄的螢幕（≤ 420px）— 員工欄再縮一點，把空間留給日期格 */
+@media screen and (max-width: 420px) {
+  .schedule-panel__staff-cell {
+    min-width: 90px;
+    max-width: 90px;
+    padding: 6px 4px;
+  }
+  .schedule-panel__staff-name { font-size: 0.82rem; }
+  .schedule-panel__staff-id { font-size: 0.7rem; }
+  .schedule-panel__header-cell { min-width: 70px; }
+  .schedule-panel__cell { min-width: 48px; height: 48px; }
+  .schedule-panel__cell-select { font-size: 0.95rem; }
 }
