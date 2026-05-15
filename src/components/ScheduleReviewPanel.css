@@ -3,8 +3,11 @@
    ========================================================== */
 
 @keyframes panelFadeIn {
+  /* 注意：100% 用 transform: none 而非 translateY(0)，否則動畫結束後 .review 仍帶
+     transform 屬性，會替子元素建立 fixed-positioning 的 containing block，
+     讓 .review__modal-overlay 的全螢幕模糊被框在 panel 範圍內，無法蓋整頁。 */
   0%   { opacity: 0; transform: translateY(12px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* --- Root container --- */

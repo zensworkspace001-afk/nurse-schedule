@@ -34,8 +34,11 @@
 }
 
 @keyframes panelFadeIn {
+  /* 100% 用 transform: none，避免動畫結束後 .schedule-panel 殘留 transform 屬性，
+     替 fixed-positioned 子元素（modal backdrop）建立 containing block，
+     導致全螢幕模糊被框在 panel 範圍內。 */
   0%   { opacity: 0; transform: translateY(12px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* ----------------------------------------------------------------------------
@@ -137,15 +140,12 @@
    Modal backdrop (shared by instruction & overwrite modals)
    ---------------------------------------------------------------------------- */
 .schedule-panel__modal-backdrop {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  /* fixed + inset:0 讓模糊蓋整個視窗，不被 SchedulePanel 容器框住。 */
+  position: fixed;
+  inset: 0;
   background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
-  border-radius: 16px;
   display: flex;
   justify-content: center;
   align-items: center;
