@@ -3,8 +3,10 @@
    ========================================================================== */
 
 @keyframes panelFadeIn {
+  /* 100% 用 transform: none — 動畫結束後不殘留 transform 屬性，避免替
+     fixed-positioned 子元素（modal backdrop）建立 containing block。 */
   0%   { opacity: 0; transform: translateY(12px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* --- Container --- */

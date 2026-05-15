@@ -169,6 +169,22 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
+      case 'logRelock': {
+        // 解密後的明文被前端清掉時呼叫，留下「誰、何時、用什麼方式上鎖」的軌跡。
+        // 不執行任何加解密 — 純稽核軌跡。
+        if (!isAdmin && !canStaffAccessTarget(actor, target)) {
+          return res.status(403).json({ error: '權限不足' });
+        }
+        await writeAccessLog({
+          actor, action: 'relock',
+          target: target || { kind: null, id: null },
+          fields: fields || [],
+          ip: meta.ip, ua: meta.ua,
+          extra: extra || null,
+        });
+        return res.status(200).json({ ok: true });
+      }
+
       case 'logAdminRead': {
         // 當 admin 訂閱 NurseApp/Staff（含全院孕哺/leave_status/PII 密文）時，
         // 前端呼叫此 action 留下「誰、何時、從哪個 IP」的軌跡。

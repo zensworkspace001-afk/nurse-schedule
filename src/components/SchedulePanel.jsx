@@ -471,7 +471,13 @@ const handleCellChange = (staffId, day, newValue) => {
       )}
 {/* ★★★ 新增的：AI 需求詢問視窗 (Modal) ★★★ */}
       {showInstructionModal && (
-        <div className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--instruction${closingModal === 'instruction' ? ' schedule-panel__modal-backdrop--closing' : ''}`}>
+        <div
+            className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--instruction${closingModal === 'instruction' ? ' schedule-panel__modal-backdrop--closing' : ''}`}
+            onClick={(e) => { if (e.target === e.currentTarget) closeModalWithAnimation('instruction'); }}
+            role="button"
+            tabIndex={-1}
+            aria-label="點空白處取消"
+        >
             <div className={`schedule-panel__modal-box${closingModal === 'instruction' ? ' schedule-panel__modal-box--closing' : ''}`}>
                 <h3 className="schedule-panel__modal-title schedule-panel__modal-title--instruction">
                     ✨ 告訴 AI 您的特殊要求
@@ -502,7 +508,13 @@ const handleCellChange = (staffId, day, newValue) => {
       {/* ★★★ 需求詢問視窗結束 ★★★ */}
       {/* ★★★ 2. 全新加入的：客製化覆蓋警告視窗 (Modal) ★★★ */}
       {showOverwriteModal && (
-        <div className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--overwrite${closingModal === 'overwrite' ? ' schedule-panel__modal-backdrop--closing' : ''}`}>
+        <div
+            className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--overwrite${closingModal === 'overwrite' ? ' schedule-panel__modal-backdrop--closing' : ''}`}
+            onClick={(e) => { if (e.target === e.currentTarget) closeModalWithAnimation('overwrite'); }}
+            role="button"
+            tabIndex={-1}
+            aria-label="點空白處取消"
+        >
             <div className={`schedule-panel__modal-box${closingModal === 'overwrite' ? ' schedule-panel__modal-box--closing' : ''}`}>
                 <h3 className="schedule-panel__modal-title schedule-panel__modal-title--overwrite">
                     ⚠️ 畫面上已經有班表資料！

@@ -13,7 +13,7 @@ const AccessLogPanel = () => {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errMsg, setErrMsg] = useState(null);
-  const [actionFilter, setActionFilter] = useState('all');   // all | decrypt | encrypt | ai-access | login | login-failure
+  const [actionFilter, setActionFilter] = useState('all');   // all | decrypt | encrypt | relock | ai-access | login | login-failure
   const [actorFilter, setActorFilter] = useState('');
   const [maxRows, setMaxRows] = useState(200);
   const [tick, setTick] = useState(0); // 用於手動重新訂閱（refresh 按鈕）
@@ -52,7 +52,7 @@ const AccessLogPanel = () => {
   }), [logs, actionFilter, actorFilter]);
 
   const counts = useMemo(() => {
-    const c = { decrypt: 0, encrypt: 0, 'ai-access': 0, login: 0, 'login-failure': 0, other: 0 };
+    const c = { decrypt: 0, encrypt: 0, relock: 0, 'ai-access': 0, login: 0, 'login-failure': 0, other: 0 };
     logs.forEach(l => { (c[l.action] !== undefined ? c[l.action]++ : c.other++); });
     return c;
   }, [logs]);
@@ -66,6 +66,7 @@ const AccessLogPanel = () => {
         <div className="acclog__stats">
           <span className="acclog__stat acclog__stat--decrypt">解密 {counts.decrypt}</span>
           <span className="acclog__stat acclog__stat--encrypt">加密 {counts.encrypt}</span>
+          <span className="acclog__stat acclog__stat--relock">上鎖 {counts.relock}</span>
           <span className="acclog__stat acclog__stat--ai">AI 存取 {counts['ai-access']}</span>
           <span className="acclog__stat acclog__stat--login">登入成功 {counts.login}</span>
           <span className="acclog__stat acclog__stat--login-fail">登入失敗 {counts['login-failure']}</span>
@@ -78,7 +79,7 @@ const AccessLogPanel = () => {
       <div className="acclog__filter-bar">
         <div className="acclog__filter-group">
           <Filter size={12} />
-          {['all', 'decrypt', 'encrypt', 'ai-access', 'login', 'login-failure'].map(a => (
+          {['all', 'decrypt', 'encrypt', 'relock', 'ai-access', 'login', 'login-failure'].map(a => (
             <button
               key={a}
               onClick={() => setActionFilter(a)}

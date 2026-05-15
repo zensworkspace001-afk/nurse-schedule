@@ -47,6 +47,12 @@ export async function logAiAccess(target, fields, extra) {
   return call({ action: 'logAiAccess', target, fields, extra });
 }
 
+// 上鎖（清除前端明文）時呼叫，留下稽核軌跡。
+// extra 建議帶 { trigger: 'manual' | 'auto-idle' } 區分手動 vs 60s 閒置自動鎖。
+export async function logRelock(target, fields, extra) {
+  return call({ action: 'logRelock', target, fields, extra });
+}
+
 // 判斷一個值是不是密文 blob（前端輕量檢查）
 export function isEncryptedBlob(v) {
   return (

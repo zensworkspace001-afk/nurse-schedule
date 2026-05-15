@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Banknote, FileDown, Settings, X, Lock, Unlock, Save, Loader2 } from 'lucide-react';
 import { auth, updateStaffSchedule, saveArchiveReport, backupScheduleToArchive, saveGlobalSettings } from '../api/database';
-import { decryptField, encryptFieldRemote } from '../api/secureField';
+import { decryptField, encryptFieldRemote, logRelock } from '../api/secureField';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from '../constants';
 import './ScheduleReviewPanel.css';
 
@@ -32,6 +32,12 @@ const ScheduleReviewPanel = ({
     relockTimerRef.current = setTimeout(() => {
       setBaseSalary(null);
       relockTimerRef.current = null;
+      // 自動鎖回也要寫稽核 — 留下「閒置 60 秒被系統收回」的軌跡
+      logRelock(
+        { kind: 'settings', id: null },
+        ['baseSalary'],
+        { trigger: 'auto-idle', idleMs: RELOCK_MS }
+      ).catch(err => console.warn('relock 稽核寫入失敗:', err));
     }, RELOCK_MS);
   };
 
@@ -63,6 +69,12 @@ const ScheduleReviewPanel = ({
   const handleLockBaseSalary = () => {
     if (relockTimerRef.current) { clearTimeout(relockTimerRef.current); relockTimerRef.current = null; }
     setBaseSalary(null);
+    // 手動上鎖也寫稽核 — 跟 auto-idle 用 trigger 區分
+    logRelock(
+      { kind: 'settings', id: null },
+      ['baseSalary'],
+      { trigger: 'manual' }
+    ).catch(err => console.warn('relock 稽核寫入失敗:', err));
   };
 
   const handleSaveBaseSalary = async () => {
@@ -498,7 +510,7 @@ return (
                         <button
                           onClick={handleLockBaseSalary}
                           disabled={salaryBusy}
-                          className="review__salary-save"
+                          className="review__salary-relock"
                           title="立即上鎖（不等 60 秒自動鎖）"
                         >
                           <Lock size={12} /> 上鎖
@@ -518,7 +530,13 @@ return (
 
 
       {showSettlement && (
-          <div className={`review__modal-overlay${closingSettlement ? ' review__modal-overlay--closing' : ''}`}>
+          <div
+              className={`review__modal-overlay${closingSettlement ? ' review__modal-overlay--closing' : ''}`}
+              onClick={(e) => { if (e.target === e.currentTarget) closeSettlementAnimated(); }}
+              role="button"
+              tabIndex={-1}
+              aria-label="點空白處關閉"
+          >
               <div className={`review__modal-content${closingSettlement ? ' review__modal-content--closing' : ''}`}>
                   <button onClick={closeSettlementAnimated} className="review__modal-close"><X size={14} /></button>
                   <h2 className="review__modal-title"><Banknote size={20} /> 薪資與加班費結算預覽 ({historyYear}年{historyMonth}月)</h2>

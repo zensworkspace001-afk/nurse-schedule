@@ -110,6 +110,10 @@
   display: flex;
   align-items: center;
   gap: 5px;
+  /* 鎖定 / 解鎖兩種狀態元件數量不同（鎖定是 1 顆按鈕、解鎖是 input+儲存+上鎖），
+     固定最小寬度可避免解密瞬間 toolbar 收縮、與左側封存檔案之間出現視覺縫隙。 */
+  min-width: 280px;
+  justify-content: flex-start;
 }
 
 .review__salary-label {
@@ -167,6 +171,25 @@
 }
 
 .review__salary-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.review__salary-relock {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(148, 163, 184, 0.18);
+  color: #e2e8f0;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.review__salary-relock:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.35);
+}
+
+.review__salary-relock:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .review__salary-err {
   font-size: 11px;
