@@ -53,7 +53,21 @@ export default async function handler(req, res) {
 
         const turnData = turnSnap.data();
         const activeStaffId = turnData.active_staff_id;
-        
+
+        // ★ 防呆：若 active_staff_id 早已出現在 SelectionProgress.submitted_staff，
+        //   代表這位員工其實已經選完了，turn 沒被清是上游 bug 殘留。
+        //   不該誤判為「逾時」、不該強制跳過、更不該再發一輪信。直接歸位即可。
+        const progressDoc = await db.collection('SelectionProgress').doc(`${currentYear}_${currentMonth}`).get();
+        const submittedStaff = progressDoc.exists ? (progressDoc.data().submitted_staff || []) : [];
+        const normalized = String(activeStaffId || '').trim().toUpperCase();
+        const alreadySubmitted = submittedStaff.some(sid => String(sid || '').trim().toUpperCase() === normalized);
+        if (alreadySubmitted) {
+            await turnRef.set({ active_staff_id: null, year: currentYear, month: currentMonth, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            await db.collection('SelectionTurn').doc('latest').set({ active_staff_id: null, year: currentYear, month: currentMonth, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+            console.log(`🧹 ${activeStaffId} 已在 submitted_staff 名單中，turn 殘留為上游 bug，已自動清空，不觸發跳過信。`);
+            return res.status(200).json({ message: `${activeStaffId} 已選完但 turn 未被清空，已歸位。` });
+        }
+
         // 4. 計算卡住的時間 (有沒有超過 24 小時？)
         const lastUpdated = turnData.updatedAt.toDate();
         const hoursDiff = (new Date() - lastUpdated) / (1000 * 60 * 60);

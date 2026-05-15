@@ -186,11 +186,15 @@ export default async function handler(req, res) {
         // 4. 終止條件 B：所有人都選完了（候選人耗盡）
         if (unassignedStaff.length === 0) {
             const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'zensworkspace001@gmail.com';
-            // 清除 latest 指標
-            await db.collection('SelectionTurn').doc('latest').set({
+            // 同時清除當月 turn 與 latest 指標，避免 24h 後 cron 誤判逾時再發一輪信
+            const clearTurn = {
                 active_staff_id: null, year, month,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp()
-            });
+            };
+            await Promise.all([
+                db.collection('SelectionTurn').doc(`${year}_${month}`).set(clearTurn),
+                db.collection('SelectionTurn').doc('latest').set(clearTurn)
+            ]);
 
             // 🚨 若仍有未認領的 D* 空缺班表，代表「名額多於可選人數」或「有員工被排除卻還有空班」
             if (remainingDSlots.length > 0) {
