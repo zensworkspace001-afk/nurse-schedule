@@ -119,6 +119,8 @@ access_logs                — audit trail; { ts, actor:{uid,email}, action:'dec
 
 **Encrypted fields (marked `*` above):** stored as `{ ct, iv, tag, v: 1 }` AES-256-GCM blobs. Read/write goes through `/api/secure-field`, never directly. UI uses `<EncryptedField>` (click-to-decrypt, 30s auto-relock). Migration: `node scripts/migrate-encrypt.js` (dry-run) → `--commit` (actual write).
 
+**Firestore security rules** live in `firestore.rules` at the repo root. Deploy via Firebase Console paste (CLI deploy lacks IAM perms in this project). The rules are the canonical access-control source — when in doubt about who can read/write a path, check `firestore.rules` rather than inferring from the schema above.
+
 **Staff data three-doc split (PDPA §6 compliance):** the original single `NurseApp/Staff` doc was readable by any authenticated user, leaking colleagues' is_pregnant_or_nursing / leave_status / accumulated_ot etc. Now split into three: full doc admin-only, public sanitized projection for colleague-name lookups, per-staff private doc for own sensitive data. The frontend `saveGlobalStaff` and the backend `api/complete-profile.js` both batch-write all three to keep them in sync. To migrate existing deployments: `node scripts/migrate-staff-public.js` (dry-run) → `--commit`. Run **before** deploying the new firestore.rules so staff don't see empty data during the gap.
 
 **Firebase Auth UID realignment:** older Auth accounts (pre `admin-user.js` unification) carry a random 28-char UID instead of the matching `staff_id`. Firestore rule `match /StaffPrivate/{staffId}` requires `request.auth.uid == staffId`, so those staff get permission-denied on their private row. To fix existing deployments: `node --env-file=.env.local scripts/migrate-realign-auth-uid.js` (dry-run) → `--commit`. The script deletes each misaligned Auth user, recreates with `uid: staff_id`, and issues a new activation token — affected staff need to re-activate from email. Add `--skip-email` to print tokens to stdout instead of sending.
@@ -154,9 +156,17 @@ Three-layer security: (1) frontend route guard on session token, (2) zero-trust 
 
 Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron and rewrites all `/api/*` routes plus SPA fallback to `index.html`.
 
-### Legacy `server/` Directory
+`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, and jsDelivr. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
+
+### Legacy `server/` and `my-app/` Directories
 
 The `server/` folder contains a legacy local Express dev server (port 3001) backed by a JSON file (`db.json`). This is **not used in production** — it predates the Vercel serverless + Firebase architecture. Ignore it for new development.
+
+Likewise, `my-app/` is an unrelated scratch/sandbox directory with its own `node_modules` and configs. Ignore it for any work on the nurse-schedule app.
+
+### Diagnostic & Repair Scripts
+
+Beyond the migrations referenced above, `scripts/` also holds diagnostic helpers — `diagnose-relay.js` / `test-relay.js` for the agentic turn pipeline, `check-staff-data.js` / `restore-staff-from-private.js` for staff-doc integrity, `list-firestore-usage.js` for read-volume audits, and `fix-uid-keyed-schedule.js` / `migrate-schedule-public.js` for schedule-doc repair. All accept `--commit` to write; default is dry-run.
 
 ## Linting Notes
 
