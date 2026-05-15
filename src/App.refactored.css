@@ -9,13 +9,20 @@
 }
 
 @keyframes appSlideDown {
+  /* 100% 用 transform: none — 套在 .app__header 上，避免殘留 transform 把整個 header
+     變成 fixed-position 子孫的 containing block。 */
   0%   { opacity: 0; transform: translateY(-20px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes appSlideUp {
+  /* ★ 重要：100% 用 transform: none。
+     .app__content 套這條動畫，它包了整個 ManagerInterface（含各 panel 與 modal）。
+     若殘留 translateY(0)（仍是非 none transform），.app__content 會成為所有
+     position: fixed 子孫的 containing block，導致 panel 內的 modal 永遠蓋不到
+     .app__content 之外的元素（例如 app header / particle 背景）。 */
   0%   { opacity: 0; transform: translateY(20px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* --- Root layout --- */
@@ -328,11 +335,11 @@
 
 @keyframes app__dropdown-in {
   from { opacity: 0; transform: translateY(-8px) scale(0.97); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 1; transform: none; }
 }
 
 @keyframes app__dropdown-out {
-  from { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 1; transform: none; }
   to { opacity: 0; transform: translateY(-8px) scale(0.97); }
 }
 
@@ -519,11 +526,11 @@
 
 @keyframes appModalIn {
   0% { opacity: 0; transform: scale(0.85) translateY(30px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes appModalOut {
-  0% { opacity: 1; transform: scale(1) translateY(0); }
+  0% { opacity: 1; transform: none; }
   100% { opacity: 0; transform: scale(0.9) translateY(20px); }
 }
 
@@ -571,7 +578,7 @@
   }
   100% {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: none;
     filter: blur(0px);
   }
 }
