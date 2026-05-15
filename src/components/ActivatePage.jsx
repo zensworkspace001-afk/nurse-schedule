@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import ParticleBackground from './ParticleBackground';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import './ActivatePage.css';
 
 // 帳號啟用 / 密碼重設頁面
@@ -15,6 +16,7 @@ const ActivatePage = () => {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(null); // { purpose, message }
+  const [perfMode] = usePerformanceMode();
 
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get('token') || '';
@@ -62,7 +64,7 @@ const ActivatePage = () => {
     const isActivation = success.purpose === 'activation';
     return (
       <div className="activate-page">
-        <ParticleBackground />
+        {!perfMode && <ParticleBackground />}
         <div className="activate-page__blob activate-page__blob--1"></div>
         <div className="activate-page__blob activate-page__blob--2"></div>
         <div className="activate-page__blob activate-page__blob--3"></div>

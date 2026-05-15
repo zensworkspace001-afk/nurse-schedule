@@ -2,6 +2,48 @@
    App.refactored.css — NurseSchedulingSystem (Flat Glassmorphism UI)
    ============================================ */
 
+/* ============================================
+   省電 / 效能模式 — 全域覆蓋
+   --------------------------------------------------------------
+   由 src/hooks/usePerformanceMode.js 在 <html> 上掛 .perf-mode 類別啟用。
+   啟用時：
+   1. 整頁所有 backdrop-filter 失效 — 這是頭號 GPU 負擔，低階顯卡會明顯掉 FPS。
+   2. 半透明面板補一層比較實心的 rgba 背景，避免取消 blur 後失去視覺層次。
+   3. 全域 entrance animation 降速、entrance transform 縮減（不消除以保留方向感）。
+   App.jsx 內 ParticleBackground 也會直接跳過渲染，省 Three.js WebGL 場景。
+   ============================================ */
+.perf-mode *,
+.perf-mode *::before,
+.perf-mode *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 補強面板背景：原本靠 blur 提供層次，關掉後需要稍微實心。 */
+.perf-mode .app__header,
+.perf-mode .manager__tabs,
+.perf-mode .schedule-panel,
+.perf-mode .publish,
+.perf-mode .review,
+.perf-mode .statistics,
+.perf-mode .staff-mgmt,
+.perf-mode .requirements-panel,
+.perf-mode .acclog,
+.perf-mode .dashboard,
+.perf-mode .dashboard__guard,
+.perf-mode .app__modal-content,
+.perf-mode .schedule-panel__modal-box,
+.perf-mode .review__modal-content,
+.perf-mode .dashboard__pwd-modal,
+.perf-mode .app__status-dropdown {
+  background: rgba(30, 36, 48, 0.85) !important;
+}
+
+/* SVG goo filter（tab 的液體效果）也很吃 GPU — 關掉。 */
+.perf-mode .manager__goo-layer {
+  filter: none !important;
+}
+
 /* --- Page entrance keyframes --- */
 @keyframes appFadeIn {
   0%   { opacity: 0; }
@@ -224,6 +266,38 @@
   display: flex;
   align-items: center;
   gap: 1.5rem;
+}
+
+/* --- 省電 / 視覺模式 toggle pill (header) --- */
+.app__perf-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+.app__perf-toggle:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.app__perf-toggle[aria-pressed="true"] {
+  /* 啟用省電模式時用偏暖的提示色，呼應「節電」概念 */
+  background: rgba(245, 158, 11, 0.22);
+  border-color: rgba(245, 158, 11, 0.5);
+  color: #fcd34d;
+}
+.app__perf-toggle-label {
+  text-transform: uppercase;
 }
 
 /* --- 系統連線狀態 — 下拉選單 --- */

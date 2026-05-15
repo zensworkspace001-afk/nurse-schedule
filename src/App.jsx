@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
+import { Calendar, Settings, LogOut, X, Hand, Zap, ZapOff } from 'lucide-react';
+import { usePerformanceMode } from './hooks/usePerformanceMode';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut } from "firebase/auth";
@@ -17,6 +18,10 @@ import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
+
+  // 省電模式：關閉 ParticleBackground (Three.js + aurora shader) 與所有 backdrop-filter，
+  // 讓低階顯卡 / 內顯筆電也能順跑。可由使用者手動切換，或跟隨 prefers-reduced-motion。
+  const [perfMode, { toggle: togglePerfMode }] = usePerformanceMode();
 
   // ★ 系統連線狀態指示燈 (全端點) ★
   const [endpointStatus, setEndpointStatus] = useState({});
@@ -794,7 +799,7 @@ const handleSaveAndPublish = async () => {
     // 跟 handleLogout 是對稱的（同一個 glassFadeIn 動畫，只差 background 色相）
     return (
       <>
-        <ParticleBackground />
+        {!perfMode && <ParticleBackground />}
         <LoginPanel onLogin={setCurrentUser} onApiStatus={() => {}} staffData={staffData} />
       </>
     );
@@ -815,8 +820,8 @@ const handleSaveAndPublish = async () => {
     {/* AnnouncementBanner 只顯示在登入頁（LoginPanel 自己 subscribe）— dashboard 上不再呈現，
         留給 admin 自己在 RequirementsPanel 的編輯器看到「目前正在顯示」狀態徽章 */}
     <div className="app">
-      {/* 🌟 Canvas 粒子動態背景 */}
-      <ParticleBackground />
+      {/* 🌟 Canvas 粒子動態背景 — 省電模式跳過，省下 Three.js WebGL 場景 + aurora shader */}
+      {!perfMode && <ParticleBackground />}
       {/* 🌟 背景動畫色塊 (與登入頁面相同) */}
       <div className="app__blob app__blob--1"></div>
       <div className="app__blob app__blob--2"></div>
@@ -864,6 +869,18 @@ const handleSaveAndPublish = async () => {
           <div className="app__header-right">
             {/* 天氣 + 時鐘 widget — header 嵌入式 pill 樣式 */}
             <WeatherClockWidget inline />
+            {/* 省電 / 視覺模式切換 — 關掉粒子背景與 backdrop-filter，給低階顯卡 / 內顯機器用 */}
+            <button
+              type="button"
+              onClick={togglePerfMode}
+              className="app__perf-toggle"
+              title={perfMode ? '目前為省電模式 — 點此恢復視覺特效' : '目前為視覺模式 — 點此切換省電模式（關閉粒子背景與毛玻璃模糊）'}
+              aria-label="切換省電 / 視覺模式"
+              aria-pressed={perfMode}
+            >
+              {perfMode ? <ZapOff size={14} /> : <Zap size={14} />}
+              <span className="app__perf-toggle-label">{perfMode ? '省電' : '視覺'}</span>
+            </button>
             {/* ★ 系統連線狀態 — 下拉選單 ★ */}
             <div className="app__status-dropdown-wrapper">
               <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => showStatusDropdown ? handleCloseStatusDropdown() : setShowStatusDropdown(true)}>

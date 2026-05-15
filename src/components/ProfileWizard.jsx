@@ -3,6 +3,7 @@ import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, Lo
 import { auth } from '../api/database';
 import { signOut } from 'firebase/auth';
 import ParticleBackground from './ParticleBackground';
+import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { TAIWAN_BANKS } from '../constants/banks';
 import './ProfileWizard.css';
 
@@ -16,6 +17,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [perfMode] = usePerformanceMode();
 
   const [form, setForm] = useState(() => ({
     name: staffRow?.name && staffRow.name !== '載入中...' ? staffRow.name : '',
@@ -107,7 +109,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   return (
     <div className="profwiz">
       {/* 與主應用一致的粒子 + 色塊背景，玻璃卡片下方才真的有東西可以模糊 */}
-      <ParticleBackground />
+      {!perfMode && <ParticleBackground />}
       <div className="profwiz__blob profwiz__blob--1"></div>
       <div className="profwiz__blob profwiz__blob--2"></div>
       <div className="profwiz__blob profwiz__blob--3"></div>
