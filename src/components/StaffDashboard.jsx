@@ -329,7 +329,13 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
 
       {/* ★★★ 新增：修改密碼 Modal 視窗 ★★★ */}
       {showPwdModal && (
-        <div className={`dashboard__pwd-overlay${closingPwdModal ? ' dashboard__pwd-overlay--closing' : ''}`}>
+        <div
+            className={`dashboard__pwd-overlay${closingPwdModal ? ' dashboard__pwd-overlay--closing' : ''}`}
+            onClick={(e) => { if (e.target === e.currentTarget) closePwdModalAnimated(); }}
+            role="button"
+            tabIndex={-1}
+            aria-label="點空白處關閉"
+        >
             <div className={`dashboard__pwd-modal${closingPwdModal ? ' dashboard__pwd-modal--closing' : ''}`}>
                 <button onClick={closePwdModalAnimated} className="dashboard__pwd-close-btn"><X size={14} /></button>
                 <h3 className="dashboard__pwd-title"><Settings size={18} /> 修改密碼</h3>

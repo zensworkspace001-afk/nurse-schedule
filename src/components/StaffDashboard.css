@@ -26,13 +26,17 @@
 }
 
 @keyframes dashFadeSlideIn {
+  /* 100% 用 transform: none — 動畫結束後不殘留 transform，避免替 fixed-positioned
+     子元素（修改密碼 modal 的 overlay）建立 containing block。 */
   0%   { opacity: 0; transform: translateY(18px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes dashCardStagger {
+  /* 同上理由：scale(1) translateY(0) 視覺上等同 none，但仍會建立 containing block，
+     需顯式 transform: none。 */
   0%   { opacity: 0; transform: translateY(12px) scale(0.97); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes dashSuccessPop {
@@ -218,8 +222,11 @@
 }
 
 @keyframes dashModalIn {
+  /* 100% 用 transform: none — 修改密碼 modal 本身就在 fixed overlay 內，
+     若殘留 transform，內部任何 fixed 子元素會被限制在 modal 範圍。
+     對齊其他 panel 的 panelFadeIn 寫法。 */
   0% { opacity: 0; transform: scale(0.85) translateY(30px); }
-  100% { opacity: 1; transform: scale(1) translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 @keyframes dashModalOut {
