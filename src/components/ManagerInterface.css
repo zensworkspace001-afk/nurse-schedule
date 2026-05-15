@@ -4,8 +4,12 @@
 
 /* --- Page transition keyframes --- */
 @keyframes managerPanelIn {
+  /* 100% 用 transform: none — 這條動畫透過 .manager__content-area > * 蓋在每個
+     panel root 上（且 specificity 比各 panel 自己的 panelFadeIn 還高），若殘留
+     transform 會替 panel 內 fixed-positioned modal 建立 containing block，
+     導致薪資結算 modal 蓋不到上方 tabs。 */
   0%   { opacity: 0; transform: translateY(12px); }
-  100% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 1; transform: none; }
 }
 
 /* --- Container --- */
