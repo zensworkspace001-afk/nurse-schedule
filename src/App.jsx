@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import { Calendar, Settings, LogOut, X, Hand } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
@@ -873,7 +874,7 @@ const handleSaveAndPublish = async () => {
                 })()}
                 <span className="app__status-label">API</span>
               </button>
-              {showStatusDropdown && (
+              {showStatusDropdown && ReactDOM.createPortal(
                 <>
                   <div className="app__status-backdrop" onClick={handleCloseStatusDropdown} />
                   <div className={`app__status-dropdown${closingStatusDropdown ? ' app__status-dropdown--closing' : ''}`} style={(() => {
@@ -896,7 +897,8 @@ const handleSaveAndPublish = async () => {
                       );
                     })}
                   </div>
-                </>
+                </>,
+                document.body
               )}
             </div>
             <span className="app__header-user"><Hand size={18} /> {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>

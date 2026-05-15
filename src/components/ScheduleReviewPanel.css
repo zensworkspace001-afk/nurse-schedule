@@ -30,6 +30,9 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* 窄視窗時整塊換行，避免封存檔案/預設底薪/結算按鈕互擠導致 label 斷字 */
+  flex-wrap: wrap;
+  gap: 12px;
   box-shadow:
     0 8px 32px rgba(0, 0, 0, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
@@ -39,6 +42,7 @@
   display: flex;
   align-items: center;
   gap: 15px;
+  flex-wrap: wrap;
 }
 
 .review__title {
@@ -52,6 +56,7 @@
 .review__archive-selector {
   display: flex;
   align-items: center;
+  white-space: nowrap;
   background: rgba(255, 255, 255, 0.12);
   padding: 5px 15px;
   border-radius: 8px;
@@ -63,6 +68,7 @@
 
 .review__archive-label {
   margin-right: 8px;
+  white-space: nowrap;
 }
 
 .review__year-input {
@@ -99,6 +105,7 @@
   display: flex;
   gap: 10px;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 /* --- Base salary field --- */
@@ -110,16 +117,19 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  /* 鎖定 / 解鎖兩種狀態元件數量不同（鎖定是 1 顆按鈕、解鎖是 input+儲存+上鎖），
-     固定最小寬度可避免解密瞬間 toolbar 收縮、與左側封存檔案之間出現視覺縫隙。 */
-  min-width: 280px;
-  justify-content: flex-start;
+  white-space: nowrap;
 }
+
+/* 鎖定 / 解鎖兩種狀態元件數量不同，原本想用 min-width 抑制 toolbar 縮放抖動，
+   但在窄視窗下會把 label 擠成兩行。改用 nowrap + flex-wrap 處理：
+   - .review__salary-field 自己不換行（防 label 斷裂）
+   - .review__header / .review__toolbar 允許整塊換行（窄螢幕優雅換列） */
 
 .review__salary-label {
   font-size: 0.9rem;
   font-weight: bold;
   color: rgba(255, 255, 255, 0.8);
+  white-space: nowrap;
 }
 
 .review__salary-input {
