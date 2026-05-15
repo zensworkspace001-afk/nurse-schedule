@@ -256,7 +256,9 @@ export const computeProximityWarnings = (schedule, staffData, year, month) => {
     let warnedRgInterval = false;
 
     const maxRgInterval = staff.special_status === 'BiWeekly' ? 12 : 6;
-    const consecutiveWarnAt = 5;            // 距 6 天 1 天
+    // 連續工作合法上限為 6 天（連到第 7 天才違規），所以警示要在第 6 天才對得上「再 1 天就違規」。
+    // 原本寫 5 是把「合法上限」誤當成「違規門檻」。
+    const consecutiveWarnAt = 6;
     const rgIntervalWarnAt = maxRgInterval - 1; // 距上限 1 天
 
     for (let day = 1; day <= daysInMonth; day++) {

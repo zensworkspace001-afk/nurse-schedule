@@ -261,7 +261,12 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
           const shift = pattern[i];
           if (WORKING_SHIFTS.has(shift)) currentStreak++;
           else currentStreak = 0;
-          if (currentStreak > 6) return { valid: false, reason: `違反七休一 (第${i+1}天連上${currentStreak}天)` };
+          if (currentStreak > 6) {
+              // 訊息要把上月底帶過來的天數講清楚，避免員工看本月 pattern 只算到 6
+              // 天卻看到 "連上 7 天"，以為系統算錯。
+              const carryover = prevStreak > 0 ? `（含上月底連續 ${prevStreak} 天）` : '';
+              return { valid: false, reason: `違反七休一：第 ${i+1} 天累計連上 ${currentStreak} 天${carryover}` };
+          }
       }
 
       // 2. 檢查輪班間隔 (必須包在這個函式裡面！)

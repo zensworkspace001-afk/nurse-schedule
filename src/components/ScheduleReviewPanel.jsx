@@ -22,6 +22,31 @@ const ScheduleReviewPanel = ({
   const [salaryBusy, setSalaryBusy] = useState(false);
   const [salaryErr, setSalaryErr] = useState(null);
 
+  // Auto-relock：底薪解鎖後 60 秒無操作即自動上鎖，與 <EncryptedField> 30s 行為對齊。
+  // 因為底薪是可編輯欄位（用戶可能要輸入數字），給予比唯讀解密欄位較寬鬆的 60s。
+  const RELOCK_MS = 60_000;
+  const relockTimerRef = useRef(null);
+  const scheduleRelock = () => {
+    if (relockTimerRef.current) clearTimeout(relockTimerRef.current);
+    if (!baseSalaryEnc) return; // 從未加密過的純文字不需鎖
+    relockTimerRef.current = setTimeout(() => {
+      setBaseSalary(null);
+      relockTimerRef.current = null;
+    }, RELOCK_MS);
+  };
+
+  useEffect(() => {
+    // 只在「已解鎖」狀態下啟動計時；組件卸載 / state 變動時清掉舊計時器
+    if (baseSalary !== null && baseSalaryEnc) scheduleRelock();
+    return () => {
+      if (relockTimerRef.current) {
+        clearTimeout(relockTimerRef.current);
+        relockTimerRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseSalary, baseSalaryEnc]);
+
   const handleUnlockBaseSalary = async () => {
     if (!baseSalaryEnc) return;
     setSalaryBusy(true); setSalaryErr(null);
@@ -35,6 +60,11 @@ const ScheduleReviewPanel = ({
     }
   };
 
+  const handleLockBaseSalary = () => {
+    if (relockTimerRef.current) { clearTimeout(relockTimerRef.current); relockTimerRef.current = null; }
+    setBaseSalary(null);
+  };
+
   const handleSaveBaseSalary = async () => {
     if (typeof baseSalary !== 'number' || Number.isNaN(baseSalary)) return;
     setSalaryBusy(true); setSalaryErr(null);
@@ -42,6 +72,8 @@ const ScheduleReviewPanel = ({
       const blob = await encryptFieldRemote(Number(baseSalary), { kind: 'settings', id: null }, ['baseSalary']);
       await saveGlobalSettings({ baseSalary: blob });
       // onSnapshot 會自動把 baseSalaryEnc 更新；本地 baseSalary 留著（仍解鎖中）
+      // 儲存成功 = 用戶在用，延長一輪解鎖時間
+      scheduleRelock();
     } catch (e) {
       setSalaryErr(e.message);
     } finally {
@@ -452,7 +484,7 @@ return (
                           value={baseSalary ?? ''}
                           onChange={(e) => setBaseSalary(Number(e.target.value))}
                           className="review__salary-input"
-                          title="此底薪將用於計算加班費與請假扣薪。修改後請按💾 儲存以加密寫入雲端。"
+                          title="此底薪將用於計算加班費與請假扣薪。修改後請按💾 儲存以加密寫入雲端。閒置 60 秒會自動上鎖。"
                       />
                       <button
                         onClick={handleSaveBaseSalary}
@@ -462,6 +494,16 @@ return (
                       >
                         {salaryBusy ? <Loader2 size={12} className="review__salary-spin" /> : <Save size={12} />} 儲存
                       </button>
+                      {baseSalaryEnc && (
+                        <button
+                          onClick={handleLockBaseSalary}
+                          disabled={salaryBusy}
+                          className="review__salary-save"
+                          title="立即上鎖（不等 60 秒自動鎖）"
+                        >
+                          <Lock size={12} /> 上鎖
+                        </button>
+                      )}
                     </>
                   )}
                   {salaryErr && <span className="review__salary-err">{salaryErr}</span>}
