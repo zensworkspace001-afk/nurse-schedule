@@ -371,3 +371,103 @@
 .profwiz__spin {
   animation: profwizSpin 0.9s linear infinite;
 }
+
+/* ==========================================================================
+   PDPA §8 告知 Gate
+   - 必須點開告知頁、滑到底、按「我已詳閱完畢」後才能勾選同意
+   - 勾選後 .profwiz__pdpa--done 加上綠色邊框視覺確認
+   ========================================================================== */
+.profwiz__pdpa {
+  background: rgba(255, 167, 38, 0.08);
+  border: 1px solid rgba(255, 167, 38, 0.45);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.3s ease;
+}
+
+.profwiz__pdpa--done {
+  background: rgba(82, 196, 26, 0.1);
+  border-color: rgba(82, 196, 26, 0.55);
+}
+
+.profwiz__pdpa-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffcc80;
+  font-size: 0.9rem;
+}
+
+.profwiz__pdpa--done .profwiz__pdpa-header {
+  color: #95de64;
+}
+
+.profwiz__pdpa-text {
+  margin: 0;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.5;
+}
+
+.profwiz__pdpa-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 214, 102, 0.5);
+  color: #ffd666;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-decoration: none;
+  align-self: flex-start;
+  transition: all 0.2s;
+}
+
+.profwiz__pdpa-link:hover {
+  background: rgba(255, 214, 102, 0.25);
+  transform: translateY(-1px);
+}
+
+.profwiz__pdpa-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.9);
+  line-height: 1.5;
+  cursor: pointer;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid transparent;
+  transition: background 0.2s;
+}
+
+.profwiz__pdpa-check:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.profwiz__pdpa-check input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 2px;
+  accent-color: #95de64;
+  cursor: pointer;
+}
+
+.profwiz__pdpa-check--locked {
+  opacity: 0.55;
+  cursor: not-allowed;
+  font-style: italic;
+}
+
+.profwiz__pdpa-check--locked input {
+  cursor: not-allowed;
+}

@@ -1,0 +1,214 @@
+/* ==========================================================================
+   PrivacyNoticePage — 個資法 §8 告知頁
+   ========================================================================== */
+
+.privnotice {
+  min-height: 100vh;
+  padding: 2rem 1rem;
+  background: linear-gradient(135deg, #2c3e50, #4a5e7f);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  font-family: 'Inter', 'Noto Sans TC', sans-serif;
+}
+
+.privnotice__card {
+  width: 100%;
+  max-width: 760px;
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 4rem);
+  overflow: hidden;
+}
+
+.privnotice__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 24px 28px;
+  background: linear-gradient(135deg, #4a90e2, #357abd);
+  color: #fff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.privnotice__header-icon { flex-shrink: 0; }
+
+.privnotice__title {
+  margin: 0;
+  font-size: 1.4rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.privnotice__subtitle {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+.privnotice__body {
+  padding: 24px 28px;
+  overflow-y: auto;
+  flex: 1;
+  color: #2d3748;
+  line-height: 1.7;
+}
+
+.privnotice__section {
+  padding: 14px 0;
+  border-bottom: 1px solid #edf2f7;
+}
+.privnotice__section:last-child { border-bottom: none; }
+
+.privnotice__section h2 {
+  margin: 0 0 8px;
+  color: #2c5282;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.privnotice__section p {
+  margin: 6px 0;
+  color: #4a5568;
+  font-size: 0.95rem;
+}
+
+.privnotice__section ul {
+  margin: 6px 0 6px 1.2em;
+  padding: 0;
+  color: #4a5568;
+  font-size: 0.95rem;
+}
+.privnotice__section li { margin: 3px 0; }
+
+.privnotice__section--important {
+  background: #fffaf0;
+  border-left: 4px solid #ed8936;
+  padding-left: 14px;
+  margin: 8px 0;
+  border-radius: 4px;
+}
+
+.privnotice__section--rights {
+  background: #f0fff4;
+  border-left: 4px solid #48bb78;
+  padding-left: 14px;
+  margin: 8px 0;
+  border-radius: 4px;
+}
+
+.privnotice__section--footer {
+  background: #f7fafc;
+  text-align: center;
+  font-size: 0.82rem;
+  color: #718096;
+  margin-top: 12px;
+  padding: 14px;
+  border-radius: 6px;
+}
+
+.privnotice__table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 0.88rem;
+}
+.privnotice__table th,
+.privnotice__table td {
+  border: 1px solid #e2e8f0;
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+.privnotice__table th {
+  background: #edf2f7;
+  font-weight: 700;
+  color: #2d3748;
+}
+.privnotice__row--sensitive {
+  background: #fef5e7;
+}
+.privnotice__row--sensitive td:first-child {
+  color: #c05621;
+}
+
+/* --- 底部行動區 --- */
+.privnotice__footer {
+  padding: 18px 28px;
+  background: #f7fafc;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.privnotice__scroll-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 18px;
+  background: #fed7aa;
+  border: 1px dashed #ed8936;
+  color: #c05621;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  animation: privnoticeBounce 2s ease-in-out infinite;
+}
+.privnotice__scroll-hint:hover { background: #fbd38d; }
+
+@keyframes privnoticeBounce {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(4px); }
+}
+
+.privnotice__ack-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #48bb78, #38a169);
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(56, 161, 105, 0.35);
+  transition: all 0.2s ease;
+}
+.privnotice__ack-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(56, 161, 105, 0.5);
+}
+
+.privnotice__done {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  background: #c6f6d5;
+  color: #22543d;
+  border: 1px solid #48bb78;
+  border-radius: 10px;
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+
+/* --- 響應式 --- */
+@media (max-width: 640px) {
+  .privnotice { padding: 0; }
+  .privnotice__card {
+    border-radius: 0;
+    max-height: 100vh;
+  }
+  .privnotice__header { padding: 18px 18px; }
+  .privnotice__body { padding: 18px 18px; }
+  .privnotice__footer { padding: 14px 18px; }
+  .privnotice__title { font-size: 1.2rem; }
+}

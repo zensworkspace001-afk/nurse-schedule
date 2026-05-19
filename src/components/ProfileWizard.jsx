@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut, ShieldCheck, ExternalLink } from 'lucide-react';
 import { auth } from '../api/database';
 import { signOut } from 'firebase/auth';
 import ParticleBackground from './ParticleBackground';
@@ -13,11 +13,39 @@ import './ProfileWizard.css';
 //   2. 個人狀態（孕/哺乳、可否大夜）
 //   3. 加密 PII（身分證 / 銀行帳號 / 手機）
 // 提交至 /api/complete-profile，後端統一驗證 + 加密 + 寫稽核。
+// PDPA §8 告知頁的 localStorage 旗標 — 必須跟 PrivacyNoticePage 保持一致。
+// 升版告知文案時把 key bump 到 v2，員工會被強制重讀。
+const PDPA_READ_KEY = 'pdpa_read_v1';
+
 const ProfileWizard = ({ staffRow, currentUser }) => {
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [perfMode] = usePerformanceMode();
+
+  // 同意 gate 狀態：
+  //   pdpaRead   = 員工已經把告知頁滑到底並按過「我已詳閱完畢」
+  //   pdpaAgreed = 員工在 wizard 內勾選了同意 checkbox
+  // 兩者皆需 true 才能離開 step 1。提交時把 pdpa_consented_at 寫進 staffData 留證。
+  const [pdpaRead, setPdpaRead] = useState(() => !!localStorage.getItem(PDPA_READ_KEY));
+  const [pdpaAgreed, setPdpaAgreed] = useState(false);
+
+  // 監聽其他分頁（告知頁）對 localStorage 的寫入 —— 同 origin 下的 storage 事件
+  useEffect(() => {
+    const onStorage = (e) => {
+      if (e.key === PDPA_READ_KEY && e.newValue) setPdpaRead(true);
+    };
+    window.addEventListener('storage', onStorage);
+    // 兜底：使用者切回 wizard 分頁時主動 re-check（storage event 在 same-tab 寫入不會觸發）
+    const onFocus = () => {
+      if (localStorage.getItem(PDPA_READ_KEY)) setPdpaRead(true);
+    };
+    window.addEventListener('focus', onFocus);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
 
   const [form, setForm] = useState(() => ({
     name: staffRow?.name && staffRow.name !== '載入中...' ? staffRow.name : '',
@@ -58,6 +86,9 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   const handleNext = () => {
     setError('');
     if (step === 1) {
+      // PDPA gate：必須先讀完告知頁 + 勾選同意才能繼續
+      if (!pdpaRead) return setError('請先點下方連結，閱讀完整的「個人資料蒐集告知」');
+      if (!pdpaAgreed) return setError('請勾選同意框後再繼續');
       const e = validateStep1();
       if (e) return setError(e);
     }
@@ -71,6 +102,11 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
 
   const handleSubmit = async () => {
     setError('');
+    // 二次防呆：理論上 PDPA gate 在 step 1 就擋住了，但若使用者用 React DevTools
+    // 強跳 step 也擋一次。
+    if (!pdpaRead || !pdpaAgreed) {
+      return setError('PDPA 同意紀錄缺失，請回到第一步重新確認');
+    }
     const e = validateStep3();
     if (e) return setError(e);
     setSubmitting(true);
@@ -89,6 +125,9 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
           idNumber: form.idNumber.trim(),
           bankAccount: composedBankAccount(),
           phone: form.phone.trim(),
+          // PDPA §8 留證：告知文案版本、員工讀完時間、勾選同意時間
+          pdpa_notice_version: 'v1',
+          pdpa_consented_at: new Date().toISOString(),
         }),
       });
       const data = await res.json();
@@ -140,6 +179,39 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
 
         {step === 1 && (
           <div className="profwiz__form">
+            {/* PDPA §8 告知 gate — 必須先讀完告知頁 + 勾選同意才能繼續 */}
+            <div className={`profwiz__pdpa${pdpaAgreed ? ' profwiz__pdpa--done' : ''}`}>
+              <div className="profwiz__pdpa-header">
+                <ShieldCheck size={16} />
+                <strong>個人資料蒐集告知（依個資法 §8）</strong>
+              </div>
+              <p className="profwiz__pdpa-text">
+                在開始填寫前，請先閱讀本院如何蒐集、保護及使用您的個人資料。
+              </p>
+              <a
+                href="/privacy-notice"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="profwiz__pdpa-link"
+              >
+                <ExternalLink size={12} /> 開啟個人資料蒐集告知（新分頁）
+              </a>
+
+              <label className={`profwiz__pdpa-check${pdpaRead ? '' : ' profwiz__pdpa-check--locked'}`}>
+                <input
+                  type="checkbox"
+                  checked={pdpaAgreed}
+                  onChange={(e) => setPdpaAgreed(e.target.checked)}
+                  disabled={!pdpaRead}
+                />
+                <span>
+                  {pdpaRead
+                    ? '我已詳閱並同意上述告知事項，並自願提供個人資料於本系統使用'
+                    : '請先點擊上方連結，把告知頁滑到底並按「我已詳閱完畢」'}
+                </span>
+              </label>
+            </div>
+
             <label className="profwiz__label">
               姓名
               <input
@@ -286,7 +358,12 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
           ) : <div />}
 
           {step < 3 ? (
-            <button onClick={handleNext} className="profwiz__btn profwiz__btn--primary">
+            <button
+              onClick={handleNext}
+              className="profwiz__btn profwiz__btn--primary"
+              disabled={step === 1 && (!pdpaRead || !pdpaAgreed)}
+              title={step === 1 && !pdpaRead ? '請先閱讀個人資料蒐集告知' : step === 1 && !pdpaAgreed ? '請勾選同意框' : ''}
+            >
               下一步 <ChevronRight size={16} />
             </button>
           ) : (

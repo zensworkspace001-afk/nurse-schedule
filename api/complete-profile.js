@@ -73,6 +73,18 @@ function validate(body) {
   if (!phone) errors.push('手機號碼不可為空');
   if (!/^09\d{8}$/.test(phone)) errors.push('手機需為 09 開頭共 10 碼');
 
+  // PDPA §8 留證欄位 — 前端在勾選同意後一併送來
+  // 雖然不是必填（避免擋住老資料），但若有給，要驗格式
+  let pdpaConsentedAt = null;
+  let pdpaNoticeVersion = null;
+  if (body.pdpa_consented_at !== undefined) {
+    const v = String(body.pdpa_consented_at).trim();
+    if (v && !Number.isNaN(Date.parse(v))) pdpaConsentedAt = v;
+  }
+  if (body.pdpa_notice_version !== undefined) {
+    pdpaNoticeVersion = String(body.pdpa_notice_version).slice(0, 16);
+  }
+
   return {
     ok: errors.length === 0,
     errors,
@@ -85,6 +97,8 @@ function validate(body) {
       idNumber,
       bankAccount,
       phone,
+      pdpa_consented_at: pdpaConsentedAt,
+      pdpa_notice_version: pdpaNoticeVersion,
     },
   };
 }
@@ -226,6 +240,12 @@ export default async function handler(req, res) {
         phone: encryptField(v.cleaned.phone),
       };
 
+      // PDPA §8 留證欄位：若前端有送，寫進去；否則 server 端 fallback 補上提交當下時間
+      // 這是給審計查的法定欄位，原則上一定要有，因此即便前端漏送也要兜底
+      const serverTime = new Date().toISOString();
+      const pdpaConsentedAt = v.cleaned.pdpa_consented_at || serverTime;
+      const pdpaNoticeVersion = v.cleaned.pdpa_notice_version || 'v1';
+
       updatedRow = {
         ...staffData[idx],
         name: v.cleaned.name,
@@ -237,9 +257,11 @@ export default async function handler(req, res) {
         bankAccount: encrypted.bankAccount,
         phone: encrypted.phone,
         profile_completed: true,
-        profile_completed_at: new Date().toISOString(),
+        profile_completed_at: serverTime,
+        pdpa_consented_at: pdpaConsentedAt,
+        pdpa_notice_version: pdpaNoticeVersion,
       };
-      changedFields = ['idNumber', 'bankAccount', 'phone'];
+      changedFields = ['idNumber', 'bankAccount', 'phone', 'pdpa_consent'];
     } else {
       // mode === 'update'：只 patch v.cleaned 裡實際出現的欄位；PII / profile_completed 維持原值
       const current = staffData[idx];
