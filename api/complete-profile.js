@@ -1,24 +1,22 @@
 // api/complete-profile.js
 //
-// 員工首次啟用後，自填個人資料的端點。
+// 員工個人資料端點（兩種模式，由 body.mode 切換；預設首登流程）。
 //
-// POST /api/complete-profile  (Bearer Firebase ID token — staff 自己)
-//   Body:
-//     {
-//       name, gender, tenure_years,
-//       is_pregnant_or_nursing, can_night_shift,
-//       idNumber, bankAccount, phone,           // 明文進來，伺服器立刻加密
-//     }
+// 模式 1：mode 省略或 'first'  — 首次啟用後完善個資（PII 必填、會加密）
+//   Body: { name, gender, tenure_years, is_pregnant_or_nursing, can_night_shift,
+//           idNumber, bankAccount, phone }
+//   行為：驗 token → 驗欄位 → 加密 PII → 寫三層 doc，profile_completed=true → 寫 access_logs(encrypt)
 //
-// 流程：
-//   1. 驗 token，actor.uid 必須對應 staffData[*].staff_id（員工只能改自己）
-//   2. 驗欄位（基本格式 + 範圍）
-//   3. 將 PII 用 api/_lib/crypto.js 直接加密成 {ct, iv, tag, v} blob
-//   4. 透過 Admin SDK 更新 NurseApp/Staff.staffData 該員工那一列
-//      - profile_completed: true
-//   5. 為每個加密欄位寫一筆 access_logs (action='encrypt')
+// 模式 2：mode === 'update'  — 已啟用後自助更新基本資料 + 頭貼（不動 PII）
+//   Body: { mode:'update', name, gender, tenure_years, is_pregnant_or_nursing,
+//           can_night_shift, avatar? }
+//     - avatar 為 data URL（image/webp|jpeg|png，base64 編碼，前端壓到 200x200 ~10-30 KB）
+//     - 空字串 ''      → 移除頭貼
+//     - undefined      → 不改頭貼
+//   行為：驗 token → 驗欄位（不要求 PII）→ 寫三層 doc，profile_completed 維持原值
+//        → 寫 access_logs(update-profile)，包含被改動的欄位名清單
 //
-// 不開放 admin 用此端點（admin 改員工資料走 StaffManagementPanel + secure-field）。
+// 共同：員工只能改自己（actor.uid === staff_id）；admin 不可走此端點。
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -91,6 +89,48 @@ function validate(body) {
   };
 }
 
+// 自助更新模式的驗證 — PII 不在這裡動，只驗基本資料 + 頭貼
+const AVATAR_MAX_BYTES = 120 * 1024; // 120 KB 上限，足夠 200x200 webp/jpeg
+const AVATAR_MIME_OK = /^data:image\/(webp|jpeg|png);base64,/i;
+
+function validateUpdate(body) {
+  const errors = [];
+  const name = String(body.name ?? '').trim();
+  if (!name) errors.push('姓名不可為空');
+  if (name.length > 50) errors.push('姓名長度過長');
+
+  const gender = String(body.gender ?? '');
+  if (gender !== '男' && gender !== '女') errors.push('性別格式錯誤');
+
+  const tenure = Number(body.tenure_years);
+  if (!Number.isFinite(tenure) || tenure < 0 || tenure > 60) errors.push('年資需為 0–60 之間的整數');
+
+  // avatar：三種狀態 — undefined（不改）/ ''（移除）/ data URL（更新）
+  let avatar = body.avatar;
+  if (avatar !== undefined && avatar !== '' && avatar !== null) {
+    if (typeof avatar !== 'string') {
+      errors.push('頭貼格式錯誤');
+    } else if (!AVATAR_MIME_OK.test(avatar)) {
+      errors.push('頭貼格式錯誤（僅接受 PNG / JPEG / WebP data URL）');
+    } else if (avatar.length > AVATAR_MAX_BYTES) {
+      errors.push(`頭貼檔案過大（限 ${Math.round(AVATAR_MAX_BYTES / 1024)} KB 以內）`);
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    cleaned: {
+      name,
+      gender,
+      tenure_years: Math.floor(tenure),
+      is_pregnant_or_nursing: Boolean(body.is_pregnant_or_nursing),
+      can_night_shift: body.can_night_shift !== false,
+      avatar,
+    },
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: '只允許 POST 請求' });
 
@@ -129,10 +169,12 @@ export default async function handler(req, res) {
     return res.status(403).json({ error: '管理員請使用員工管理頁面' });
   }
 
-  const rl = checkRateLimit(`complete-profile:${actor.uid}`, 10);
+  const mode = req.body?.mode === 'update' ? 'update' : 'first';
+
+  const rl = checkRateLimit(`complete-profile:${actor.uid}:${mode}`, 10);
   if (!rl.allowed) return res.status(429).json({ error: '請求過於頻繁，請稍候再試' });
 
-  const v = validate(req.body || {});
+  const v = mode === 'update' ? validateUpdate(req.body || {}) : validate(req.body || {});
   if (!v.ok) return res.status(400).json({ error: v.errors.join('；') });
 
   const meta = extractClientMeta(req);
@@ -152,26 +194,76 @@ export default async function handler(req, res) {
       return res.status(404).json({ error: '找不到您的員工資料，請聯絡管理員' });
     }
 
-    // 加密 PII（伺服器端做，不再透過 secure-field 多繞一圈）
-    const encrypted = {
-      idNumber: encryptField(v.cleaned.idNumber),
-      bankAccount: encryptField(v.cleaned.bankAccount),
-      phone: encryptField(v.cleaned.phone),
-    };
+    let updatedRow;
+    let changedFields;
 
-    const updatedRow = {
-      ...staffData[idx],
-      name: v.cleaned.name,
-      gender: v.cleaned.gender,
-      tenure_years: v.cleaned.tenure_years,
-      is_pregnant_or_nursing: v.cleaned.is_pregnant_or_nursing,
-      can_night_shift: v.cleaned.can_night_shift,
-      idNumber: encrypted.idNumber,
-      bankAccount: encrypted.bankAccount,
-      phone: encrypted.phone,
-      profile_completed: true,
-      profile_completed_at: new Date().toISOString(),
-    };
+    if (mode === 'first') {
+      // 加密 PII（伺服器端做，不再透過 secure-field 多繞一圈）
+      const encrypted = {
+        idNumber: encryptField(v.cleaned.idNumber),
+        bankAccount: encryptField(v.cleaned.bankAccount),
+        phone: encryptField(v.cleaned.phone),
+      };
+
+      updatedRow = {
+        ...staffData[idx],
+        name: v.cleaned.name,
+        gender: v.cleaned.gender,
+        tenure_years: v.cleaned.tenure_years,
+        is_pregnant_or_nursing: v.cleaned.is_pregnant_or_nursing,
+        can_night_shift: v.cleaned.can_night_shift,
+        idNumber: encrypted.idNumber,
+        bankAccount: encrypted.bankAccount,
+        phone: encrypted.phone,
+        profile_completed: true,
+        profile_completed_at: new Date().toISOString(),
+      };
+      changedFields = ['idNumber', 'bankAccount', 'phone'];
+    } else {
+      // mode === 'update'：保留 PII / profile_completed 等不動，只覆寫基本資料
+      // 與（如有提供）頭貼
+      const current = staffData[idx];
+      const changed = [];
+      if (current.name !== v.cleaned.name) changed.push('name');
+      if (current.gender !== v.cleaned.gender) changed.push('gender');
+      if (current.tenure_years !== v.cleaned.tenure_years) changed.push('tenure_years');
+      if (!!current.is_pregnant_or_nursing !== v.cleaned.is_pregnant_or_nursing) changed.push('is_pregnant_or_nursing');
+      if ((current.can_night_shift !== false) !== v.cleaned.can_night_shift) changed.push('can_night_shift');
+
+      const next = {
+        ...current,
+        name: v.cleaned.name,
+        gender: v.cleaned.gender,
+        tenure_years: v.cleaned.tenure_years,
+        is_pregnant_or_nursing: v.cleaned.is_pregnant_or_nursing,
+        can_night_shift: v.cleaned.can_night_shift,
+      };
+
+      if (v.cleaned.avatar !== undefined) {
+        if (v.cleaned.avatar === '' || v.cleaned.avatar === null) {
+          // 移除頭貼
+          if (current.avatar) {
+            next.avatar = null;
+            changed.push('avatar');
+          }
+        } else {
+          // 更新頭貼
+          if (current.avatar !== v.cleaned.avatar) {
+            next.avatar = v.cleaned.avatar;
+            changed.push('avatar');
+          }
+        }
+      }
+
+      next.profile_updated_at = new Date().toISOString();
+      updatedRow = next;
+      changedFields = changed;
+
+      if (changed.length === 0) {
+        return res.status(200).json({ ok: true, message: '沒有變更', changed: [] });
+      }
+    }
+
     staffData[idx] = updatedRow;
 
     // 三層 doc 同步寫入（與前端 saveGlobalStaff 相同的拆分策略）：
@@ -195,17 +287,21 @@ export default async function handler(req, res) {
     );
     await batch.commit();
 
-    // 為每個加密欄位寫 access_logs（must await — Vercel serverless 在 res.json
-    // 後會凍結 lambda，沒 await 的寫入容易掉）
+    // 寫稽核（must await — Vercel serverless 在 res.json 後會凍結 lambda）
     await writeAccessLog({
-      actor, action: 'encrypt',
+      actor,
+      action: mode === 'first' ? 'encrypt' : 'update-profile',
       target: { kind: 'staff', id: actor.uid },
-      fields: ['idNumber', 'bankAccount', 'phone'],
+      fields: changedFields,
       ip: meta.ip, ua: meta.ua,
-      extra: { source: 'complete-profile' },
+      extra: { source: 'complete-profile', mode },
     });
 
-    return res.status(200).json({ ok: true, message: '個人資料儲存成功' });
+    return res.status(200).json({
+      ok: true,
+      message: mode === 'first' ? '個人資料儲存成功' : '更新成功',
+      changed: changedFields,
+    });
   } catch (err) {
     console.error('complete-profile 失敗:', err);
     return res.status(500).json({ error: '伺服器處理失敗，請稍後再試' });

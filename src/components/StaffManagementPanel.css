@@ -254,6 +254,29 @@
   z-index: 3;
 }
 
+/* --- Avatar circle (員工頭貼，sticky 第一欄) --- */
+.staff-mgmt__avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+.staff-mgmt__avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
 .staff-mgmt__td--sticky {
   position: sticky;
   background: rgba(120, 140, 152, 0.85);

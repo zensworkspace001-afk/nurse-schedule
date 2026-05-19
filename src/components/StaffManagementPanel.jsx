@@ -176,6 +176,7 @@ const handleSave = async () => {
   };
 
   const columns = [
+    { key: 'avatar', label: '頭貼', type: 'avatar', width: '60px' },
     { key: 'staff_id', label: '工號', type: 'text', width: '70px', readOnly: true },
     { key: 'name', label: '姓名', type: 'text', width: '90px' },
     { key: 'gender', label: '性別', type: 'select', options: ['女', '男'], width: '70px' },
@@ -236,6 +237,15 @@ const handleSave = async () => {
 
   const activeCount = localStaff.filter(s => s.is_active).length;
   const inactiveCount = localStaff.length - activeCount;
+
+  // 累積寬度，用來算 sticky 欄位的 left 偏移（前三欄都是 sticky：頭貼 / 工號 / 姓名）
+  const STICKY_COUNT = 3;
+  const getStickyLeft = (idx) => {
+    if (idx <= 0) return 0;
+    let sum = 0;
+    for (let i = 0; i < idx; i++) sum += parseInt(columns[i].width, 10) || 0;
+    return sum;
+  };
 
   return (
     <div className="staff-mgmt">
@@ -308,7 +318,14 @@ const handleSave = async () => {
           <thead className="staff-mgmt__thead">
             <tr>
               {columns.map((col, idx) => (
-                <th key={col.key} className={`staff-mgmt__th${idx < 2 ? ' staff-mgmt__th--sticky' : ''}`} style={{ minWidth: col.width, ...(idx === 0 ? { position: 'sticky', left: 0, zIndex: 3 } : idx === 1 ? { position: 'sticky', left: '70px', zIndex: 3 } : {}) }}>
+                <th
+                  key={col.key}
+                  className={`staff-mgmt__th${idx < STICKY_COUNT ? ' staff-mgmt__th--sticky' : ''}`}
+                  style={{
+                    minWidth: col.width,
+                    ...(idx < STICKY_COUNT ? { position: 'sticky', left: `${getStickyLeft(idx)}px`, zIndex: 3 } : {})
+                  }}
+                >
                   {col.label}
                 </th>
               ))}
@@ -319,8 +336,20 @@ const handleSave = async () => {
             {filteredStaff.map((staff) => (
               <tr key={staff.staff_id} className={`staff-mgmt__row${!staff.is_active ? ' staff-mgmt__row--inactive' : ''}`}>
                 {columns.map((col, idx) => (
-                  <td key={col.key} className={`staff-mgmt__td${idx < 2 ? ' staff-mgmt__td--sticky' : ''}`} style={idx === 0 ? { position: 'sticky', left: 0, zIndex: 1 } : idx === 1 ? { position: 'sticky', left: '70px', zIndex: 1 } : undefined}>
-                    {col.readOnly ? (
+                  <td
+                    key={col.key}
+                    className={`staff-mgmt__td${idx < STICKY_COUNT ? ' staff-mgmt__td--sticky' : ''}`}
+                    style={idx < STICKY_COUNT ? { position: 'sticky', left: `${getStickyLeft(idx)}px`, zIndex: 1 } : undefined}
+                  >
+                    {col.type === 'avatar' ? (
+                      staff.avatar ? (
+                        <img src={staff.avatar} alt={`${staff.name || staff.staff_id} 頭貼`} className="staff-mgmt__avatar" />
+                      ) : (
+                        <div className="staff-mgmt__avatar staff-mgmt__avatar--fallback">
+                          {(staff.name || staff.staff_id || '?').trim().charAt(0).toUpperCase()}
+                        </div>
+                      )
+                    ) : col.readOnly ? (
                       <span className="staff-mgmt__readonly">{staff[col.key]}</span>
                     ) : col.type === 'checkbox' ? (
                       <label className="staff-mgmt__toggle">

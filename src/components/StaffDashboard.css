@@ -409,6 +409,24 @@
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
   font-weight: bold;
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dashboard__greeting-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 214, 102, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.dashboard__header-actions {
+  display: inline-flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .dashboard__version-tag {

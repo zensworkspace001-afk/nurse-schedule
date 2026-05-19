@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { Loader, Ban, CalendarOff, Clock, Lock, ClipboardList, Lightbulb, PartyPopper, Eye, Bell, Settings, X, Hand, Info, AlertTriangle, CheckCircle, RefreshCw } from 'lucide-react';
+import { Loader, Ban, CalendarOff, Clock, Lock, ClipboardList, Lightbulb, PartyPopper, Eye, Bell, Settings, X, Hand, Info, AlertTriangle, CheckCircle, RefreshCw, UserCircle } from 'lucide-react';
 import { auth, db } from '../api/database';
+import EditProfileModal from './EditProfileModal';
 import './StaffDashboard.css';
 
 // ============================================================================
@@ -20,6 +21,7 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
   const [pwdData, setPwdData] = useState({ old: '', new: '', confirm: '' });
   const [pwdMsg, setPwdMsg] = useState({ type: '', text: '' });
   const [isPwdSubmitting, setIsPwdSubmitting] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
 
   const closePwdModalAnimated = () => {
     setClosingPwdModal(true);
@@ -327,6 +329,14 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
   return (
     <div className="dashboard">
 
+      {/* 編輯個人資料 Modal */}
+      {showEditProfile && (
+        <EditProfileModal
+          myStaffRow={myStaffRow}
+          onClose={() => setShowEditProfile(false)}
+        />
+      )}
+
       {/* ★★★ 新增：修改密碼 Modal 視窗 ★★★ */}
       {showPwdModal && (
         <div
@@ -374,9 +384,18 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
       {currentStep === 1 && (
         <div className="dashboard__step1">
           <div className="dashboard__header-row">
-             <h2 className="dashboard__greeting"><Hand size={22} /> 嗨，{currentUser.name}</h2>
-              {/* ★★★ 新增：修改密碼按鈕 ★★★ */}
-              <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn"><Settings size={14} /> 修改密碼</button>
+             <h2 className="dashboard__greeting">
+               {myStaffRow?.avatar ? (
+                 <img src={myStaffRow.avatar} alt="頭貼" className="dashboard__greeting-avatar" />
+               ) : (
+                 <Hand size={22} />
+               )}
+               嗨，{currentUser.name}
+             </h2>
+              <div className="dashboard__header-actions">
+                <button onClick={() => setShowEditProfile(true)} className="dashboard__pwd-btn"><UserCircle size={14} /> 編輯個人資料</button>
+                <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn"><Settings size={14} /> 修改密碼</button>
+              </div>
           </div>
 
           <h3 className="dashboard__month-subtitle">
