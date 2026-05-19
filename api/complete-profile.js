@@ -89,46 +89,61 @@ function validate(body) {
   };
 }
 
-// 自助更新模式的驗證 — PII 不在這裡動，只驗基本資料 + 頭貼
-const AVATAR_MAX_BYTES = 120 * 1024; // 120 KB 上限，足夠 200x200 webp/jpeg
+// 自助更新模式的驗證 — PII 不在這裡動。所有欄位皆 optional：
+//   - undefined → 不改
+//   - 有給 → 驗證並覆寫
+// 目前 UI 只送 avatar，這裡仍保留其它欄位的驗證以便未來擴充。
+const AVATAR_MAX_BYTES = 200 * 1024; // 200 KB 上限，覆蓋 200x200 webp/jpeg/png
 const AVATAR_MIME_OK = /^data:image\/(webp|jpeg|png);base64,/i;
 
 function validateUpdate(body) {
   const errors = [];
-  const name = String(body.name ?? '').trim();
-  if (!name) errors.push('姓名不可為空');
-  if (name.length > 50) errors.push('姓名長度過長');
+  const cleaned = {};
 
-  const gender = String(body.gender ?? '');
-  if (gender !== '男' && gender !== '女') errors.push('性別格式錯誤');
+  if (body.name !== undefined) {
+    const name = String(body.name).trim();
+    if (!name) errors.push('姓名不可為空');
+    else if (name.length > 50) errors.push('姓名長度過長');
+    else cleaned.name = name;
+  }
 
-  const tenure = Number(body.tenure_years);
-  if (!Number.isFinite(tenure) || tenure < 0 || tenure > 60) errors.push('年資需為 0–60 之間的整數');
+  if (body.gender !== undefined) {
+    const gender = String(body.gender);
+    if (gender !== '男' && gender !== '女') errors.push('性別格式錯誤');
+    else cleaned.gender = gender;
+  }
+
+  if (body.tenure_years !== undefined) {
+    const tenure = Number(body.tenure_years);
+    if (!Number.isFinite(tenure) || tenure < 0 || tenure > 60) errors.push('年資需為 0–60 之間的整數');
+    else cleaned.tenure_years = Math.floor(tenure);
+  }
+
+  if (body.is_pregnant_or_nursing !== undefined) {
+    cleaned.is_pregnant_or_nursing = Boolean(body.is_pregnant_or_nursing);
+  }
+
+  if (body.can_night_shift !== undefined) {
+    cleaned.can_night_shift = body.can_night_shift !== false;
+  }
 
   // avatar：三種狀態 — undefined（不改）/ ''（移除）/ data URL（更新）
-  let avatar = body.avatar;
-  if (avatar !== undefined && avatar !== '' && avatar !== null) {
-    if (typeof avatar !== 'string') {
+  if (body.avatar !== undefined) {
+    const avatar = body.avatar;
+    if (avatar === '' || avatar === null) {
+      cleaned.avatar = '';
+    } else if (typeof avatar !== 'string') {
       errors.push('頭貼格式錯誤');
     } else if (!AVATAR_MIME_OK.test(avatar)) {
       errors.push('頭貼格式錯誤（僅接受 PNG / JPEG / WebP data URL）');
     } else if (avatar.length > AVATAR_MAX_BYTES) {
       errors.push(`頭貼檔案過大（限 ${Math.round(AVATAR_MAX_BYTES / 1024)} KB 以內）`);
+    } else {
+      cleaned.avatar = avatar;
     }
   }
 
-  return {
-    ok: errors.length === 0,
-    errors,
-    cleaned: {
-      name,
-      gender,
-      tenure_years: Math.floor(tenure),
-      is_pregnant_or_nursing: Boolean(body.is_pregnant_or_nursing),
-      can_night_shift: body.can_night_shift !== false,
-      avatar,
-    },
-  };
+  return { ok: errors.length === 0, errors, cleaned };
 }
 
 export default async function handler(req, res) {
@@ -220,48 +235,32 @@ export default async function handler(req, res) {
       };
       changedFields = ['idNumber', 'bankAccount', 'phone'];
     } else {
-      // mode === 'update'：保留 PII / profile_completed 等不動，只覆寫基本資料
-      // 與（如有提供）頭貼
+      // mode === 'update'：只 patch v.cleaned 裡實際出現的欄位；PII / profile_completed 維持原值
       const current = staffData[idx];
+      const next = { ...current };
       const changed = [];
-      if (current.name !== v.cleaned.name) changed.push('name');
-      if (current.gender !== v.cleaned.gender) changed.push('gender');
-      if (current.tenure_years !== v.cleaned.tenure_years) changed.push('tenure_years');
-      if (!!current.is_pregnant_or_nursing !== v.cleaned.is_pregnant_or_nursing) changed.push('is_pregnant_or_nursing');
-      if ((current.can_night_shift !== false) !== v.cleaned.can_night_shift) changed.push('can_night_shift');
 
-      const next = {
-        ...current,
-        name: v.cleaned.name,
-        gender: v.cleaned.gender,
-        tenure_years: v.cleaned.tenure_years,
-        is_pregnant_or_nursing: v.cleaned.is_pregnant_or_nursing,
-        can_night_shift: v.cleaned.can_night_shift,
-      };
-
-      if (v.cleaned.avatar !== undefined) {
-        if (v.cleaned.avatar === '' || v.cleaned.avatar === null) {
-          // 移除頭貼
+      for (const key of Object.keys(v.cleaned)) {
+        const newVal = v.cleaned[key];
+        if (key === 'avatar' && newVal === '') {
+          // 移除頭貼：null 比空字串更乾淨（前端 if (avatar) 判斷會直接 false）
           if (current.avatar) {
             next.avatar = null;
             changed.push('avatar');
           }
-        } else {
-          // 更新頭貼
-          if (current.avatar !== v.cleaned.avatar) {
-            next.avatar = v.cleaned.avatar;
-            changed.push('avatar');
-          }
+        } else if (current[key] !== newVal) {
+          next[key] = newVal;
+          changed.push(key);
         }
+      }
+
+      if (changed.length === 0) {
+        return res.status(200).json({ ok: true, message: '沒有變更', changed: [] });
       }
 
       next.profile_updated_at = new Date().toISOString();
       updatedRow = next;
       changedFields = changed;
-
-      if (changed.length === 0) {
-        return res.status(200).json({ ok: true, message: '沒有變更', changed: [] });
-      }
     }
 
     staffData[idx] = updatedRow;

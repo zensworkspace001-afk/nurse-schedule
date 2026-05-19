@@ -1,0 +1,285 @@
+/* ==========================================================================
+   AvatarEditModal — 頭貼編輯器（圓形裁切框 + 縮放 + 拖曳）
+   ========================================================================== */
+
+.avatedit__overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 1000;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: avateditOverlayIn 0.3s ease both;
+}
+.avatedit__overlay--closing { animation: avateditOverlayOut 0.3s ease both; }
+
+@keyframes avateditOverlayIn  { from { opacity: 0; } to { opacity: 1; } }
+@keyframes avateditOverlayOut { from { opacity: 1; } to { opacity: 0; } }
+
+.avatedit__modal {
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  padding: 1.75rem;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 360px;
+  max-height: 92vh;
+  overflow-y: auto;
+  position: relative;
+  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
+  animation: avateditModalIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.avatedit__modal--closing { animation: avateditModalOut 0.3s ease both; }
+
+@keyframes avateditModalIn {
+  0%   { opacity: 0; transform: scale(0.85) translateY(30px); }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes avateditModalOut {
+  0%   { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.92) translateY(20px); }
+}
+
+.avatedit__close {
+  position: absolute;
+  top: 14px;
+  right: 18px;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #fff;
+  transition: background 0.2s;
+}
+.avatedit__close:hover { background: rgba(255, 255, 255, 0.2); }
+.avatedit__close:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.avatedit__title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #fff;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  align-self: flex-start;
+}
+
+/* --- 裁切預覽框（圓形 mask） --- */
+.avatedit__frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 214, 102, 0.8);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  touch-action: none;       /* 阻止瀏覽器的捲動/縮放，把 touch 事件留給拖曳 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+.avatedit__frame:active { cursor: grabbing; }
+
+.avatedit__img {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  max-width: none;          /* 必要：不被父層的 img max-width:100% 壓回 */
+  pointer-events: none;     /* 圖片本身不接事件，事件留給 frame 處理拖曳 */
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.avatedit__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 16px;
+}
+
+.avatedit__existing {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  opacity: 0.85;
+}
+
+/* --- 縮放控制列 --- */
+.avatedit__controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0 6px;
+}
+
+.avatedit__slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+  cursor: pointer;
+}
+.avatedit__slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffd666;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  cursor: grab;
+}
+.avatedit__slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #ffd666;
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  cursor: grab;
+}
+.avatedit__slider:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.avatedit__icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.avatedit__icon-btn:hover { background: rgba(255, 255, 255, 0.25); }
+.avatedit__icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.avatedit__hint {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin: 0;
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* --- 動作區 --- */
+.avatedit__actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  width: 100%;
+}
+
+.avatedit__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.avatedit__btn--ghost {
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+.avatedit__btn--ghost:hover {
+  background: rgba(255, 255, 255, 0.24);
+  transform: translateY(-1px);
+}
+.avatedit__btn--danger-ghost {
+  background: rgba(255, 77, 79, 0.15);
+  border: 1px solid rgba(255, 77, 79, 0.4);
+  color: #ff9b9b;
+}
+.avatedit__btn--danger-ghost:hover {
+  background: rgba(255, 77, 79, 0.28);
+  color: #fff;
+}
+.avatedit__btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.avatedit__msg {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 13px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  width: 100%;
+  box-sizing: border-box;
+}
+.avatedit__msg--error {
+  color: #ff7875;
+  background: rgba(255, 77, 79, 0.25);
+  border: 1px solid rgba(255, 77, 79, 0.5);
+}
+.avatedit__msg--success {
+  color: #95de64;
+  background: rgba(82, 196, 26, 0.25);
+  border: 1px solid rgba(82, 196, 26, 0.5);
+}
+
+.avatedit__submit {
+  width: 100%;
+  padding: 13px;
+  background: rgba(255, 214, 102, 0.25);
+  color: #ffd666;
+  border: 1px solid rgba(255, 214, 102, 0.6);
+  border-radius: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.avatedit__submit:hover:not(:disabled) {
+  background: rgba(255, 214, 102, 0.4);
+  color: #fff;
+  transform: translateY(-1px);
+}
+.avatedit__submit--loading,
+.avatedit__submit--disabled,
+.avatedit__submit:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.avatedit__spin { animation: avateditSpin 1s linear infinite; }
+@keyframes avateditSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

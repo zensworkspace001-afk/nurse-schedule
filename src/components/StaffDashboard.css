@@ -414,19 +414,71 @@
   gap: 10px;
 }
 
+/* --- 可點擊的頭貼按鈕（點擊開啟頭貼編輯器） --- */
+.dashboard__avatar-btn {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dashboard__avatar-btn:hover { transform: scale(1.08); }
+.dashboard__avatar-btn:active { transform: scale(0.96); }
+.dashboard__avatar-btn:focus-visible {
+  outline: 2px solid #ffd666;
+  outline-offset: 2px;
+}
+
 .dashboard__greeting-avatar {
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   object-fit: cover;
   border: 2px solid rgba(255, 214, 102, 0.6);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  display: block;
 }
 
-.dashboard__header-actions {
+.dashboard__avatar-fallback {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border: 2px solid rgba(255, 214, 102, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   display: inline-flex;
-  gap: 8px;
-  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+}
+
+/* hover 時的相機角標 */
+.dashboard__avatar-cam {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.75);
+  color: #ffd666;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.dashboard__avatar-btn:hover .dashboard__avatar-cam,
+.dashboard__avatar-btn:focus-visible .dashboard__avatar-cam {
+  opacity: 1;
 }
 
 .dashboard__version-tag {
