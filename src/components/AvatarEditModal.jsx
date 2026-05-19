@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { X, Save, Loader2, AlertCircle, CheckCircle2, Camera, Trash2, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { X, Save, Loader2, AlertCircle, CheckCircle2, Camera, Trash2, ZoomIn, ZoomOut, RotateCcw, ScanFace, UserX } from 'lucide-react';
 import { auth } from '../api/database';
+import { detectFace } from '../utils/faceDetect';
 import './AvatarEditModal.css';
 
 // 頭貼編輯器：圓形 200×200 裁切框，使用者可縮放（0.5x–3x）+ 拖曳平移定位，
@@ -44,6 +45,16 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
   const [rawImage, setRawImage] = useState(null);
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+
+  // BlazeFace 人臉偵測狀態：
+  //   idle    = 尚未跑（沒選圖）
+  //   loading = 正在 lazy load tfjs / 跑推論
+  //   pass    = 偵測到人臉
+  //   nopass  = 沒偵測到（但允許 override）
+  //   error   = 偵測流程出錯（不擋上傳，視同 pass）
+  const [faceState, setFaceState] = useState('idle');
+  const [faceMeta, setFaceMeta] = useState(null);   // { count, topConfidence }
+  const [bypassFaceCheck, setBypassFaceCheck] = useState(false);  // 使用者選擇略過偵測警告
 
   // 拖曳狀態
   const dragRef = useRef(null);  // { startX, startY, origX, origY }
@@ -99,6 +110,24 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
       setScale(1);
       setPos({ x: 0, y: 0 });
       setMsg({ type: '', text: '' });
+      setBypassFaceCheck(false);
+
+      // 觸發 BlazeFace 偵測（lazy load 第一次會有 1-2 秒延遲）
+      // 失敗一律視為 pass（不擋上傳）— 不要因為 detection model 載不到就讓使用者卡住
+      setFaceState('loading');
+      setFaceMeta(null);
+      try {
+        const result = await detectFace(img);
+        if (result.hasFace) {
+          setFaceState('pass');
+          setFaceMeta({ count: result.count, topConfidence: result.topConfidence });
+        } else {
+          setFaceState('nopass');
+        }
+      } catch (err) {
+        console.warn('人臉偵測失敗，視同通過:', err);
+        setFaceState('error');
+      }
     } catch (err) {
       setMsg({ type: 'error', text: '圖片載入失敗：' + err.message });
     } finally {
@@ -185,6 +214,21 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
       setMsg({ type: 'error', text: '請先選擇一張圖片' });
       return;
     }
+
+    // Soft block：偵測結果是「沒人臉」且使用者尚未確認略過時，先擋下來。
+    // 偵測中（loading）也擋一下，等結果出來。偵測失敗（error）視同 pass。
+    if (faceState === 'loading') {
+      setMsg({ type: 'error', text: '人臉偵測進行中，請稍候 1-2 秒...' });
+      return;
+    }
+    if (faceState === 'nopass' && !bypassFaceCheck) {
+      setMsg({
+        type: 'error',
+        text: '圖中未偵測到人臉。請使用「無人臉警示」區的按鈕確認後再存檔。',
+      });
+      return;
+    }
+
     const fullDataUrl = renderToDataURL(OUTPUT, 0.82);
     // 縮圖品質拉高一點（0.85），給同事在班表上看的小頭像更清楚
     const thumbDataUrl = renderToDataURL(THUMB, 0.85);
@@ -295,6 +339,50 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
           </div>
         )}
 
+        {/* 人臉偵測狀態 banner — 只在已選圖時顯示 */}
+        {rawImage && faceState !== 'idle' && (
+          <div
+            className={
+              'avatedit__face avatedit__face--' +
+              (faceState === 'loading' ? 'loading'
+                : faceState === 'pass' ? 'pass'
+                : faceState === 'nopass' ? 'nopass'
+                : 'error')
+            }
+          >
+            {faceState === 'loading' && (
+              <><Loader2 size={14} className="avatedit__spin" /> 正在偵測圖中是否有人臉...</>
+            )}
+            {faceState === 'pass' && (
+              <>
+                <ScanFace size={14} />
+                <span>
+                  ✓ 已偵測到{faceMeta?.count > 1 ? ` ${faceMeta.count} 張` : ''}人臉
+                  {faceMeta?.topConfidence ? `（信心度 ${Math.round(faceMeta.topConfidence * 100)}%）` : ''}
+                </span>
+              </>
+            )}
+            {faceState === 'nopass' && (
+              <div className="avatedit__face-warn">
+                <div className="avatedit__face-warn-msg">
+                  <UserX size={14} /> 未偵測到人臉。確認這張圖能代表您嗎？
+                </div>
+                <label className="avatedit__face-bypass">
+                  <input
+                    type="checkbox"
+                    checked={bypassFaceCheck}
+                    onChange={(e) => setBypassFaceCheck(e.target.checked)}
+                  />
+                  <span>我確認要使用這張圖片</span>
+                </label>
+              </div>
+            )}
+            {faceState === 'error' && (
+              <><AlertCircle size={14} /> 偵測模組載入失敗，已略過檢查。</>
+            )}
+          </div>
+        )}
+
         <p className="avatedit__hint">
           {rawImage
             ? '可以拖曳圖片調整位置、用滑桿或滾輪調整大小。'
@@ -329,10 +417,21 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
         <button
           type="button"
           onClick={handleSave}
-          disabled={submitting || !rawImage}
-          className={`avatedit__submit${submitting ? ' avatedit__submit--loading' : ''}${!rawImage ? ' avatedit__submit--disabled' : ''}`}
+          disabled={
+            submitting ||
+            !rawImage ||
+            faceState === 'loading' ||
+            (faceState === 'nopass' && !bypassFaceCheck)
+          }
+          className={`avatedit__submit${submitting ? ' avatedit__submit--loading' : ''}${
+            !rawImage || faceState === 'loading' || (faceState === 'nopass' && !bypassFaceCheck) ? ' avatedit__submit--disabled' : ''
+          }`}
         >
-          {submitting ? <><Loader2 size={14} className="avatedit__spin" /> 上傳中...</> : <><Save size={14} /> 儲存頭貼</>}
+          {submitting
+            ? <><Loader2 size={14} className="avatedit__spin" /> 上傳中...</>
+            : faceState === 'loading'
+              ? <><Loader2 size={14} className="avatedit__spin" /> 等待偵測完成...</>
+              : <><Save size={14} /> 儲存頭貼</>}
         </button>
       </div>
     </div>

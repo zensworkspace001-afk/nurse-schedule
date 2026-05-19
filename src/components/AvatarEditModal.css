@@ -183,6 +183,79 @@
 .avatedit__icon-btn:hover { background: rgba(255, 255, 255, 0.25); }
 .avatedit__icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+/* --- 人臉偵測狀態 banner --- */
+.avatedit__face {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  box-sizing: border-box;
+  animation: avateditFaceFadeIn 0.3s ease both;
+}
+
+@keyframes avateditFaceFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.avatedit__face--loading {
+  background: rgba(102, 126, 234, 0.18);
+  border: 1px solid rgba(102, 126, 234, 0.5);
+  color: #b3c6ff;
+}
+
+.avatedit__face--pass {
+  background: rgba(82, 196, 26, 0.2);
+  border: 1px solid rgba(82, 196, 26, 0.5);
+  color: #95de64;
+}
+
+.avatedit__face--nopass {
+  background: rgba(255, 167, 38, 0.18);
+  border: 1px solid rgba(255, 167, 38, 0.55);
+  color: #ffcc80;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.avatedit__face--error {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.avatedit__face-warn { display: flex; flex-direction: column; gap: 8px; }
+.avatedit__face-warn-msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.avatedit__face-bypass {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.85);
+  transition: background 0.2s;
+}
+.avatedit__face-bypass:hover { background: rgba(0, 0, 0, 0.4); }
+.avatedit__face-bypass input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: #ffd666;
+  cursor: pointer;
+}
+
 .avatedit__hint {
   font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.65);
