@@ -100,9 +100,11 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
         else if (shiftCounts.N >= 10) title = "大夜為主";
 
         const isClaimed = !slotId.startsWith('D');
-        const claimant = isClaimed ? (staffData.find(s => s.staff_id === slotId)?.name || slotId) : null;
+        const claimantStaff = isClaimed ? staffData.find(s => s.staff_id === slotId) : null;
+        const claimantName = isClaimed ? (claimantStaff?.name || slotId) : null;
+        const claimantAvatar = claimantStaff?.avatar_thumb || null;
 
-        return { id: slotId, title: isClaimed ? `${title}` : `${title} (${slotId})`, shift: mainShift, pattern: pattern, isClaimed: isClaimed, claimantName: claimant };
+        return { id: slotId, title: isClaimed ? `${title}` : `${title} (${slotId})`, shift: mainShift, pattern: pattern, isClaimed: isClaimed, claimantName, claimantAvatar };
     });
     setAiSlots(formattedSlots);
   }, [currentSchedule, targetYear, targetMonth, staffData]);
@@ -509,7 +511,19 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
                         <div className="dashboard__shift-card-header">
                             <div>
                                 <div className={`dashboard__shift-card-title ${opt.isClaimed ? 'dashboard__shift-card-title--claimed' : ''}`}>{opt.title}</div>
-                                {opt.isClaimed && <div className="dashboard__shift-card-locked"><Lock size={12} /> 已被 {opt.claimantName} 選擇 (請員工間自主協調)</div>}
+                                {opt.isClaimed && (
+                                  <div className="dashboard__shift-card-locked">
+                                    <Lock size={12} />
+                                    {opt.claimantAvatar ? (
+                                      <img src={opt.claimantAvatar} alt="" className="dashboard__shift-card-avatar" />
+                                    ) : (
+                                      <span className="dashboard__shift-card-avatar dashboard__shift-card-avatar--fallback">
+                                        {(opt.claimantName || '?').trim().charAt(0).toUpperCase()}
+                                      </span>
+                                    )}
+                                    已被 {opt.claimantName} 選擇 (請員工間自主協調)
+                                  </div>
+                                )}
                             </div>
                             {!opt.isClaimed && !check.valid && <div className="dashboard__shift-card-warning"><AlertTriangle size={12} /> {check.reason}</div>}
                         </div>

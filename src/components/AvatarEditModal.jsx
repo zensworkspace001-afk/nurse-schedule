@@ -16,7 +16,8 @@ import './AvatarEditModal.css';
 //   裁切視窗中心在原圖座標 = (natW/2 - posX/displayScale, natH/2 - posY/displayScale)
 //   裁切大小 = FRAME / displayScale
 const FRAME = 220;            // 預覽框邊長（CSS px）
-const OUTPUT = 220;           // 輸出邊長
+const OUTPUT = 220;           // 主頭貼輸出邊長（存 NurseApp/Staff + StaffPrivate）
+const THUMB = 64;             // 縮圖邊長（存 NurseApp/StaffPublic 給同事看）
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 3;
 
@@ -139,8 +140,8 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
     setTimeout(onClose, 300);
   };
 
-  // 把目前的裁切結果繪成 OUTPUT×OUTPUT canvas → data URL
-  const renderToDataURL = () => {
+  // 把同一塊裁切視窗繪成指定邊長的 data URL；同時產主圖 + 縮圖兩種尺寸
+  const renderToDataURL = (size, quality = 0.82) => {
     if (!rawImage) return null;
     const sw = FRAME / displayScale;
     const sh = FRAME / displayScale;
@@ -150,17 +151,17 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
     const sy = cy - sh / 2;
 
     const canvas = document.createElement('canvas');
-    canvas.width = OUTPUT;
-    canvas.height = OUTPUT;
+    canvas.width = size;
+    canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(rawImage, sx, sy, sw, sh, 0, 0, OUTPUT, OUTPUT);
+    ctx.drawImage(rawImage, sx, sy, sw, sh, 0, 0, size, size);
 
     // 先試 webp；不支援回 jpeg
-    let out = canvas.toDataURL('image/webp', 0.82);
+    let out = canvas.toDataURL('image/webp', quality);
     if (!out || !out.startsWith('data:image/webp')) {
-      out = canvas.toDataURL('image/jpeg', 0.85);
+      out = canvas.toDataURL('image/jpeg', quality);
     }
     return out;
   };
@@ -184,14 +185,16 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
       setMsg({ type: 'error', text: '請先選擇一張圖片' });
       return;
     }
-    const dataUrl = renderToDataURL();
-    if (!dataUrl) {
+    const fullDataUrl = renderToDataURL(OUTPUT, 0.82);
+    // 縮圖品質拉高一點（0.85），給同事在班表上看的小頭像更清楚
+    const thumbDataUrl = renderToDataURL(THUMB, 0.85);
+    if (!fullDataUrl || !thumbDataUrl) {
       setMsg({ type: 'error', text: '圖片處理失敗' });
       return;
     }
     setSubmitting(true);
     try {
-      await post({ mode: 'update', avatar: dataUrl });
+      await post({ mode: 'update', avatar: fullDataUrl, avatar_thumb: thumbDataUrl });
       setMsg({ type: 'success', text: '✅ 頭貼已更新' });
       setTimeout(() => { setClosing(true); setTimeout(onClose, 300); }, 1000);
     } catch (err) {
@@ -205,7 +208,8 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
     setMsg({ type: '', text: '' });
     setSubmitting(true);
     try {
-      await post({ mode: 'update', avatar: '' });
+      // 主圖與縮圖一併清除
+      await post({ mode: 'update', avatar: '', avatar_thumb: '' });
       setMsg({ type: 'success', text: '✅ 頭貼已移除' });
       setTimeout(() => { setClosing(true); setTimeout(onClose, 300); }, 800);
     } catch (err) {

@@ -871,6 +871,32 @@
   font-size: 0.85rem;
   font-weight: bold;
   margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* 同事頭貼小圓圈 — 顯示在「已被 N002 選擇」前面（StaffPublic 的 avatar_thumb 64×64） */
+.dashboard__shift-card-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1.5px solid rgba(255, 204, 128, 0.7);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dashboard__shift-card-avatar--fallback {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.5px;
 }
 
 .dashboard__shift-card-warning {

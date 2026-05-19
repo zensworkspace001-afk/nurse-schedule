@@ -92,9 +92,18 @@ function validate(body) {
 // 自助更新模式的驗證 — PII 不在這裡動。所有欄位皆 optional：
 //   - undefined → 不改
 //   - 有給 → 驗證並覆寫
-// 目前 UI 只送 avatar，這裡仍保留其它欄位的驗證以便未來擴充。
-const AVATAR_MAX_BYTES = 200 * 1024; // 200 KB 上限，覆蓋 200x200 webp/jpeg/png
+// 目前 UI 只送 avatar / avatar_thumb，這裡仍保留其它欄位的驗證以便未來擴充。
+const AVATAR_MAX_BYTES = 200 * 1024;  // 主圖 200 KB 上限（220x220 webp/jpeg/png 綽綽有餘）
+const THUMB_MAX_BYTES  = 30 * 1024;   // 縮圖 30 KB 上限（64x64 webp/jpeg 約 3-5 KB）
 const AVATAR_MIME_OK = /^data:image\/(webp|jpeg|png);base64,/i;
+
+function validateAvatarField(value, maxBytes) {
+  if (value === '' || value === null) return { ok: true, cleaned: '' };
+  if (typeof value !== 'string') return { ok: false, err: '格式錯誤' };
+  if (!AVATAR_MIME_OK.test(value)) return { ok: false, err: '格式錯誤（僅接受 PNG / JPEG / WebP data URL）' };
+  if (value.length > maxBytes) return { ok: false, err: `檔案過大（限 ${Math.round(maxBytes / 1024)} KB 以內）` };
+  return { ok: true, cleaned: value };
+}
 
 function validateUpdate(body) {
   const errors = [];
@@ -127,20 +136,17 @@ function validateUpdate(body) {
     cleaned.can_night_shift = body.can_night_shift !== false;
   }
 
-  // avatar：三種狀態 — undefined（不改）/ ''（移除）/ data URL（更新）
+  // avatar / avatar_thumb：三種狀態 — undefined（不改）/ ''（移除）/ data URL（更新）
+  // 共用 validateAvatarField，只在錯誤訊息加上欄位前綴
   if (body.avatar !== undefined) {
-    const avatar = body.avatar;
-    if (avatar === '' || avatar === null) {
-      cleaned.avatar = '';
-    } else if (typeof avatar !== 'string') {
-      errors.push('頭貼格式錯誤');
-    } else if (!AVATAR_MIME_OK.test(avatar)) {
-      errors.push('頭貼格式錯誤（僅接受 PNG / JPEG / WebP data URL）');
-    } else if (avatar.length > AVATAR_MAX_BYTES) {
-      errors.push(`頭貼檔案過大（限 ${Math.round(AVATAR_MAX_BYTES / 1024)} KB 以內）`);
-    } else {
-      cleaned.avatar = avatar;
-    }
+    const r = validateAvatarField(body.avatar, AVATAR_MAX_BYTES);
+    if (!r.ok) errors.push('頭貼' + r.err);
+    else cleaned.avatar = r.cleaned;
+  }
+  if (body.avatar_thumb !== undefined) {
+    const r = validateAvatarField(body.avatar_thumb, THUMB_MAX_BYTES);
+    if (!r.ok) errors.push('頭貼縮圖' + r.err);
+    else cleaned.avatar_thumb = r.cleaned;
   }
 
   return { ok: errors.length === 0, errors, cleaned };
@@ -242,11 +248,11 @@ export default async function handler(req, res) {
 
       for (const key of Object.keys(v.cleaned)) {
         const newVal = v.cleaned[key];
-        if (key === 'avatar' && newVal === '') {
-          // 移除頭貼：null 比空字串更乾淨（前端 if (avatar) 判斷會直接 false）
-          if (current.avatar) {
-            next.avatar = null;
-            changed.push('avatar');
+        // 頭貼類欄位：'' 視為「移除」，存 null 比空字串更乾淨（if (avatar) 為 false）
+        if ((key === 'avatar' || key === 'avatar_thumb') && newVal === '') {
+          if (current[key]) {
+            next[key] = null;
+            changed.push(key);
           }
         } else if (current[key] !== newVal) {
           next[key] = newVal;
@@ -269,12 +275,15 @@ export default async function handler(req, res) {
     //   1. NurseApp/Staff       — 完整名單 (admin 用)
     //   2. NurseApp/StaffPublic — 精簡公開投影 (同事看得到的部分)
     //   3. StaffPrivate/{id}    — 該員工自己的完整 row（頂層 collection；2 段路徑才是合法 doc）
+    // 與 src/api/database.js / scripts/migrate-staff-public.js / scripts/restore-staff-from-private.js
+    // 的 buildStaffPublicProjection 保持一致；avatar_thumb 加入後同事的班表卡片才有頭貼可顯示。
     const publicList = staffData.map((s) => ({
       staff_id: s.staff_id,
       name: s.name,
       level: s.level,
       is_leader: !!s.is_leader,
       is_active: s.is_active !== false,
+      avatar_thumb: s.avatar_thumb || null,
     }));
 
     const batch = admin.firestore().batch();

@@ -115,6 +115,8 @@ export const clearAnnouncement = async () => {
 // 拆成三個 doc 後：管理員仍從 Staff 讀完整；員工角色只讀同事的精簡 + 自己的私有。
 
 // 公開投影 — 同事間能看到的最小欄位集合，不含任何 PII / 健康 / 財務暗示資料
+// avatar_thumb 是 64x64 縮圖（員工在 AvatarEditModal 上傳時同步生成），用於班表卡片
+// 顯示同事頭貼；不放主圖 220x220 是因為 Firestore 單 doc 1 MiB 上限 — 100 人 × 25 KB 會爆。
 export const buildStaffPublicProjection = (fullStaffData = []) => {
   return fullStaffData.map((s) => ({
     staff_id: s.staff_id,
@@ -122,6 +124,7 @@ export const buildStaffPublicProjection = (fullStaffData = []) => {
     level: s.level,
     is_leader: !!s.is_leader,
     is_active: s.is_active !== false, // 缺值預設 true
+    avatar_thumb: s.avatar_thumb || null,
   }));
 };
 

@@ -59,6 +59,7 @@ function buildStaffPublic(s) {
     level: s.level,
     is_leader: !!s.is_leader,
     is_active: s.is_active !== false,
+    avatar_thumb: s.avatar_thumb || null,
   };
 }
 
