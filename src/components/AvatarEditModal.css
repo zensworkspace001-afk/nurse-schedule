@@ -80,7 +80,12 @@
   align-self: flex-start;
 }
 
-/* --- 裁切預覽框（圓形 mask） --- */
+/* --- 裁切預覽框（圓形 mask） ---
+   重要：必須保證正圓，不能被 flex 容器擠成橢圓。
+   - aspect-ratio: 1 強制寬高比 1:1（即使外部寬度被改變高度也會跟上）
+   - flex-shrink: 0 避免在小螢幕被父層壓縮寬度
+   - box-sizing: content-box 確保 border 不影響內部繪圖座標（與 JSX 內 FRAME 常數對齊）
+*/
 .avatedit__frame {
   position: relative;
   overflow: hidden;
@@ -92,6 +97,9 @@
   touch-action: none;       /* 阻止瀏覽器的捲動/縮放，把 touch 事件留給拖曳 */
   user-select: none;
   -webkit-user-select: none;
+  aspect-ratio: 1 / 1;
+  flex-shrink: 0;
+  box-sizing: content-box;
 }
 .avatedit__frame:active { cursor: grabbing; }
 
