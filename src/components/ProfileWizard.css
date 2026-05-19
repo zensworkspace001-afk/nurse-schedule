@@ -471,3 +471,82 @@
 .profwiz__pdpa-check--locked input {
   cursor: not-allowed;
 }
+
+/* ==========================================================================
+   新進員工頭貼上傳（step 1 內，點擊圓圈開啟 AvatarEditModal）
+   - 完全 optional，跳過 wizard 不會擋住 mode='first' 提交
+   - 圓圈本身就是 button，hover 時右下角出現相機角標暗示可點
+   ========================================================================== */
+.profwiz__avatar-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.profwiz__avatar-btn {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.profwiz__avatar-btn:hover { transform: scale(1.06); }
+.profwiz__avatar-btn:active { transform: scale(0.97); }
+.profwiz__avatar-btn:focus-visible {
+  outline: 2px solid #ffd666;
+  outline-offset: 3px;
+}
+
+.profwiz__avatar-img,
+.profwiz__avatar-fallback {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid rgba(255, 214, 102, 0.6);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.35);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profwiz__avatar-fallback {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
+/* 右下角相機角標（hover 時加強顯示） */
+.profwiz__avatar-cam {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.78);
+  color: #ffd666;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(255, 255, 255, 0.7);
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+.profwiz__avatar-btn:hover .profwiz__avatar-cam,
+.profwiz__avatar-btn:focus-visible .profwiz__avatar-cam {
+  opacity: 1;
+}
+
+.profwiz__avatar-hint {
+  font-size: 0.78rem;
+  color: rgba(255, 255, 255, 0.65);
+}

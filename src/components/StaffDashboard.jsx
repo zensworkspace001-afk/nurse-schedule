@@ -181,6 +181,33 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
   // 自己的完整 row（含敏感欄位）走 myStaffRow，不再從 staffData 撈
   const currentStaffInfo = myStaffRow;
 
+  // 把「編輯頭貼」入口 + Modal 抽成可重用的 JSX，讓每個 guard 畫面都能用。
+  // 為什麼這樣設計：原本只有 step1 才能編輯頭貼，但長假/沒輪到/班表滿的員工
+  // 被早退出守住根本看不到入口。把同一份 modal 重複掛載在每個 guard return 裡
+  // 比把 guards 改寫成 conditional content 來得安全。
+  const avatarModalElement = showAvatarEdit && (
+    <AvatarEditModal
+      myStaffRow={myStaffRow}
+      onClose={() => setShowAvatarEdit(false)}
+    />
+  );
+
+  const avatarGuardTrigger = (
+    <button
+      type="button"
+      onClick={() => setShowAvatarEdit(true)}
+      className="dashboard__guard-avatar-btn"
+      title="點擊更換頭貼"
+    >
+      {myStaffRow?.avatar ? (
+        <img src={myStaffRow.avatar} alt="頭貼" className="dashboard__guard-avatar-img" />
+      ) : (
+        <span className="dashboard__guard-avatar-fallback"><Camera size={18} /></span>
+      )}
+      <span className="dashboard__guard-avatar-label"><Camera size={12} /> 編輯頭貼</span>
+    </button>
+  );
+
   // 防呆 2: 離職或停權檢查
   if (currentStaffInfo && (currentStaffInfo.is_active === false || currentStaffInfo.is_active === 'false')) {
       return (
@@ -197,11 +224,15 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       const statusMap = { Maternal: '產假/育嬰假', OnLeave: '長假' };
       const statusName = statusMap[currentStaffInfo.leave_status];
       return (
-          <div className="dashboard__guard">
-              <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
-              <h2 className="dashboard__guard-title--leave">暫停排班</h2>
-              <p className="dashboard__guard-text">您目前的狀態為<strong>「{statusName}」</strong>，本月不需參與系統排班作業。<br/>祝您休假愉快！</p>
-          </div>
+          <>
+              {avatarModalElement}
+              <div className="dashboard__guard">
+                  <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
+                  <h2 className="dashboard__guard-title--leave">暫停排班</h2>
+                  <p className="dashboard__guard-text">您目前的狀態為<strong>「{statusName}」</strong>，本月不需參與系統排班作業。<br/>祝您休假愉快！</p>
+                  {avatarGuardTrigger}
+              </div>
+          </>
       );
   }
 
@@ -211,16 +242,20 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
   const unclaimedCount = aiSlots.filter(opt => !opt.isClaimed).length;
   if (!hasClaimed && claimedCount > 0 && unclaimedCount === 0) {
       return (
-          <div className="dashboard__guard">
-              <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
-              <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
-              <div className="dashboard__guard-info">
-                  非常抱歉，<strong>{targetYear} 年 {targetMonth} 月</strong> 的班表已被同仁全數認領完畢。<br/><br/>
-                  您本月未獲得班次，系統會優先在下個月安排您選班。<br/>
-                  如有疑問請聯絡護理長。
+          <>
+              {avatarModalElement}
+              <div className="dashboard__guard">
+                  <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
+                  <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
+                  <div className="dashboard__guard-info">
+                      非常抱歉，<strong>{targetYear} 年 {targetMonth} 月</strong> 的班表已被同仁全數認領完畢。<br/><br/>
+                      您本月未獲得班次，系統會優先在下個月安排您選班。<br/>
+                      如有疑問請聯絡護理長。
+                  </div>
+                  {avatarGuardTrigger}
+                  <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
               </div>
-              <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
-          </div>
+          </>
       );
   }
 
@@ -233,15 +268,19 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
   if (!hasClaimed && activeStaffIdSafe && currentUserIdSafe && activeStaffIdSafe !== currentUserIdSafe) {
       const activeStaffName = staffData.find(s => String(s.staff_id).trim().toUpperCase() === activeStaffIdSafe)?.name || activeTurn.active_staff_id;
       return (
-          <div className="dashboard__guard">
-              <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
-              <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
-              <div className="dashboard__guard-info">
-                  目前的 <strong>優先發球權</strong> 在 <span className="dashboard__guard-highlight">{activeStaffName}</span> 手上。<br/><br/>
-                  為確保最需要的人能優先挑選好班，請等待 AI 引擎發送您的專屬換棒 Email 通知！
+          <>
+              {avatarModalElement}
+              <div className="dashboard__guard">
+                  <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
+                  <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
+                  <div className="dashboard__guard-info">
+                      目前的 <strong>優先發球權</strong> 在 <span className="dashboard__guard-highlight">{activeStaffName}</span> 手上。<br/><br/>
+                      為確保最需要的人能優先挑選好班，請等待 AI 引擎發送您的專屬換棒 Email 通知！
+                  </div>
+                  {avatarGuardTrigger}
+                  <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
               </div>
-              <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
-          </div>
+          </>
       );
   }
 

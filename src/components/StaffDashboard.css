@@ -459,6 +459,55 @@
   color: #fff;
 }
 
+/* --- Guard 畫面內的「編輯頭貼」按鈕（給長假/沒輪到/班表滿的員工用） --- */
+.dashboard__guard-avatar-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 16px auto 8px;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 16px;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.dashboard__guard-avatar-btn:hover {
+  background: rgba(255, 214, 102, 0.12);
+  border-color: rgba(255, 214, 102, 0.55);
+  transform: translateY(-1px);
+}
+
+.dashboard__guard-avatar-img,
+.dashboard__guard-avatar-fallback {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 214, 102, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  object-fit: cover;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dashboard__guard-avatar-fallback {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+}
+
+.dashboard__guard-avatar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.78rem;
+  color: #ffd666;
+  font-weight: 600;
+}
+
 /* hover 時的相機角標 */
 .dashboard__avatar-cam {
   position: absolute;

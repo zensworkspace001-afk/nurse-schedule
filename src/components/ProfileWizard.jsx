@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut, ShieldCheck, ExternalLink, Camera } from 'lucide-react';
 import { auth } from '../api/database';
 import { signOut } from 'firebase/auth';
 import ParticleBackground from './ParticleBackground';
 import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { TAIWAN_BANKS } from '../constants/banks';
+import AvatarEditModal from './AvatarEditModal';
 import './ProfileWizard.css';
 
 // 員工首次啟用後的「完善個人資料」精靈。
@@ -29,6 +30,11 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   // 兩者皆需 true 才能離開 step 1。提交時把 pdpa_consented_at 寫進 staffData 留證。
   const [pdpaRead, setPdpaRead] = useState(() => !!localStorage.getItem(PDPA_READ_KEY));
   const [pdpaAgreed, setPdpaAgreed] = useState(false);
+
+  // 頭貼上傳 — 走同一支 AvatarEditModal（後端 /api/complete-profile mode='update'
+  // 只 patch avatar/avatar_thumb，不會動 profile_completed，所以 wizard 還沒走完
+  // 也能先上傳頭貼。完成 wizard 時 mode='first' 用 spread 保留現有 avatar 值。
+  const [showAvatarEdit, setShowAvatarEdit] = useState(false);
 
   // 監聽其他分頁（告知頁）對 localStorage 的寫入 —— 同 origin 下的 storage 事件
   useEffect(() => {
@@ -147,6 +153,14 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
 
   return (
     <div className="profwiz">
+      {/* 頭貼編輯 Modal — 提到最外層才不會被 wizard 的 z-index/transform 困住 */}
+      {showAvatarEdit && (
+        <AvatarEditModal
+          myStaffRow={staffRow}
+          onClose={() => setShowAvatarEdit(false)}
+        />
+      )}
+
       {/* 與主應用一致的粒子 + 色塊背景，玻璃卡片下方才真的有東西可以模糊 */}
       {!perfMode && <ParticleBackground />}
       <div className="profwiz__blob profwiz__blob--1"></div>
@@ -210,6 +224,28 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
                     : '請先點擊上方連結，把告知頁滑到底並按「我已詳閱完畢」'}
                 </span>
               </label>
+            </div>
+
+            {/* 頭貼上傳（選填）— 點圓圈開啟 AvatarEditModal */}
+            <div className="profwiz__avatar-block">
+              <button
+                type="button"
+                onClick={() => setShowAvatarEdit(true)}
+                className="profwiz__avatar-btn"
+                title="點擊上傳頭貼（選填）"
+              >
+                {staffRow?.avatar ? (
+                  <img src={staffRow.avatar} alt="頭貼" className="profwiz__avatar-img" />
+                ) : (
+                  <span className="profwiz__avatar-fallback">
+                    <Camera size={26} />
+                  </span>
+                )}
+                <span className="profwiz__avatar-cam"><Camera size={11} /></span>
+              </button>
+              <span className="profwiz__avatar-hint">
+                {staffRow?.avatar ? '點擊更換頭貼' : '點擊上傳頭貼（選填）'}
+              </span>
             </div>
 
             <label className="profwiz__label">
