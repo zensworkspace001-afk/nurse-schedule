@@ -306,6 +306,33 @@
   background: rgba(255, 255, 255, 0.04);
 }
 
+/* 員工列：頭貼 + 姓名 + 工號 並排 */
+.publish__staff-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.publish__staff-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.publish__staff-avatar--fallback {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-weight: 700;
+  font-size: 11px;
+}
+
 .publish__staff-name {
   font-weight: bold;
   color: #ffffff;

@@ -185,14 +185,27 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         return a.localeCompare(b); // 讓 D017, D018, D019 乖乖照數字排好
     }).map(rowId => {
                               const isVirtual = rowId.startsWith('D');
+                              const staffRow = !isVirtual ? (staffData || []).find(s => s.staff_id === rowId) : null;
+                              const displayName = isVirtual ? '🎲 待認領' : (staffRow?.name || rowId);
                               const { score, deductions } = calculateHealthScore(finalizedSchedule[rowId]);
 
                               return (
                                   <tr key={rowId} className={`publish__row${isVirtual ? ' publish__row--virtual' : ''}`}>
                                       <td className={`publish__td-staff${isVirtual ? ' publish__td-staff--virtual' : ''}`}>
-                                          <div>
-                                              <div className={`publish__staff-name${isVirtual ? ' publish__staff-name--virtual' : ''}`}>{isVirtual ? '🎲 待認領' : ((staffData || []).find(s=>s.staff_id===rowId)?.name || rowId)}</div>
-                                              <div className="publish__staff-id">{rowId}</div>
+                                          <div className="publish__staff-info">
+                                              {!isVirtual && (
+                                                  staffRow?.avatar_thumb ? (
+                                                      <img src={staffRow.avatar_thumb} alt="" className="publish__staff-avatar" />
+                                                  ) : (
+                                                      <div className="publish__staff-avatar publish__staff-avatar--fallback">
+                                                          {(staffRow?.name || rowId).charAt(0).toUpperCase()}
+                                                      </div>
+                                                  )
+                                              )}
+                                              <div>
+                                                  <div className={`publish__staff-name${isVirtual ? ' publish__staff-name--virtual' : ''}`}>{displayName}</div>
+                                                  <div className="publish__staff-id">{rowId}</div>
+                                              </div>
                                           </div>
                                           {/* ★ 拔除名字按鈕 */}
                                           {!isVirtual && (

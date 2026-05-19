@@ -296,7 +296,7 @@ const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
           const finalSalary = currentBaseSalary + totalOtPay + nightShiftBonus + levelBonusAmount - deduction;
 
           data.push({
-              staff_id: rowId, name, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
+              staff_id: rowId, name, avatar_thumb: staff?.avatar_thumb || null, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
               workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
               nightShiftsCount, nightShiftBonus,
               staffLevel, levelBonusAmount, // 👈 匯出職級加給
@@ -556,7 +556,21 @@ return (
                       <tbody>
                           {getSettlementData().map(row => (
                               <tr key={row.staff_id} className="review__settlement-row">
-                                  <td className="review__settlement-td review__settlement-name">{row.name} <div className="review__settlement-id">({row.staff_id})</div></td>
+                                  <td className="review__settlement-td review__settlement-name">
+                                      <div className="review__settlement-name-wrap">
+                                          {row.avatar_thumb ? (
+                                              <img src={row.avatar_thumb} alt="" className="review__settlement-avatar" />
+                                          ) : (
+                                              <div className="review__settlement-avatar review__settlement-avatar--fallback">
+                                                  {(row.name || row.staff_id).charAt(0).toUpperCase()}
+                                              </div>
+                                          )}
+                                          <div>
+                                              <div>{row.name}</div>
+                                              <div className="review__settlement-id">({row.staff_id})</div>
+                                          </div>
+                                      </div>
+                                  </td>
                                   <td className="review__settlement-td review__settlement-work">
                                       <div>總工時: {row.workDays} 天</div>
                                       {row.nationalHolidayWorkDays > 0 && <div className="review__settlement-holiday">含國定: {row.nationalHolidayWorkDays}天</div>}
@@ -632,13 +646,26 @@ return (
                             return a.localeCompare(b);
                         }).map(rowId => {
                             const isVirtual = rowId.startsWith('D');
+                            const staffRow = !isVirtual ? staffData.find(s => s.staff_id === rowId) : null;
+                            const displayName = isVirtual ? '🎲 待認領' : (staffRow?.name || rowId);
                             const { score, deductions } = calculateHealthScore(historySchedule[rowId]);
                             const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
 
                             return (
                                 <tr key={rowId} className={`review__table-row${isVirtual ? ' review__table-row--virtual' : ''}`}>
                                     <td className={`review__table-td-name${isVirtual ? ' review__table-td-name--virtual' : ''}`}>
-                                       <div className={`review__table-staff-name${isVirtual ? ' review__table-staff-name--virtual' : ''}`}>{isVirtual ? '🎲 待認領' : (staffData.find(s=>s.staff_id===rowId)?.name || rowId)}</div>
+                                       <div className="review__table-staff-wrap">
+                                           {!isVirtual && (
+                                               staffRow?.avatar_thumb ? (
+                                                   <img src={staffRow.avatar_thumb} alt="" className="review__table-staff-avatar" />
+                                               ) : (
+                                                   <div className="review__table-staff-avatar review__table-staff-avatar--fallback">
+                                                       {(staffRow?.name || rowId).charAt(0).toUpperCase()}
+                                                   </div>
+                                               )
+                                           )}
+                                           <div className={`review__table-staff-name${isVirtual ? ' review__table-staff-name--virtual' : ''}`}>{displayName}</div>
+                                       </div>
                                     </td>
                                     <td className={`review__table-td-health${isVirtual ? ' review__table-td-health--bg-virtual' : ' review__table-td-health--bg-default'}`} style={{ color: scoreColor }} title={deductions.length > 0 ? `扣分明細：\n${deductions.join('\n')}` : '✨ 完美班表！無身心損耗'}>{score}</td>
                                     {daysArray.map(d => {

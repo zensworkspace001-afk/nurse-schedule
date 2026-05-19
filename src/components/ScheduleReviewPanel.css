@@ -409,6 +409,33 @@
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
+/* 結算大帳本：頭貼 + 姓名 / 工號 並排 */
+.review__settlement-name-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.review__settlement-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.review__settlement-avatar--fallback {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
 .review__settlement-id {
   font-size: 0.8rem;
   color: rgba(255, 255, 255, 0.65);
@@ -725,6 +752,33 @@
 
 .review__table-staff-name--virtual {
   color: rgba(255, 255, 255, 0.5);
+}
+
+/* 歷史班表表格：頭貼 + 姓名 並排 */
+.review__table-staff-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.review__table-staff-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.review__table-staff-avatar--fallback {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  font-weight: 700;
+  font-size: 10px;
 }
 
 .review__table-td-health {
