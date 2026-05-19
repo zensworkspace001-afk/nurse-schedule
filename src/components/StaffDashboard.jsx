@@ -181,10 +181,12 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
   // 自己的完整 row（含敏感欄位）走 myStaffRow，不再從 staffData 撈
   const currentStaffInfo = myStaffRow;
 
-  // 把「編輯頭貼」入口 + Modal 抽成可重用的 JSX，讓每個 guard 畫面都能用。
-  // 為什麼這樣設計：原本只有 step1 才能編輯頭貼，但長假/沒輪到/班表滿的員工
-  // 被早退出守住根本看不到入口。把同一份 modal 重複掛載在每個 guard return 裡
-  // 比把 guards 改寫成 conditional content 來得安全。
+  // 把「編輯頭貼 modal + 修改密碼 modal + 頂部 header row」抽成可重用 JSX，
+  // 讓每個 guard 早退出畫面都能用，UX 跟正常 step1 完全一致：
+  //   [頭貼圓圈] 嗨，xxx                 [修改密碼]
+  // 為什麼三樣都要共用：以前 guard 內塞了大塊「編輯頭貼」按鈕，視覺不統一且
+  // 沒密碼修改入口；現在統一 header row 後，被鎖住的員工（離職/長假/沒輪到/
+  // 班表滿）至少都能正常改密碼。
   const avatarModalElement = showAvatarEdit && (
     <AvatarEditModal
       myStaffRow={myStaffRow}
@@ -192,30 +194,86 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
     />
   );
 
-  const avatarGuardTrigger = (
-    <button
-      type="button"
-      onClick={() => setShowAvatarEdit(true)}
-      className="dashboard__guard-avatar-btn"
-      title="點擊更換頭貼"
+  const pwdModalElement = showPwdModal && (
+    <div
+        className={`dashboard__pwd-overlay${closingPwdModal ? ' dashboard__pwd-overlay--closing' : ''}`}
+        onClick={(e) => { if (e.target === e.currentTarget) closePwdModalAnimated(); }}
+        role="button"
+        tabIndex={-1}
+        aria-label="點空白處關閉"
     >
-      {myStaffRow?.avatar ? (
-        <img src={myStaffRow.avatar} alt="頭貼" className="dashboard__guard-avatar-img" />
-      ) : (
-        <span className="dashboard__guard-avatar-fallback"><Camera size={18} /></span>
-      )}
-      <span className="dashboard__guard-avatar-label"><Camera size={12} /> 編輯頭貼</span>
-    </button>
+        <div className={`dashboard__pwd-modal${closingPwdModal ? ' dashboard__pwd-modal--closing' : ''}`}>
+            <button onClick={closePwdModalAnimated} className="dashboard__pwd-close-btn"><X size={14} /></button>
+            <h3 className="dashboard__pwd-title"><Settings size={18} /> 修改密碼</h3>
+            <form onSubmit={handlePasswordSubmit} className="dashboard__pwd-form">
+                <div>
+                    <label className="dashboard__pwd-label">舊密碼</label>
+                    <input type="password" value={pwdData.old} onChange={e=>setPwdData({...pwdData, old: e.target.value})} required className="dashboard__pwd-input" />
+                </div>
+                <div>
+                    <label className="dashboard__pwd-label">新密碼</label>
+                    <input type="password" value={pwdData.new} onChange={e=>setPwdData({...pwdData, new: e.target.value})} required minLength="4" className="dashboard__pwd-input" />
+                </div>
+                <div>
+                    <label className="dashboard__pwd-label">確認新密碼</label>
+                    <input type="password" value={pwdData.confirm} onChange={e=>setPwdData({...pwdData, confirm: e.target.value})} required minLength="4" className="dashboard__pwd-input" />
+                </div>
+                {pwdMsg.text && (
+                    <div className={`dashboard__pwd-msg ${pwdMsg.type === 'error' ? 'dashboard__pwd-msg--error' : 'dashboard__pwd-msg--success'}`}>
+                        {pwdMsg.text}
+                    </div>
+                )}
+                <button type="submit" disabled={isPwdSubmitting} className={`dashboard__pwd-submit-btn${isPwdSubmitting ? ' dashboard__pwd-submit-btn--loading' : ''}`}>
+                    {isPwdSubmitting ? <><span className="dashboard__pwd-spinner" /> 驗證中...</> : '儲存修改'}
+                </button>
+            </form>
+        </div>
+    </div>
+  );
+
+  // 共用 header row — 與 step1 dashboard__header-row 完全相同的結構與樣式
+  const dashboardHeader = (
+    <div className="dashboard__header-row">
+      <h2 className="dashboard__greeting">
+        <button
+          type="button"
+          onClick={() => setShowAvatarEdit(true)}
+          className="dashboard__avatar-btn"
+          title="點擊更換頭貼"
+          aria-label="編輯頭貼"
+        >
+          {myStaffRow?.avatar ? (
+            <img src={myStaffRow.avatar} alt="頭貼" className="dashboard__greeting-avatar" />
+          ) : (
+            <span className="dashboard__avatar-fallback">
+              <Hand size={22} />
+            </span>
+          )}
+          <span className="dashboard__avatar-cam"><Camera size={12} /></span>
+        </button>
+        嗨，{currentUser.name}
+      </h2>
+      <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn"><Settings size={14} /> 修改密碼</button>
+    </div>
   );
 
   // 防呆 2: 離職或停權檢查
+  // 離職員工仍允許登入並改密碼（避免帳號被前同事盜用），但不開放頭貼編輯
+  // —— 已離職的個資不該再讓本人擅自修改。
   if (currentStaffInfo && (currentStaffInfo.is_active === false || currentStaffInfo.is_active === 'false')) {
       return (
-          <div className="dashboard__guard">
-              <div className="dashboard__guard-icon"><Ban size={48} /></div>
-              <h2 className="dashboard__guard-title--inactive">帳號無效 / 已離職</h2>
-              <p className="dashboard__guard-text">您的帳號目前為「非在職狀態」，無法登入選班。<br/>如有疑問請洽詢護理長。</p>
-          </div>
+          <>
+              {pwdModalElement}
+              <div className="dashboard__guard">
+                  <div className="dashboard__header-row">
+                      <h2 className="dashboard__greeting">嗨，{currentUser.name}</h2>
+                      <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn"><Settings size={14} /> 修改密碼</button>
+                  </div>
+                  <div className="dashboard__guard-icon"><Ban size={48} /></div>
+                  <h2 className="dashboard__guard-title--inactive">帳號無效 / 已離職</h2>
+                  <p className="dashboard__guard-text">您的帳號目前為「非在職狀態」，無法登入選班。<br/>如有疑問請洽詢護理長。</p>
+              </div>
+          </>
       );
   }
 
@@ -226,11 +284,12 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       return (
           <>
               {avatarModalElement}
+              {pwdModalElement}
               <div className="dashboard__guard">
+                  {dashboardHeader}
                   <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
                   <h2 className="dashboard__guard-title--leave">暫停排班</h2>
                   <p className="dashboard__guard-text">您目前的狀態為<strong>「{statusName}」</strong>，本月不需參與系統排班作業。<br/>祝您休假愉快！</p>
-                  {avatarGuardTrigger}
               </div>
           </>
       );
@@ -244,7 +303,9 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       return (
           <>
               {avatarModalElement}
+              {pwdModalElement}
               <div className="dashboard__guard">
+                  {dashboardHeader}
                   <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
                   <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
                   <div className="dashboard__guard-info">
@@ -252,7 +313,6 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
                       您本月未獲得班次，系統會優先在下個月安排您選班。<br/>
                       如有疑問請聯絡護理長。
                   </div>
-                  {avatarGuardTrigger}
                   <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
               </div>
           </>
@@ -270,14 +330,15 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       return (
           <>
               {avatarModalElement}
+              {pwdModalElement}
               <div className="dashboard__guard">
+                  {dashboardHeader}
                   <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
                   <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
                   <div className="dashboard__guard-info">
                       目前的 <strong>優先發球權</strong> 在 <span className="dashboard__guard-highlight">{activeStaffName}</span> 手上。<br/><br/>
                       為確保最需要的人能優先挑選好班，請等待 AI 引擎發送您的專屬換棒 Email 通知！
                   </div>
-                  {avatarGuardTrigger}
                   <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
               </div>
           </>
@@ -370,51 +431,8 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
   return (
     <div className="dashboard">
 
-      {/* 編輯頭貼 Modal */}
-      {showAvatarEdit && (
-        <AvatarEditModal
-          myStaffRow={myStaffRow}
-          onClose={() => setShowAvatarEdit(false)}
-        />
-      )}
-
-      {/* ★★★ 新增：修改密碼 Modal 視窗 ★★★ */}
-      {showPwdModal && (
-        <div
-            className={`dashboard__pwd-overlay${closingPwdModal ? ' dashboard__pwd-overlay--closing' : ''}`}
-            onClick={(e) => { if (e.target === e.currentTarget) closePwdModalAnimated(); }}
-            role="button"
-            tabIndex={-1}
-            aria-label="點空白處關閉"
-        >
-            <div className={`dashboard__pwd-modal${closingPwdModal ? ' dashboard__pwd-modal--closing' : ''}`}>
-                <button onClick={closePwdModalAnimated} className="dashboard__pwd-close-btn"><X size={14} /></button>
-                <h3 className="dashboard__pwd-title"><Settings size={18} /> 修改密碼</h3>
-                <form onSubmit={handlePasswordSubmit} className="dashboard__pwd-form">
-                    <div>
-                        <label className="dashboard__pwd-label">舊密碼</label>
-                        <input type="password" value={pwdData.old} onChange={e=>setPwdData({...pwdData, old: e.target.value})} required className="dashboard__pwd-input" />
-                    </div>
-                    <div>
-                        <label className="dashboard__pwd-label">新密碼</label>
-                        <input type="password" value={pwdData.new} onChange={e=>setPwdData({...pwdData, new: e.target.value})} required minLength="4" className="dashboard__pwd-input" />
-                    </div>
-                    <div>
-                        <label className="dashboard__pwd-label">確認新密碼</label>
-                        <input type="password" value={pwdData.confirm} onChange={e=>setPwdData({...pwdData, confirm: e.target.value})} required minLength="4" className="dashboard__pwd-input" />
-                    </div>
-                    {pwdMsg.text && (
-                        <div className={`dashboard__pwd-msg ${pwdMsg.type === 'error' ? 'dashboard__pwd-msg--error' : 'dashboard__pwd-msg--success'}`}>
-                            {pwdMsg.text}
-                        </div>
-                    )}
-                    <button type="submit" disabled={isPwdSubmitting} className={`dashboard__pwd-submit-btn${isPwdSubmitting ? ' dashboard__pwd-submit-btn--loading' : ''}`}>
-                        {isPwdSubmitting ? <><span className="dashboard__pwd-spinner" /> 驗證中...</> : '儲存修改'}
-                    </button>
-                </form>
-            </div>
-        </div>
-      )}
+      {avatarModalElement}
+      {pwdModalElement}
 
       <div className="dashboard__stepper">
           {['班別選擇', '認領班表', '確認預覽', '完成'].map((label, idx) => (
