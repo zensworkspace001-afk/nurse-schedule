@@ -173,6 +173,19 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // 10. ex_staff/{staffId} — 離職員工歸檔
+    //     讀取：僅管理員（HR 查歷史紀錄用）
+    //     寫入：永遠拒絕 — 只允許後端 Admin SDK 寫入（api/admin-user.js action='delete-staff'）
+    //     內容：staff_id, name, email, level, tenure_years, avatar, avatar_thumb,
+    //          deleted_at, deleted_by{uid,email}
+    //     刻意不複製加密 PII (idNumber/bankAccount/phone) — 離職應一併銷毀避免無止盡的金鑰維護成本
+    // ============================================================
+    match /ex_staff/{staffId} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
+
+    // ============================================================
     // 預設：拒絕所有未明確允許的存取
     // ============================================================
     match /{document=**} {

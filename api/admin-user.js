@@ -5,14 +5,18 @@
 //
 // POST /api/admin-user   (Bearer Firebase token — 必須是 admin@hospital.com)
 //
-//   { action: 'sync',  staffList: [...] }   ← 批次建立帳號 + 寄啟用信
-//   { action: 'reset', staffId: 'N001' }    ← 寄送密碼重設信給該員工
+//   { action: 'sync',         staffList: [...] }   ← 批次建立帳號 + 寄啟用信
+//   { action: 'reset',        staffId: 'N001' }    ← 寄送密碼重設信給該員工
+//   { action: 'delete-staff', staffId: 'N001' }    ← 永久離職：歸檔頭貼到 ex_staff/{id}、
+//                                                     從 NurseApp/Staff + StaffPublic 移除、
+//                                                     刪除 StaffPrivate/{id}、停用 Auth、寫稽核
 //
-// 兩個 action 都需要 admin 權限。共用 issueToken / revokeTokensForUid / sendActivationLink。
+// 全部 action 都需要 admin 權限。共用 issueToken / revokeTokensForUid / sendActivationLink。
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
+import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 
 if (!admin.apps.length) {
   let serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -215,5 +219,123 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(400).json({ error: `未知的 action：${action}（支援：sync / reset）` });
+  // —— delete-staff：永久離職歸檔 ——
+  // 行為：
+  //   1. 在 transaction 內讀 NurseApp/Staff，找到該員工
+  //   2. 寫一份 snapshot 進 ex_staff/{staffId}（含頭貼、姓名、刪除時間、操作者）
+  //      註：加密 PII（idNumber / bankAccount / phone）刻意不複製過去 —— 那些
+  //          原本就是密文 blob，留存=PDPA 上要繼續維護金鑰；離職應一併銷毀
+  //   3. 把該員工從 staffData 陣列剔除，更新 NurseApp/Staff
+  //   4. 重算 StaffPublic 投影並覆寫
+  //   5. 刪除 StaffPrivate/{staffId}（員工原本可讀自己那份）
+  //   6. （transaction 外）停用 Firebase Auth 帳號 — 防止離職員工再登入
+  //   7. （transaction 外）寫 access_logs，action='delete-staff'
+  //
+  // 為什麼用 transaction：避免兩個 admin 同時刪不同員工時 staffData 互相覆寫。
+  if (action === 'delete-staff') {
+    try {
+      const { staffId } = req.body;
+      if (!staffId) return res.status(400).json({ error: '缺少員工 ID' });
+      if (String(staffId).toLowerCase() === 'admin') {
+        return res.status(400).json({ error: '不可刪除 admin' });
+      }
+
+      const meta = extractClientMeta(req);
+      const db = admin.firestore();
+      const staffRef = db.doc('NurseApp/Staff');
+      const publicRef = db.doc('NurseApp/StaffPublic');
+      const exRef = db.doc(`ex_staff/${staffId}`);
+      const privateRef = db.doc(`StaffPrivate/${staffId}`);
+
+      const result = await db.runTransaction(async (tx) => {
+        const snap = await tx.get(staffRef);
+        if (!snap.exists) throw new Error('NurseApp/Staff 不存在');
+        const data = snap.data();
+        const list = Array.isArray(data.staffData) ? data.staffData : [];
+        const idx = list.findIndex(
+          (s) => String(s.staff_id).toLowerCase() === String(staffId).toLowerCase(),
+        );
+        if (idx === -1) return { notFound: true };
+
+        const row = list[idx];
+
+        // 1. 歸檔到 ex_staff —— 只保留識別欄位 + 頭貼，不複製加密 PII
+        const archive = {
+          staff_id: row.staff_id,
+          name: row.name || null,
+          email: row.email || null,
+          level: row.level || null,
+          tenure_years: typeof row.tenure_years === 'number' ? row.tenure_years : null,
+          avatar: row.avatar || null,
+          avatar_thumb: row.avatar_thumb || null,
+          had_avatar: !!row.avatar,
+          deleted_at: new Date().toISOString(),
+          deleted_by: { uid: decodedToken.uid, email: decodedToken.email },
+        };
+        tx.set(exRef, archive);
+
+        // 2. 從 staffData 移除
+        const nextList = list.filter((_, i) => i !== idx);
+        tx.update(staffRef, { staffData: nextList });
+
+        // 3. 重算 StaffPublic 投影（與 src/api/database.js 的 buildStaffPublicProjection 同步）
+        const publicList = nextList.map((s) => ({
+          staff_id: s.staff_id,
+          name: s.name,
+          level: s.level,
+          is_leader: !!s.is_leader,
+          is_active: s.is_active !== false,
+          avatar_thumb: s.avatar_thumb || null,
+        }));
+        tx.set(publicRef, { staffData: publicList });
+
+        // 4. 刪除 StaffPrivate
+        tx.delete(privateRef);
+
+        return { notFound: false, archive, removedName: row.name };
+      });
+
+      if (result.notFound) {
+        return res.status(404).json({ error: `找不到員工 ${staffId}` });
+      }
+
+      // 5. 停用 Firebase Auth 帳號（transaction 外）— 失敗不擋業務，僅記 log
+      let authDisabled = false;
+      try {
+        await admin.auth().updateUser(staffId, { disabled: true });
+        await revokeTokensForUid(staffId);
+        authDisabled = true;
+      } catch (authErr) {
+        if (authErr.code !== 'auth/user-not-found') {
+          console.warn(`delete-staff: 停用 Auth 帳號失敗 (${staffId}):`, authErr.message);
+        }
+      }
+
+      // 6. 稽核
+      await writeAccessLog({
+        actor: { uid: decodedToken.uid, email: decodedToken.email },
+        action: 'delete-staff',
+        target: { kind: 'staff', id: staffId },
+        fields: ['avatar', 'avatar_thumb', 'name', 'email', 'level', 'tenure_years'],
+        ip: meta.ip, ua: meta.ua,
+        extra: {
+          had_avatar: result.archive.had_avatar,
+          archived_to: `ex_staff/${staffId}`,
+          auth_disabled: authDisabled,
+        },
+      });
+
+      return res.status(200).json({
+        message: `員工 ${result.removedName || staffId} 已永久離職歸檔`,
+        archived_to: `ex_staff/${staffId}`,
+        had_avatar: result.archive.had_avatar,
+        auth_disabled: authDisabled,
+      });
+    } catch (error) {
+      console.error('delete-staff 失敗:', error);
+      return res.status(500).json({ error: error.message || '伺服器內部錯誤' });
+    }
+  }
+
+  return res.status(400).json({ error: `未知的 action：${action}（支援：sync / reset / delete-staff）` });
 }

@@ -56,10 +56,46 @@ useEffect(() => {
     setIsDirty(true);
   };
 
-  const handleDelete = (id) => {
-    if (window.confirm(`確定要刪除員工 ${id} 嗎？`)) {
+  // 刪除員工 = 永久離職歸檔。走後端 /api/admin-user action='delete-staff'：
+  //   - 頭貼 + 識別欄位搬到 ex_staff/{id}（含刪除時間與操作者）
+  //   - 從 NurseApp/Staff + StaffPublic 移除、刪除 StaffPrivate/{id}、停用 Auth
+  //   - 寫稽核 action='delete-staff'
+  // 後端寫完後，localStaff 也要立即剔除該行，否則若 admin 此時有其它未存編輯
+  // （isDirty=true），下次按「儲存變更」會把該行重新寫回。
+  const handleDelete = async (id, name) => {
+    const label = name ? `${name} (${id})` : id;
+    if (!window.confirm(
+      `確定要永久離職員工 ${label} 嗎？\n\n` +
+      `將執行：\n` +
+      `• 從員工名單移除\n` +
+      `• 頭貼歸檔到「ex_staff」資料夾（含刪除日期）\n` +
+      `• 停用其 Firebase 登入帳號\n` +
+      `• 寫入稽核紀錄\n\n` +
+      `此動作無法復原。`
+    )) return;
+
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/admin-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ action: 'delete-staff', staffId: id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || '刪除失敗');
+
+      // 後端已成功；同步剔除本地 list 避免後續儲存把它寫回
       setLocalStaff(prev => prev.filter(s => s.staff_id !== id));
-      setIsDirty(true);
+
+      alert(
+        `✅ ${data.message}\n\n` +
+        `📁 歸檔位置：${data.archived_to}\n` +
+        `📷 頭貼：${data.had_avatar ? '已一併歸檔' : '原本就沒有頭貼'}\n` +
+        `🔒 登入帳號：${data.auth_disabled ? '已停用' : '未停用（可能本來就不存在）'}`
+      );
+    } catch (err) {
+      console.error('刪除員工失敗:', err);
+      alert(`❌ 刪除失敗：${err.message}`);
     }
   };
 
@@ -405,7 +441,7 @@ const handleSave = async () => {
                 <td className="staff-mgmt__td--actions">
                   {/* 新增：重置密碼按鈕 */}
                   <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--reset" title="寄送密碼重設信"><KeyRound size={16} /></button>
-                  <button onClick={() => handleDelete(staff.staff_id)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--delete" title="刪除員工"><Trash2 size={16} /></button>
+                  <button onClick={() => handleDelete(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--delete" title="永久離職（歸檔頭貼 + 停用帳號 + 寫稽核）"><Trash2 size={16} /></button>
                 </td>
 
               </tr>

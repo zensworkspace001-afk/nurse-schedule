@@ -80,7 +80,7 @@ Vercel serverless functions:
 | `gemini.js` | AI chat — requires Firebase Bearer token |
 | `analyze-excel.js` | Analyzes uploaded CSV/Excel using Gemini Flash |
 | `sendEmail.js` | Sends email via Resend |
-| `admin-user.js` | Admin-only multiplex (Bearer token + admin email). `body.action` switches: `'sync'` bulk-creates Firebase Auth accounts with `disabled:true` + random throwaway password and issues activation tokens / activation emails (no more hardcoded `123456`); `'reset'` issues a `purpose:'reset'` token and sends the same `/activate?token=...` link. Both share the activation-token lifecycle in `_lib/activationToken.js`. (Merged from former `sync-accounts.js` + `reset-password.js` to stay under Vercel Hobby plan's 12-function limit.) |
+| `admin-user.js` | Admin-only multiplex (Bearer token + admin email). `body.action` switches: `'sync'` bulk-creates Firebase Auth accounts with `disabled:true` + random throwaway password and issues activation tokens / activation emails (no more hardcoded `123456`); `'reset'` issues a `purpose:'reset'` token and sends the same `/activate?token=...` link; `'delete-staff'` permanently offboards (transaction: archive avatar+name+date+actor to `ex_staff/{id}`, remove from `NurseApp/Staff` array, recompute `StaffPublic`, delete `StaffPrivate/{id}`; then disables Firebase Auth and writes `access_logs` action=`delete-staff`). All three actions share the activation-token lifecycle in `_lib/activationToken.js`. (Merged from former `sync-accounts.js` + `reset-password.js` to stay under Vercel Hobby plan's 12-function limit.) |
 | `activate-account.js` | Public endpoint (token IS the auth). `POST {token, newPassword}` → verifies token, enforces strength, sets the password via Admin SDK; for `purpose: 'activation'` also flips `disabled: false`. CSRF + per-IP rate limit. |
 | `complete-profile.js` | Authenticated endpoint (staff Firebase token). On first login the staff fills name / gender / tenure / 孕哺 / 大夜 / encrypted PII (idNumber, bankAccount, phone). Server validates, AES-encrypts the PII, writes the staff's row in `staffData`, sets `profile_completed: true`, and writes one `access_logs` row (action=`encrypt`). Admin cannot use this endpoint. |
 | `log-login.js` | Login auditing multiplex. `body.success: true` requires Bearer token, writes `access_logs` action `'login'` (per-uid 10/min). `body.success: false` is unauthenticated (auth just failed by definition); IP-rate-limited 10/min, records `action='login-failure'` plus attempted email + Firebase error code in `extra`. (Merged from former `log-login.js` + `log-login-failure.js` to stay under Vercel Hobby plan's 12-function limit.) |
@@ -114,7 +114,10 @@ SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
 SelectionProgress/{YYYY_M} — { submitted_staff: [...] }
 AI_Decision_Logs           — { timestamp, selected_staff, ai_logic, candidates_data }
 pending_activation/{sha256(token)} — server-only; { uid, email, purpose: 'activation'|'reset', expiresAt, createdAt }
-access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access', target:{kind,id}, fields:[], ip, ua, extra? }
+access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access'|'update-profile'|'delete-staff'|'login'|'login-failure', target:{kind,id}, fields:[], ip, ua, extra? }
+ex_staff/{staff_id}        — 離職員工歸檔 (admin-only read)。{ staff_id, name, email, level, tenure_years, avatar, avatar_thumb, had_avatar, deleted_at, deleted_by:{uid,email} }
+                             由 /api/admin-user action='delete-staff' 寫入。
+                             刻意不複製加密 PII (idNumber/bankAccount/phone) — 離職應一併銷毀。
 ```
 
 **Encrypted fields (marked `*` above):** stored as `{ ct, iv, tag, v: 1 }` AES-256-GCM blobs. Read/write goes through `/api/secure-field`, never directly. UI uses `<EncryptedField>` (click-to-decrypt, 30s auto-relock). Migration: `node scripts/migrate-encrypt.js` (dry-run) → `--commit` (actual write).
