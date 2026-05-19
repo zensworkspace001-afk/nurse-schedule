@@ -239,7 +239,7 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
     setSubmitting(true);
     try {
       await post({ mode: 'update', avatar: fullDataUrl, avatar_thumb: thumbDataUrl });
-      setMsg({ type: 'success', text: '✅ 頭貼已更新' });
+      setMsg({ type: 'success', text: '頭貼已更新' });
       setTimeout(() => { setClosing(true); setTimeout(onClose, 300); }, 1000);
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
@@ -254,7 +254,7 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
     try {
       // 主圖與縮圖一併清除
       await post({ mode: 'update', avatar: '', avatar_thumb: '' });
-      setMsg({ type: 'success', text: '✅ 頭貼已移除' });
+      setMsg({ type: 'success', text: '頭貼已移除' });
       setTimeout(() => { setClosing(true); setTimeout(onClose, 300); }, 800);
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
@@ -357,8 +357,8 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
               <>
                 <ScanFace size={14} />
                 <span>
-                  ✓ 已偵測到{faceMeta?.count > 1 ? ` ${faceMeta.count} 張` : ''}人臉
-                  {faceMeta?.topConfidence ? `（信心度 ${Math.round(faceMeta.topConfidence * 100)}%）` : ''}
+                  已偵測到{faceMeta?.count > 1 ? ` ${faceMeta.count} 張` : ''}人臉
+                  {faceMeta?.topConfidence ? `（${Math.round(faceMeta.topConfidence * 100)}%）` : ''}
                 </span>
               </>
             )}
@@ -385,8 +385,8 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
 
         <p className="avatedit__hint">
           {rawImage
-            ? '可以拖曳圖片調整位置、用滑桿或滾輪調整大小。'
-            : '系統會自動把選定的圖片裁成 220×220 圓形頭貼。'}
+            ? '拖曳圖片可調整位置，滑桿或滾輪可調整大小'
+            : '選定後將自動裁成 220×220 圓形'}
         </p>
 
         {/* 動作按鈕區 */}

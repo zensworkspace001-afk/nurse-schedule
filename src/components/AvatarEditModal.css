@@ -1,11 +1,15 @@
 /* ==========================================================================
    AvatarEditModal — 頭貼編輯器（圓形裁切框 + 縮放 + 拖曳）
+   設計原則：
+   - 黃色 (#ffd666) 只給 primary CTA（儲存頭貼）；其他元素改用半透明白
+   - 所有 button 同樣 pill 形狀，差異只在顏色與粗細，不換形狀
+   - banner / 訊息列改用「左側細色條 + 低飽和文字」，不再大塊填色
    ========================================================================== */
 
 .avatedit__overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
   z-index: 1000;
@@ -20,52 +24,56 @@
 @keyframes avateditOverlayOut { from { opacity: 1; } to { opacity: 0; } }
 
 .avatedit__modal {
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  padding: 1.75rem;
-  border-radius: 20px;
+  background: rgba(28, 32, 48, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 22px 24px;
+  border-radius: 18px;
   width: 90%;
-  max-width: 360px;
+  max-width: 340px;
   max-height: 92vh;
   overflow-y: auto;
   position: relative;
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.15);
-  animation: avateditModalIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
+  animation: avateditModalIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 14px;
+  align-items: stretch;
+  gap: 16px;
 }
 .avatedit__modal--closing { animation: avateditModalOut 0.3s ease both; }
 
 @keyframes avateditModalIn {
-  0%   { opacity: 0; transform: scale(0.85) translateY(30px); }
+  0%   { opacity: 0; transform: scale(0.92) translateY(20px); }
   100% { opacity: 1; transform: none; }
 }
 @keyframes avateditModalOut {
   0%   { opacity: 1; transform: scale(1); }
-  100% { opacity: 0; transform: scale(0.92) translateY(20px); }
+  100% { opacity: 0; transform: scale(0.94) translateY(10px); }
 }
 
+/* --- 頂部列：標題 + 關閉 --- */
 .avatedit__close {
   position: absolute;
   top: 14px;
-  right: 18px;
+  right: 14px;
   background: none;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  border-radius: 50%;
+  border: none;
+  border-radius: 8px;
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: #fff;
-  transition: background 0.2s;
+  color: rgba(255, 255, 255, 0.55);
+  transition: all 0.15s;
 }
-.avatedit__close:hover { background: rgba(255, 255, 255, 0.2); }
+.avatedit__close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
 .avatedit__close:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .avatedit__title {
@@ -74,32 +82,27 @@
   align-items: center;
   gap: 8px;
   color: #fff;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   font-weight: 600;
-  letter-spacing: 0.5px;
-  align-self: flex-start;
+  font-size: 1rem;
+  letter-spacing: 0.3px;
 }
 
-/* --- 裁切預覽框（圓形 mask） ---
-   重要：必須保證正圓，不能被 flex 容器擠成橢圓。
-   - aspect-ratio: 1 強制寬高比 1:1（即使外部寬度被改變高度也會跟上）
-   - flex-shrink: 0 避免在小螢幕被父層壓縮寬度
-   - box-sizing: content-box 確保 border 不影響內部繪圖座標（與 JSX 內 FRAME 常數對齊）
-*/
+/* --- 裁切預覽框（圓形 mask） --- */
 .avatedit__frame {
   position: relative;
   overflow: hidden;
   border-radius: 50%;
-  border: 2px solid rgba(255, 214, 102, 0.8);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
-  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.5);
   cursor: grab;
-  touch-action: none;       /* 阻止瀏覽器的捲動/縮放，把 touch 事件留給拖曳 */
+  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
   aspect-ratio: 1 / 1;
   flex-shrink: 0;
   box-sizing: content-box;
+  align-self: center;       /* 框本身在 stretch 容器中靠中對齊 */
 }
 .avatedit__frame:active { cursor: grabbing; }
 
@@ -107,8 +110,8 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  max-width: none;          /* 必要：不被父層的 img max-width:100% 壓回 */
-  pointer-events: none;     /* 圖片本身不接事件，事件留給 frame 處理拖曳 */
+  max-width: none;
+  pointer-events: none;
   user-select: none;
   -webkit-user-drag: none;
 }
@@ -121,8 +124,8 @@
   align-items: center;
   justify-content: center;
   gap: 10px;
-  color: rgba(255, 255, 255, 0.7);
-  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 0.8rem;
   text-align: center;
   padding: 16px;
 }
@@ -132,109 +135,114 @@
   height: 100%;
   object-fit: cover;
   border-radius: 50%;
-  opacity: 0.85;
+  opacity: 0.7;
 }
 
 /* --- 縮放控制列 --- */
 .avatedit__controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
-  padding: 0 6px;
+  padding: 4px 0;
 }
 
 .avatedit__slider {
   flex: 1;
   -webkit-appearance: none;
   appearance: none;
-  height: 6px;
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.2);
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.15);
   outline: none;
   cursor: pointer;
 }
 .avatedit__slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: #ffd666;
-  border: 2px solid rgba(255, 255, 255, 0.8);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+  background: #fff;
+  border: 0;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
   cursor: grab;
 }
 .avatedit__slider::-moz-range-thumb {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  background: #ffd666;
-  border: 2px solid rgba(255, 255, 255, 0.8);
+  background: #fff;
+  border: 0;
   cursor: grab;
 }
-.avatedit__slider:disabled { opacity: 0.5; cursor: not-allowed; }
+.avatedit__slider:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .avatedit__icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  color: #fff;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.15s;
 }
-.avatedit__icon-btn:hover { background: rgba(255, 255, 255, 0.25); }
-.avatedit__icon-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.avatedit__icon-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+.avatedit__icon-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
-/* --- 人臉偵測狀態 banner --- */
+/* --- 人臉偵測狀態 banner（極簡單行樣式） --- */
 .avatedit__face {
   width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  font-size: 0.82rem;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
   font-weight: 500;
   box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid transparent;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   animation: avateditFaceFadeIn 0.3s ease both;
 }
 
 @keyframes avateditFaceFadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 0; transform: translateY(-2px); }
   to   { opacity: 1; transform: none; }
 }
 
 .avatedit__face--loading {
-  background: rgba(102, 126, 234, 0.18);
-  border: 1px solid rgba(102, 126, 234, 0.5);
-  color: #b3c6ff;
+  border-left-color: #6a8eff;
+  color: rgba(255, 255, 255, 0.85);
 }
 
 .avatedit__face--pass {
-  background: rgba(82, 196, 26, 0.2);
-  border: 1px solid rgba(82, 196, 26, 0.5);
-  color: #95de64;
+  border-left-color: #5cb85c;
+  color: rgba(255, 255, 255, 0.9);
 }
 
 .avatedit__face--nopass {
-  background: rgba(255, 167, 38, 0.18);
-  border: 1px solid rgba(255, 167, 38, 0.55);
-  color: #ffcc80;
+  border-left-color: #f0a335;
+  color: rgba(255, 255, 255, 0.9);
   flex-direction: column;
   align-items: stretch;
   gap: 8px;
 }
 
 .avatedit__face--error {
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: rgba(255, 255, 255, 0.75);
+  border-left-color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .avatedit__face-warn { display: flex; flex-direction: column; gap: 8px; }
@@ -248,34 +256,34 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 7px 9px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 8px;
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
   cursor: pointer;
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.85);
-  transition: background 0.2s;
+  font-size: 0.76rem;
+  color: rgba(255, 255, 255, 0.78);
+  transition: background 0.15s;
 }
-.avatedit__face-bypass:hover { background: rgba(0, 0, 0, 0.4); }
+.avatedit__face-bypass:hover { background: rgba(255, 255, 255, 0.1); }
 .avatedit__face-bypass input[type="checkbox"] {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   accent-color: #ffd666;
   cursor: pointer;
 }
 
 .avatedit__hint {
-  font-size: 0.78rem;
-  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
   margin: 0;
   text-align: center;
   line-height: 1.5;
 }
 
-/* --- 動作區 --- */
+/* --- 動作區（次要按鈕） --- */
 .avatedit__actions {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
   justify-content: center;
   width: 100%;
@@ -285,81 +293,98 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 9px 14px;
-  border-radius: 12px;
-  font-size: 0.85rem;
-  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.85);
 }
-.avatedit__btn--ghost {
-  background: rgba(255, 255, 255, 0.14);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  color: #fff;
-}
-.avatedit__btn--ghost:hover {
-  background: rgba(255, 255, 255, 0.24);
-  transform: translateY(-1px);
-}
-.avatedit__btn--danger-ghost {
-  background: rgba(255, 77, 79, 0.15);
-  border: 1px solid rgba(255, 77, 79, 0.4);
-  color: #ff9b9b;
-}
-.avatedit__btn--danger-ghost:hover {
-  background: rgba(255, 77, 79, 0.28);
-  color: #fff;
-}
-.avatedit__btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
+.avatedit__btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.35);
+  color: #fff;
+}
+
+.avatedit__btn--ghost {
+  /* 預設樣式即 ghost，本 class 留下相容用 */
+}
+
+.avatedit__btn--danger-ghost {
+  color: rgba(255, 155, 155, 0.9);
+  border-color: rgba(255, 100, 100, 0.3);
+}
+.avatedit__btn--danger-ghost:hover:not(:disabled) {
+  background: rgba(255, 80, 80, 0.15);
+  border-color: rgba(255, 100, 100, 0.5);
+  color: #ffaaaa;
+}
+
+.avatedit__btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- 訊息列 --- */
 .avatedit__msg {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 13px;
-  border-radius: 12px;
-  font-size: 0.85rem;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.82rem;
   font-weight: 500;
   width: 100%;
   box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
 .avatedit__msg--error {
-  color: #ff7875;
-  background: rgba(255, 77, 79, 0.25);
-  border: 1px solid rgba(255, 77, 79, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+  border-left-color: #e85a5a;
 }
 .avatedit__msg--success {
-  color: #95de64;
-  background: rgba(82, 196, 26, 0.25);
-  border: 1px solid rgba(82, 196, 26, 0.5);
+  color: rgba(255, 255, 255, 0.9);
+  border-left-color: #5cb85c;
 }
 
+/* --- Primary CTA：儲存頭貼（唯一的黃色點綴） --- */
 .avatedit__submit {
   width: 100%;
-  padding: 13px;
-  background: rgba(255, 214, 102, 0.25);
-  color: #ffd666;
-  border: 1px solid rgba(255, 214, 102, 0.6);
-  border-radius: 20px;
+  padding: 12px;
+  background: #ffd666;
+  color: #1a1f2e;
+  border: none;
+  border-radius: 10px;
   font-weight: 700;
+  font-size: 0.92rem;
   cursor: pointer;
-  transition: all 0.3s ease;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: all 0.15s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  box-shadow: 0 4px 14px rgba(255, 214, 102, 0.25);
 }
 .avatedit__submit:hover:not(:disabled) {
-  background: rgba(255, 214, 102, 0.4);
-  color: #fff;
+  background: #ffe08a;
   transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(255, 214, 102, 0.4);
+}
+.avatedit__submit:active:not(:disabled) {
+  transform: translateY(0);
 }
 .avatedit__submit--loading,
 .avatedit__submit--disabled,
 .avatedit__submit:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.45);
   cursor: not-allowed;
-  opacity: 0.55;
+  box-shadow: none;
 }
 
 .avatedit__spin { animation: avateditSpin 1s linear infinite; }
