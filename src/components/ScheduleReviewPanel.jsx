@@ -296,7 +296,7 @@ const restDayOtPay = totalRestOtDays * restDayOtPayPerDay;
           const finalSalary = currentBaseSalary + totalOtPay + nightShiftBonus + levelBonusAmount - deduction;
 
           data.push({
-              staff_id: rowId, name, avatar_thumb: staff?.avatar_thumb || null, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
+              staff_id: rowId, name, avatar_thumb: staff?.avatar_thumb || staff?.avatar || null, baseSalary: currentBaseSalary, hourlyWage, dailyWage,
               workDays: workDays + explicitOtDays, standardWorkDays, otDays: totalRestOtDays,
               nightShiftsCount, nightShiftBonus,
               staffLevel, levelBonusAmount, // 👈 匯出職級加給
@@ -648,6 +648,8 @@ return (
                             const isVirtual = rowId.startsWith('D');
                             const staffRow = !isVirtual ? staffData.find(s => s.staff_id === rowId) : null;
                             const displayName = isVirtual ? '🎲 待認領' : (staffRow?.name || rowId);
+                            // 縮圖優先；舊資料只有主圖也能顯示
+                            const avatarSrc = staffRow?.avatar_thumb || staffRow?.avatar || null;
                             const { score, deductions } = calculateHealthScore(historySchedule[rowId]);
                             const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
 
@@ -656,8 +658,8 @@ return (
                                     <td className={`review__table-td-name${isVirtual ? ' review__table-td-name--virtual' : ''}`}>
                                        <div className="review__table-staff-wrap">
                                            {!isVirtual && (
-                                               staffRow?.avatar_thumb ? (
-                                                   <img src={staffRow.avatar_thumb} alt="" className="review__table-staff-avatar" />
+                                               avatarSrc ? (
+                                                   <img src={avatarSrc} alt="" className="review__table-staff-avatar" />
                                                ) : (
                                                    <div className="review__table-staff-avatar review__table-staff-avatar--fallback">
                                                        {(staffRow?.name || rowId).charAt(0).toUpperCase()}

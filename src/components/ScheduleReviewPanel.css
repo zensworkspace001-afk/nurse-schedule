@@ -678,7 +678,7 @@
 
 .review__table-th-name {
   padding: 8px;
-  min-width: 130px;
+  min-width: 180px;
   position: sticky;
   left: 0;
   background: rgba(52, 73, 94, 0.9);
@@ -730,7 +730,8 @@
 }
 
 .review__table-td-name {
-  padding: 8px;
+  padding: 8px 10px;
+  min-width: 180px;
   border-right: 1px solid rgba(255, 255, 255, 0.12);
   position: sticky;
   left: 0;

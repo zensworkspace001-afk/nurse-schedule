@@ -122,24 +122,31 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
       }
 
       // --- C. 統計休假天數與種類 ---
-      if (shiftType === '特休') scheduledAnnualLeave++; // ★ 算特休天數
+      // 例假天條（勞基法第 36 條）：依勞動部 105.10.07 勞動條 3 字第 1050132134 號函解釋，
+      // 「兩例假之間最多 6 個『工作日』」—— 注意是工作日，不是日曆天。RC（休息日）、
+      // OFF、事假、病假、特休 都屬於休假，不算進這個 6 天裡。
+      //
+      // 例：RG-RC-D-D-D-D-D-D-RG 屬於合規（中間 6 個工作日）。原本程式碼把所有非 RG 的
+      // 格子都當作 daysSinceLastRG++，會把這個合理的「週末雙休 + 平日 5/6 上班」班型誤判
+      // 為違規，這是 bug。
+      if (shiftType === '特休') scheduledAnnualLeave++;
       if (shiftType === 'RG') {
           totalRG++;
-          daysSinceLastRG = 0; // 遇到例假，計數器安全歸零
-      } else {
+          daysSinceLastRG = 0;
+      } else if (dailyHours > 0) {
+          // 只有實際上班的格子才累計（D / E / N / 支援）
           daysSinceLastRG++;
-          // ★ 檢查例假間隔天條 (勞基法第36條)
-          // 標準工時下，例假之間最多只能間隔 6 天。若員工為雙週變形(BiWeekly)則可挪移至最多 12 天。
           const maxRgInterval = staff.special_status === 'BiWeekly' ? 12 : 6;
 
           if (daysSinceLastRG > maxRgInterval) {
               violations.push({
                   staffId, staffName: staff?.name, day, type: 'RG_INTERVAL',
-                  message: `⚠️ 違反例假天條：已連續 ${daysSinceLastRG} 天未排例假(RG)！(上限 ${maxRgInterval} 天)`
+                  message: `⚠️ 違反例假天條：自上個 RG 後已累計 ${daysSinceLastRG} 個工作日未排例假(上限 ${maxRgInterval} 工作日)`,
               });
               daysSinceLastRG = 0; // 報錯後重置，避免同一週期重複洗版
           }
       }
+      // RC / OFF / 請假類：不重置也不累加，視為「靜止」
       if (shiftType === 'RC') totalRC++;
 
       // --- D. 檢查連續工作天數 (連六) ---

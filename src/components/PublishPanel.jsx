@@ -187,6 +187,8 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                               const isVirtual = rowId.startsWith('D');
                               const staffRow = !isVirtual ? (staffData || []).find(s => s.staff_id === rowId) : null;
                               const displayName = isVirtual ? '🎲 待認領' : (staffRow?.name || rowId);
+                              // 先取縮圖；若舊資料只有 avatar 主圖就用主圖（admin 看完整 doc，主圖一定在）
+                              const avatarSrc = staffRow?.avatar_thumb || staffRow?.avatar || null;
                               const { score, deductions } = calculateHealthScore(finalizedSchedule[rowId]);
 
                               return (
@@ -194,8 +196,8 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                                       <td className={`publish__td-staff${isVirtual ? ' publish__td-staff--virtual' : ''}`}>
                                           <div className="publish__staff-info">
                                               {!isVirtual && (
-                                                  staffRow?.avatar_thumb ? (
-                                                      <img src={staffRow.avatar_thumb} alt="" className="publish__staff-avatar" />
+                                                  avatarSrc ? (
+                                                      <img src={avatarSrc} alt="" className="publish__staff-avatar" />
                                                   ) : (
                                                       <div className="publish__staff-avatar publish__staff-avatar--fallback">
                                                           {(staffRow?.name || rowId).charAt(0).toUpperCase()}
