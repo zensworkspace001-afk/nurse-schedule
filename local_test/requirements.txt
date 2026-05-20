@@ -1,0 +1,4 @@
+# local_test 額外需要的依賴 — 不影響 production main1.py
+# 安裝：pip install -r local_test/requirements.txt
+streamlit==1.40.0
+pandas==2.2.3
