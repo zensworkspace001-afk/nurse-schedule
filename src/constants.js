@@ -14,13 +14,20 @@ export const SHIFT_TYPES = {
   '支援': { name: '支援', time: '依需求', color: '#D4AC0D', icon: Users, hours: 9 }
 };
 
+// 工時制度差異（程式碼依 special_status 套用）：
+//   Standard  — §30(1)  每日 8h、每週 40h、每 7 日 1 例假
+//   BiWeekly  — §30(2)  每日可達 10h、每週可達 48h（2 週 80h 重新分配）、例假規定同標準
+// 註：四週彈性 §30-1（容許例假間隔 12 工作日 / 連上 12 天）目前未實作；
+//     若未來開放，需另加 special_status 'FourWeek' 分支。
 export const LABOR_LAW_RULES = {
   MAX_DAILY_HOURS: 8,
+  MAX_DAILY_HOURS_BIWEEKLY: 10,
   MAX_WEEKLY_HOURS: 40,
-  MAX_WEEKLY_HOURS_WITH_BREAK: 45,
+  MAX_WEEKLY_HOURS_BIWEEKLY: 48,
   MAX_MONTHLY_OT: 46,
   MIN_REST_HOURS: 11,
   MAX_CONSECUTIVE_DAYS: 6,
+  MAX_RG_INTERVAL: 6,           // 標準與雙週皆同
   REQUIRED_DAYS_OFF_PER_4_WEEKS: 8,
   REQUIRED_REGULAR_DAYS: 4,
   REQUIRED_REST_DAYS: 4
@@ -112,13 +119,15 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
 
       currentWeekHours += dailyHours;
 
-// ★ 3. 加上 !isWeeklyViolationReported 條件，並且在報錯後把 flag 設為 true
-      if (currentWeekHours > 40 && !isWeeklyViolationReported) {
+      // 雙週彈性 §30(2)：可將 2 週內 2 天的工時挪到其他日，每日最多多排 2 小時、
+      // 每週上限放寬到 48 小時。標準工時則維持 40h。
+      const maxWeeklyHours = staff.special_status === 'BiWeekly' ? 48 : 40;
+      if (currentWeekHours > maxWeeklyHours && !isWeeklyViolationReported) {
           violations.push({
             staffId, staffName: staff?.name, day, type: 'WEEKLY_HOURS',
-            message: `⚠️ 每週工時超標：本週已於 ${day} 號累計達 ${currentWeekHours} 小時 (上限 40)`
+            message: `⚠️ 每週工時超標：本週已於 ${day} 號累計達 ${currentWeekHours} 小時 (上限 ${maxWeeklyHours})`
           });
-          isWeeklyViolationReported = true; // ★ 標記本週已經警告過了，這週剩下的日子不要再吵了
+          isWeeklyViolationReported = true;
       }
 
       // --- C. 統計休假天數與種類 ---
@@ -136,7 +145,10 @@ export const checkLaborLawCompliance = (schedule, staffData, historyData, year, 
       } else if (dailyHours > 0) {
           // 只有實際上班的格子才累計（D / E / N / 支援）
           daysSinceLastRG++;
-          const maxRgInterval = staff.special_status === 'BiWeekly' ? 12 : 6;
+          // 不論標準工時 §30(1) 或雙週彈性 §30(2)，例假規定都是「每 7 日 1 例假」，
+          // 即兩例假之間最多 6 個工作日。雙週制只放寬日/週工時，沒放寬例假頻率。
+          // （若未來開放四週彈性 §30-1，那條才容許到 12 工作日。）
+          const maxRgInterval = 6;
 
           if (daysSinceLastRG > maxRgInterval) {
               violations.push({
@@ -262,9 +274,9 @@ export const computeProximityWarnings = (schedule, staffData, year, month) => {
     let warnedConsecutive = false;
     let warnedRgInterval = false;
 
-    const maxRgInterval = staff.special_status === 'BiWeekly' ? 12 : 6;
+    // 對齊 checkLaborLawCompliance：標準與雙週制例假規定相同（兩例假最多隔 6 工作日）
+    const maxRgInterval = 6;
     // 連續工作合法上限為 6 天（連到第 7 天才違規），所以警示要在第 6 天才對得上「再 1 天就違規」。
-    // 原本寫 5 是把「合法上限」誤當成「違規門檻」。
     const consecutiveWarnAt = 6;
     const rgIntervalWarnAt = maxRgInterval - 1; // 距上限 1 天
 
