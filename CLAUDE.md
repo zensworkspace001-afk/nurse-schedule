@@ -28,14 +28,14 @@ Specs call `test.skip(...)` when creds are missing, so CI without secrets still 
 
 Dev server proxies `/api/*` requests to `https://nurse-schedule-bachelor.vercel.app` (configured in `vite.config.js`), so local frontend connects to the production Vercel serverless backend.
 
-**CP-SAT engine (separate Python microservice):**
+**SA scheduling engine (separate Python microservice):**
 
 ```bash
-pip install -r requirements.txt   # ortools + fastapi + firebase-admin
+pip install -r requirements.txt   # fastapi + firebase-admin (pure Python; no native deps)
 uvicorn main1:app --reload --port 8000
 ```
 
-Then set `VITE_CPSAT_URL=http://localhost:8000` in `.env.local` so SchedulePanel's 「CP-SAT 最佳化」 button hits the local instance instead of the deployed one. See `CPSAT_DEPLOY.md` for Render/Railway/Fly.io deployment.
+Then set `VITE_CPSAT_URL=http://localhost:8000` in `.env.local` so SchedulePanel's 「SA 最佳化排班」 button hits the local instance instead of the deployed one. (The env var name predates the SA migration — kept as `VITE_CPSAT_URL` so existing deployments don't break.) See `CPSAT_DEPLOY.md` for Render/Railway/Fly.io deployment.
 
 ## Environment Variables
 
@@ -46,9 +46,9 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — Firebase Admin SDK (backend only)
 - `CRON_SECRET` — Vercel Cron job authentication
 - `FIELD_ENC_KEY` — **AES-256-GCM master key for field-level encryption** (base64-encoded 32 bytes). Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Lose this and all encrypted fields are unrecoverable** — back it up offline. Used by `api/secure-field.js` and `scripts/migrate-encrypt.js`.
-- `VITE_CPSAT_URL` — Public URL of the CP-SAT microservice (e.g. `https://nurse-schedule-s0ro.onrender.com`). Read by `SchedulePanel` to call the optimizer. **Must also be added to `vercel.json` CSP `connect-src`** or production browser will block the fetch.
+- `VITE_CPSAT_URL` — Public URL of the SA scheduling microservice (e.g. `https://nurse-schedule-s0ro.onrender.com`). Variable name predates the algorithm swap; kept stable to avoid breaking existing Vercel/Render deployments. Read by `SchedulePanel` to call the optimizer. **Must also be added to `vercel.json` CSP `connect-src`** or production browser will block the fetch.
 
-**CP-SAT microservice env vars** (set on Render/Railway/Fly.io, NOT Vercel): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (mirror of Vercel values), `ALLOWED_ORIGINS` (CORS whitelist, comma-separated), `MAX_SOLVE_SECONDS` (default 60), `RATE_LIMIT_PER_MIN` (default 5).
+**SA microservice env vars** (set on Render/Railway/Fly.io, NOT Vercel): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (mirror of Vercel values), `ALLOWED_ORIGINS` (CORS whitelist, comma-separated), `SA_MAX_ITERATIONS` (default 20000), `RATE_LIMIT_PER_MIN` (default 5).
 
 ## Architecture
 
@@ -70,7 +70,7 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 - `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`, `AccessLogPanel` (稽核日誌 — admin-only viewer for `access_logs`)
 
 **Key components:**
-- `SchedulePanel` — Schedule generation workspace with two AI engines side-by-side: **Gemini** (LLM, generates anonymous virtual D-slot patterns) and **CP-SAT** (Google OR-Tools, direct assignment to real staff_id, see CP-SAT section below). Both render via the same chat-style UI.
+- `SchedulePanel` — Schedule generation workspace with two engines side-by-side: **Gemini** (LLM, generates anonymous virtual D-slot patterns) and **SA** (TLPS membrane + simulated annealing, direct assignment to real staff_id, see SA section below). Both render via the same chat-style UI.
 - `PublishPanel` — Publish schedule for staff to claim; supports single/bulk unassign of staff; staff column shows `avatar_thumb` next to name.
 - `ScheduleReviewPanel` — Historical schedule viewer, payroll settlement engine (base salary + OT + night bonus + level bonus 進階加給), health score calculator, Excel export. Staff name columns include avatars.
 - `StatisticsPanel` — Nurse-to-patient ratio monitoring (Taiwan 衛福部 regulations), AI cross-month analytics, agentic turn radar.
@@ -182,16 +182,18 @@ node scripts/migrate-encrypt.js --commit     # actually write
 
 Staff select shifts in a priority queue managed by AI (Gemini). `calculateAndNotifyNextStaff` in App.jsx builds a prompt with all candidate stats, calls Gemini to pick the most fatigued/deserving staff, writes to `SelectionTurn`, logs to `AI_Decision_Logs`, and sends email notification. Pregnant/nursing staff get absolute priority. `cron/check-timeout.js` auto-advances if no selection within 24h.
 
-### CP-SAT Optimization Engine (`main1.py`)
+### SA Optimization Engine (`main1.py`)
 
-Independent Python microservice (FastAPI + Google OR-Tools CP-SAT). Lives at repo root but **not deployed by Vercel** (see CSP/`.vercelignore` note). Complementary to the Gemini flow:
+Independent Python microservice (FastAPI + simulated annealing). Lives at repo root but **not deployed by Vercel** (see CSP/`.vercelignore` note). Complementary to the Gemini flow:
 
 - **Gemini path** (`api/gemini.js`): LLM generates anonymous `pattern` strings → frontend assigns virtual D-slot IDs → staff claim via agentic turn. Output is non-deterministic, retried up to 5 times client-side to pass the daily-headcount filter.
-- **CP-SAT path** (`main1.py`): Constraint solver computes mathematically optimal direct assignment to real `staff_id`. Output is deterministic (same input → same schedule), skips the claim flow, writes straight to `schedule` + `finalizedSchedule`.
+- **SA path** (`main1.py`): TLPS membrane representation + simulated annealing. Each day's D/E/N/OFF assignments live in 4 "membranes"; antiport (single-cell swap) and block antiport (3-day block swap) operators mutate the state, accepted by Boltzmann probability with cooling schedule. Direct assignment to real `staff_id`, writes straight to `schedule` + `finalizedSchedule`.
 
-`SchedulePanel` exposes both via side-by-side buttons (「生成 AI 班表」 purple, 「CP-SAT 最佳化」 teal). Admin chooses per generation.
+`SchedulePanel` exposes both via side-by-side buttons (「生成 AI 班表」 purple, 「SA 最佳化排班」 teal). Admin chooses per generation.
 
-CP-SAT model encodes: each-day-one-shift, illegal transitions (N→D/N→E/E→D), 七休一 (sliding 7-day window must contain off), post-night double off, 4-week ≥8 off + ≤27 work days, maternal/student E+N ban. Objective minimizes (shortfall × 100) + per-staff health penalties (consecutive-4-night −5, consecutive-6-work −5), with a per-staff penalty cap of 30 (guarantees ≥70 health score for everyone, may cause INFEASIBLE if conditions too strict).
+SA penalty function encodes hard rules with high weight (連續上班 >6 天 = 2000, 連續大夜 >3 天 = 1000, forbidden N→D/N→E/E→D = 1000, protected staff on E/N = 500000, FORCE_OFF/FORCE_WORK violation = 1000000) and soft preference (isolated rest = 50). Max 20000 iterations with early stop when penalty == 0. The file name remains `main1.py` (Render/Dockerfile reference it) — previous CP-SAT implementation has been replaced.
+
+⚠️ **No mathematical compliance guarantee** — unlike the prior CP-SAT version, SA may return a schedule with `stats.final_penalty > 0` (residual violations). `stats.violation_breakdown` itemizes which rules were broken; admin must manually review or re-run.
 
 Service exposes `GET /` (landing), `GET /health` (no auth), `POST /generate_schedule` (Firebase Bearer token required, 5/min/uid rate limit), `GET /docs` (Swagger UI for testing). See `CPSAT_DEPLOY.md` for full deployment + integration steps.
 
@@ -207,9 +209,9 @@ Three-layer security: (1) frontend route guard on session token, (2) zero-trust 
 
 Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron and rewrites all `/api/*` routes plus SPA fallback to `index.html`.
 
-`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, jsDelivr, **tfhub.dev + www.kaggle.com + storage.googleapis.com** (BlazeFace model weights), and **the CP-SAT microservice URL**. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
+`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, jsDelivr, **tfhub.dev + www.kaggle.com + storage.googleapis.com** (BlazeFace model weights), and **the SA microservice URL**. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
 
-`.vercelignore` excludes `main1.py`, `requirements.txt`, `Dockerfile`, and `CPSAT_DEPLOY.md` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` and runs `uv pip install`, which fails because ortools (~65MB wheel + libgomp native dep) doesn't fit in the 250MB unzipped lambda limit. Keep the files in git so Render/Railway can pull them.
+`.vercelignore` excludes `main1.py`, `requirements.txt`, `Dockerfile`, and `CPSAT_DEPLOY.md` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` and runs `uv pip install`, which is irrelevant work that just slows down the frontend deploy. Keep the files in git so Render/Railway can pull them.
 
 ### Legacy `server/` and `my-app/` Directories
 

@@ -6,11 +6,9 @@
 
 FROM python:3.12-slim
 
-# ortools 需要一些 C++ runtime；slim base image 沒有，要補
+# SA 演算法純 Python，不需要額外 native libs
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        libgomp1 \
-        ca-certificates \
+    apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

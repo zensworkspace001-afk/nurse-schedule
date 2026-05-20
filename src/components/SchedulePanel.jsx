@@ -163,14 +163,19 @@ const SchedulePanel = ({
   // 👆 ★★★ 補上這段就修復了！ ★★★ 👆
 
   // ============================================================================
-  // CP-SAT 最佳化排班（獨立微服務 main1.py via VITE_CPSAT_URL）
+  // 排班最佳化（獨立微服務 main1.py via VITE_CPSAT_URL）
   // ----------------------------------------------------------------------------
+  // 演算法：TLPS (Tissue-Like P-System) + 模擬退火 (SA)
+  //
   // 與 Gemini 路徑互補：
   //   - Gemini：LLM 生成「匿名 pattern」→ 員工選班認領 → 偏向模糊條件
-  //   - CP-SAT：數學求解「直接分配給每位員工」→ 確定性、合規保證 → 偏向硬條件
+  //   - SA：啟發式搜尋「直接分配給每位員工」→ 罰分極小化 → 大規模可用
   //
-  // 因為 CP-SAT 是分配最佳化，不是 pattern 生成，所以結果直接寫進 schedule 與
-  // finalizedSchedule 兩個 doc（員工不必再選），相當於 admin 自己排好的班表。
+  // 因為 SA 結果是直接分配（非虛擬 pattern），所以寫進 schedule 與
+  // finalizedSchedule 兩個 doc，員工不必再選。
+  //
+  // ⚠️ SA 不像 CP-SAT 有「數學保證合規」；若 stats.final_penalty > 0
+  // 代表還有殘留違規（會在 violation_breakdown 列出），admin 必須人工檢視。
   // ============================================================================
   const handleCpsatSolve = async () => {
     const cpsatUrl = import.meta.env.VITE_CPSAT_URL;
@@ -186,11 +191,11 @@ const SchedulePanel = ({
     );
 
     if (eligibleStaff.length < 3) {
-      alert(`❌ 在職員工只有 ${eligibleStaff.length} 人，CP-SAT 求解需要至少 3 人。`);
+      alert(`❌ 在職員工只有 ${eligibleStaff.length} 人，SA 求解需要至少 3 人。`);
       return;
     }
 
-    // 2. 找出受保護員工（孕/哺乳 + 實習生）—— 在 CP-SAT 內會被禁排 E/N
+    // 2. 找出受保護員工（孕/哺乳 + 實習生）—— 在 SA 內會被禁排 E/N（500000 罰分）
     const isPregnant = (s) => s.is_pregnant_or_nursing === true
       || s.is_pregnant_or_nursing === 'True' || s.is_pregnant_or_nursing === 'true';
     const protectedIndices = eligibleStaff
@@ -206,17 +211,17 @@ const SchedulePanel = ({
       daily_reqs: { 1: requirements.D || 0, 2: requirements.E || 0, 3: requirements.N || 0 },
       // custom_rules 留空白；之後若要把 customAiInstruction 接入，需要先用 LLM 解析成結構化規則
       custom_rules: [],
-      max_solve_seconds: 60,
+      max_iterations: 20000,
     };
 
-    // 3. 跑前再次跟 admin 確認：CP-SAT 會直接分配（無虛擬 D-slot、員工不能再選）
+    // 3. 跑前再次跟 admin 確認
     const okGo = window.confirm(
-      `🧮 CP-SAT 最佳化排班\n\n` +
+      `🧮 SA 模擬退火排班\n\n` +
       `將為 ${selectedYear}/${selectedMonth} 直接分配給 ${eligibleStaff.length} 位員工\n` +
       `（${protectedIndices.length} 人列為保護名單禁排 E/N）\n\n` +
       `⚠️ 不同於 AI 排班的「虛擬 pattern → 員工選班」流程：\n` +
-      `CP-SAT 會直接把班表分配到每位員工身上，員工只能看不能選。\n\n` +
-      `預估求解時間 5-60 秒，要繼續嗎？`
+      `SA 會直接把班表分配到每位員工身上，員工只能看不能選。\n\n` +
+      `預估運算時間 10-30 秒；若仍有違規會在訊息列列出，要繼續嗎？`
     );
     if (!okGo) return;
 
@@ -224,9 +229,9 @@ const SchedulePanel = ({
     setShowGemini(true);
     setGeminiMessages([{
       role: 'assistant',
-      content: `🧮 CP-SAT 求解中... (員工 ${eligibleStaff.length}、保護 ${protectedIndices.length}、班別需求 D=${payload.daily_reqs[1]}/E=${payload.daily_reqs[2]}/N=${payload.daily_reqs[3]})`
+      content: `🧮 SA 模擬退火進行中... (員工 ${eligibleStaff.length}、保護 ${protectedIndices.length}、班別需求 D=${payload.daily_reqs[1]}/E=${payload.daily_reqs[2]}/N=${payload.daily_reqs[3]})`
     }]);
-    setLoadingStatus('🧮 CP-SAT 求解器運算中（最多 60 秒）...');
+    setLoadingStatus('🧮 SA 退火運算中（最多 20000 次迭代）...');
 
     try {
       const token = await auth.currentUser.getIdToken();
@@ -242,7 +247,7 @@ const SchedulePanel = ({
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || `CP-SAT 服務回應 ${response.status}`);
+        throw new Error(data.detail || `排班服務回應 ${response.status}`);
       }
 
       // 4. 把 [{nurse_id, date, shift}] 轉回前端 schedule 結構：
@@ -251,7 +256,7 @@ const SchedulePanel = ({
       data.schedule.forEach(cell => {
         const day = parseInt(cell.date.split('-')[2], 10);
         if (!newSchedule[cell.nurse_id]) newSchedule[cell.nurse_id] = {};
-        // CP-SAT 的 'O' 代表休假，前端用 'OFF'；其他班別代碼一致
+        // 後端用 'O' 代表休假，前端用 'OFF'；其他班別代碼一致
         const type = cell.shift === 'O' ? 'OFF' : cell.shift;
         newSchedule[cell.nurse_id][day] = { type, time: '' };
       });
@@ -263,25 +268,30 @@ const SchedulePanel = ({
 
       const elapsedClient = ((Date.now() - t0) / 1000).toFixed(1);
       const stats = data.stats || {};
+      const compliant = stats.final_penalty === 0;
+      const breakdownLines = Object.entries(stats.violation_breakdown || {})
+        .map(([k, v]) => `  • ${k}: ${v} 處`).join('\n') || '  • 無';
+
       setGeminiMessages(prev => [...prev, {
         role: 'assistant',
         content:
-          `✅ CP-SAT 求解完成 (${data.solver_status})\n` +
+          `${compliant ? '✅' : '⚠️'} SA 收斂 (${data.solver_status})\n` +
           `⏱️ 伺服器運算 ${data.elapsed_seconds}s / 含網路 ${elapsedClient}s\n` +
-          `📊 目標函數值：${stats.objective_value}（越低越好；0 = 完美）\n` +
-          `🔢 search branches: ${stats.num_branches} / conflicts: ${stats.num_conflicts}\n\n` +
-          `班表已直接寫入「總班表」與「已發布班表」，可在 PublishPanel 檢視 / 微調。`
+          `📊 最終罰分：${stats.final_penalty}（0 = 完全合規）\n` +
+          `🔄 最佳解出現在第 ${stats.best_iteration}/${stats.max_iterations} 次迭代\n` +
+          `🌡️ 退火接受 ${stats.accepted_worse_swaps} 次次優 / 拒絕 ${stats.rejected_swaps} 次\n` +
+          `📋 殘留違規類別：\n${breakdownLines}\n\n` +
+          `班表已寫入「總班表」與「已發布班表」，可在 PublishPanel 檢視/微調。${compliant ? '' : '\n⚠️ 有違規需人工調整。'}`
       }]);
     } catch (err) {
-      console.error('CP-SAT 排班失敗:', err);
+      console.error('SA 排班失敗:', err);
       setGeminiMessages(prev => [...prev, {
         role: 'assistant',
-        content: `❌ CP-SAT 求解失敗：\n${err.message}\n\n` +
+        content: `❌ SA 排班失敗：\n${err.message}\n\n` +
           `常見原因：\n` +
           `• 微服務未啟動（檢查 VITE_CPSAT_URL 是否能 ping 通）\n` +
-          `• 條件過於嚴苛（試試降低 D/E/N 人力需求）\n` +
-          `• 員工人數不足（保護名單佔比過高）\n` +
-          `• 60 秒內找不到解（model 太大，調高 max_solve_seconds）`
+          `• 人力不足：每日需要 D+E+N 人，但員工總數不夠\n` +
+          `• 保護名單過多：保護員工 + E/N 需求人數超過總員工數`
       }]);
     } finally {
       setProcessing(false);
@@ -706,15 +716,15 @@ const handleCellChange = (staffId, day, newValue) => {
            {/* ★ 確保這裡綁定的是 handleGeminiSolveClick */}
            <button id="gemini-trigger-btn" onClick={handleGeminiSolveClick} disabled={processing} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--generate">{processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Sparkles size={16} /> 生成 AI 班表</>}</button>
 
-           {/* CP-SAT 數學最佳化排班（獨立微服務 main1.py）— 與 AI 排班並列、互補 */}
+           {/* SA 模擬退火排班（獨立微服務 main1.py）— 與 Gemini 並列、互補 */}
            <button
               id="cpsat-trigger-btn"
               onClick={handleCpsatSolve}
               disabled={processing}
               className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--cpsat"
-              title="CP-SAT 約束求解器：數學保證合規，直接分配到員工（跳過虛擬選班）"
+              title="SA 模擬退火求解器：罰分最小化，直接分配到員工（跳過虛擬選班）"
            >
-              {processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Calculator size={16} /> CP-SAT 最佳化</>}
+              {processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Calculator size={16} /> SA 最佳化排班</>}
            </button>
 
            <button onClick={handleClearAll} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--clear"><Trash2 size={14} /> 清空舊班表</button>

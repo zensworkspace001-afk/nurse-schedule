@@ -1,12 +1,14 @@
-# CP-SAT 排班引擎部署指南
+# SA 排班引擎部署指南
 
-`main1.py` 是獨立的 FastAPI 微服務，用 Google OR-Tools CP-SAT 求解器算出**數學最佳化**的班表。跟 Vercel 上的 `api/gemini.js`（LLM 流程）並存，admin 可以在 UI 上二選一。
+`main1.py` 是獨立的 FastAPI 微服務，用 **TLPS (Tissue-Like P-System) 細胞膜表示法 + 模擬退火 (SA)** 找出罰分最低的班表。跟 Vercel 上的 `api/gemini.js`（LLM 流程）並存，admin 可以在 UI 上二選一。
+
+> ℹ️ **歷史記錄**：此檔案以前是 CP-SAT (Google OR-Tools) 版本，於 2026 年改為 SA。檔名 `CPSAT_DEPLOY.md` 與環境變數 `VITE_CPSAT_URL` 為向下相容刻意保留。
 
 ## 為什麼分開部署
 
-- ortools 套件約 65 MB，撞 Vercel Python serverless 50 MB 警戒
-- CP-SAT 求解最久跑 60 秒，遠超 Vercel Hobby 的 10 秒上限
+- SA 求解最久跑 ~30 秒，超過 Vercel Hobby 的 10 秒上限
 - 計算密集型任務適合常駐進程，省去每次冷啟動
+- 排班邏輯與前端解耦，未來換演算法不影響 Vercel 函式數上限
 
 ## 三種部署方式擇一
 
@@ -109,10 +111,10 @@ uvicorn main1:app --reload --port 8000
   "protected_indices": [0],
   "daily_reqs": {"1": 5, "2": 4, "3": 3},
   "custom_rules": [
-    {"date": "2026-05-15", "action": "UPDATE_DEMAND", "shift": "D", "new_value": 8},
-    {"date": "2026-05-20", "action": "FORCE_OFF", "nurse_id": "N02"}
+    {"date": "2026-05-20", "action": "FORCE_OFF", "nurse_id": "N02"},
+    {"date": "2026-05-21", "action": "FORCE_WORK", "nurse_id": "N03", "shift": "D"}
   ],
-  "max_solve_seconds": 30
+  "max_iterations": 20000
 }
 ```
 
@@ -121,22 +123,27 @@ uvicorn main1:app --reload --port 8000
 {
   "status": "success",
   "solver_status": "OPTIMAL",
-  "elapsed_seconds": 4.32,
+  "elapsed_seconds": 12.7,
   "schedule": [
     {"nurse_id": "N01", "date": "2026-05-01", "shift": "D"},
     ...
   ],
   "stats": {
-    "objective_value": 12,
+    "final_penalty": 0,
+    "best_iteration": 8423,
+    "max_iterations": 20000,
+    "accepted_worse_swaps": 1245,
+    "rejected_swaps": 6712,
+    "violation_breakdown": {},
     "num_days": 31,
-    "num_nurses": 3,
-    "num_branches": 1284,
-    "num_conflicts": 87
+    "num_nurses": 3
   }
 }
 ```
 
-**Response 400**：條件過於嚴苛、無可行解
+`solver_status` 規則：`OPTIMAL` = final_penalty==0（完美合規）；`FEASIBLE` = final_penalty>0（有殘留違規）。`violation_breakdown` 列出殘留違規類別與次數。
+
+**Response 400**：人力或保護名單顯然不足（pre-flight 擋下）
 **Response 401**：Firebase token 無效
 **Response 429**：求解請求過於頻繁（5/分鐘上限）
 
@@ -155,4 +162,5 @@ uvicorn main1:app --reload --port 8000
 - 求解失敗會印 `求解失敗 ...` 與 solver status
 
 如果常常 429 → 把 `RATE_LIMIT_PER_MIN` 環境變數調高（預設 5）。
-如果常常 timeout → 把 `MAX_SOLVE_SECONDS` 調高（預設 60，上限 120）。
+如果罰分老是降不到 0 → 把 `SA_MAX_ITERATIONS` 調高（預設 20000）讓退火跑更久。
+如果連 0 都搆不到 → 檢查 `violation_breakdown` 哪條規則卡死，多半是人力不足或保護名單過多。
