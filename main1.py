@@ -324,6 +324,76 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
         objective_penalties.append(total_nurse_penalty)
 
     model.Minimize(sum(objective_penalties))
+    # ==========================================
+    # [進階品質區] 讓班表更符合人類作息 (軟限制懲罰)
+    # ==========================================
+    
+    # 計算本月每人「理論上」應該上幾天班
+    # 總需求班數 / 總人數
+    total_shifts_needed = sum(sum(reqs.values()) for reqs in target_reqs.values())
+    avg_shifts_per_nurse = total_shifts_needed // num_nurses
+
+    for n in range(num_nurses):
+        # ---------------------------------------------------
+        # 優化 1：勞逸平均 (每個人總班數不能差太多)
+        # ---------------------------------------------------
+        total_work = sum(work[(n, d, s)] for d in range(num_days) for s in work_shifts)
+        
+        # 計算與平均值的差距 (絕對值)
+        # 差距越大，扣分越重 (權重設為 50)
+        over_work = model.NewIntVar(0, num_days, f'over_work_n{n}')
+        under_work = model.NewIntVar(0, num_days, f'under_work_n{n}')
+        model.Add(total_work - avg_shifts_per_nurse == over_work - under_work)
+        
+        objective_penalties.append(over_work * 50)
+        objective_penalties.append(under_work * 50)
+
+        # ---------------------------------------------------
+        # 優化 2：盡量避免「孤立休假」 (上-休-上)
+        # ---------------------------------------------------
+        # 護理師喜歡連休。如果出現單獨一天的休假，給予輕微懲罰 (權重 20)
+        for d in range(1, num_days - 1):
+            is_isolated_off = model.NewBoolVar(f'isolated_off_n{n}_d{d}')
+            
+            # 昨天有上班
+            worked_yesterday = model.NewBoolVar(f'wy_n{n}_d{d}')
+            model.Add(sum(work[(n, d-1, s)] for s in work_shifts) == 1).OnlyEnforceIf(worked_yesterday)
+            model.Add(sum(work[(n, d-1, s)] for s in work_shifts) == 0).OnlyEnforceIf(worked_yesterday.Not())
+            
+            # 明天有上班
+            worked_tomorrow = model.NewBoolVar(f'wt_n{n}_d{d}')
+            model.Add(sum(work[(n, d+1, s)] for s in work_shifts) == 1).OnlyEnforceIf(worked_tomorrow)
+            model.Add(sum(work[(n, d+1, s)] for s in work_shifts) == 0).OnlyEnforceIf(worked_tomorrow.Not())
+            
+            # 今天休假
+            off_today = work[(n, d, off_shift)]
+            
+            # 如果 (昨天上班 AND 今天休假 AND 明天上班) 成立，則 is_isolated_off 為 True
+            model.AddBoolAnd([worked_yesterday, off_today, worked_tomorrow]).OnlyEnforceIf(is_isolated_off)
+            
+            objective_penalties.append(is_isolated_off * 20)
+
+        # ---------------------------------------------------
+        # 優化 3：盡量維持同一種班別，減少「花花班」
+        # ---------------------------------------------------
+        # 舉例：如果昨天是白班，今天變成小夜班，就扣分 (權重 10)
+        # 鼓勵模型排出 D-D-D-O-E-E-E 這種整齊的區塊
+        for d in range(num_days - 1):
+            for s in work_shifts:
+                # 換班偵測：昨天上 s 班，但今天上「非 s 班」也「不是休假」
+                changed_shift = model.NewBoolVar(f'changed_shift_n{n}_d{d}_s{s}')
+                
+                worked_s_yesterday = work[(n, d, s)]
+                
+                # 今天不是 s，也不是休假 (代表換了別的班別)
+                other_shifts_today = sum(work[(n, d+1, other_s)] for other_s in work_shifts if other_s != s)
+                is_other_shift_today = model.NewBoolVar(f'is_other_n{n}_d{d}')
+                model.Add(other_shifts_today == 1).OnlyEnforceIf(is_other_shift_today)
+                model.Add(other_shifts_today == 0).OnlyEnforceIf(is_other_shift_today.Not())
+                
+                model.AddBoolAnd([worked_s_yesterday, is_other_shift_today]).OnlyEnforceIf(changed_shift)
+                
+                objective_penalties.append(changed_shift * 10)
 
     # ==========================================
     # 求解

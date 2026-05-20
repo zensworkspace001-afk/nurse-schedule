@@ -1,0 +1,147 @@
+{
+  "misaligned": [
+    {
+      "staffId": "N001",
+      "oldUid": "XhXiLpHnL3RjuVwS44m9HDQnNA52",
+      "loginEmail": "n001@hospital.com",
+      "name": "吳燕萍",
+      "notifyEmail": "zensworkspace001@gmail.com",
+      "disabled": false
+    },
+    {
+      "staffId": "N002",
+      "oldUid": "OwPLdpisFlMFOL5MnJNuz00sh9m1",
+      "loginEmail": "n002@hospital.com",
+      "name": "韓善歌",
+      "notifyEmail": "zensworkspace001@gmail.com",
+      "disabled": false
+    },
+    {
+      "staffId": "N003",
+      "oldUid": "67Volw5UJwexeLXPBd1njSUDlSi2",
+      "loginEmail": "n003@hospital.com",
+      "name": "蚵嫂高",
+      "notifyEmail": "zensworkspace001@gmail.com",
+      "disabled": false
+    }
+  ],
+  "aligned": [
+    {
+      "staffId": "N004",
+      "uid": "N004"
+    },
+    {
+      "staffId": "N005",
+      "uid": "N005"
+    },
+    {
+      "staffId": "N006",
+      "uid": "N006"
+    },
+    {
+      "staffId": "N007",
+      "uid": "N007"
+    },
+    {
+      "staffId": "N008",
+      "uid": "N008"
+    },
+    {
+      "staffId": "N009",
+      "uid": "N009"
+    },
+    {
+      "staffId": "N010",
+      "uid": "N010"
+    },
+    {
+      "staffId": "N011",
+      "uid": "N011"
+    },
+    {
+      "staffId": "N012",
+      "uid": "N012"
+    },
+    {
+      "staffId": "N013",
+      "uid": "N013"
+    },
+    {
+      "staffId": "N014",
+      "uid": "N014"
+    },
+    {
+      "staffId": "N015",
+      "uid": "N015"
+    },
+    {
+      "staffId": "N016",
+      "uid": "N016"
+    },
+    {
+      "staffId": "N017",
+      "uid": "N017"
+    },
+    {
+      "staffId": "N018",
+      "uid": "N018"
+    },
+    {
+      "staffId": "N019",
+      "uid": "N019"
+    },
+    {
+      "staffId": "N020",
+      "uid": "N020"
+    },
+    {
+      "staffId": "N021",
+      "uid": "N021"
+    },
+    {
+      "staffId": "N022",
+      "uid": "N022"
+    },
+    {
+      "staffId": "N023",
+      "uid": "N023"
+    },
+    {
+      "staffId": "N024",
+      "uid": "N024"
+    },
+    {
+      "staffId": "N025",
+      "uid": "N025"
+    },
+    {
+      "staffId": "N026",
+      "uid": "N026"
+    },
+    {
+      "staffId": "N027",
+      "uid": "N027"
+    },
+    {
+      "staffId": "N028",
+      "uid": "N028"
+    },
+    {
+      "staffId": "N029",
+      "uid": "N029"
+    },
+    {
+      "staffId": "N030",
+      "uid": "N030"
+    },
+    {
+      "staffId": "N031",
+      "uid": "N031"
+    },
+    {
+      "staffId": "N032",
+      "uid": "N032"
+    }
+  ],
+  "missing": []
+}
