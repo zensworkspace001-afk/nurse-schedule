@@ -45,6 +45,16 @@ PENALTY = {
     # Level 2：個人健康分數 < 70（deficit > 30）視為過勞，接近天譴罰分。
     #          照 main2.py / TLPS 原始設計，保證沒有單一員工被排到極端。
     "health_floor_breach":  50000,
+
+    # —— 客製化規則（比勞基法嚴）——
+    # 每月 RG 必須恰好 4~5 天（已有 < 4 觸發 insufficient_rg；補 > 5 上限）
+    "excess_rg":            1500,   # RG > 5
+    # 每月 RC 必須恰好 4~5 天（insufficient_off 只看 RG+RC 總量，這條獨立控 RC）
+    "insufficient_rc":      1500,   # RC < 4
+    "excess_rc":            1500,   # RC > 5
+    # 同一位護理師整月班表只能出現一種工作班別（D / E / N 三選一）
+    # 對應 Gemini prompt 內的「每個護理人員班表僅能出現一種班別」設定。
+    "mixed_work_shifts":    5000,
 }
 
 # JS 違規類型 → SA penalty key 的對照表，給 run_sa_with_feedback() 用
@@ -154,22 +164,67 @@ def run_sa(
     rg_mem = {d: [] for d in range(1, num_days + 1)}
     rc_mem = {d: [] for d in range(1, num_days + 1)}
 
+    # —— 對齊「mixed_work_shifts」規則：預先把每位護理師指派到一種工作班別 ——
+    # 隨機 init 會讓同一個人在 D/E/N 三個 mem 之間散亂，mixed_work_shifts 罰分
+    # 在 round 0 就大爆。先依需求比例切人，給 SA 一個合法起點。
+    non_prot_list = [nid for nid in nurses if nid not in protected_ids]
+    random.shuffle(non_prot_list)
+    total_demand = max(1, req_D + req_E + req_N)
+    target_d = max(req_D, round(num_nurses * req_D / total_demand))
+    target_e = max(req_E, round(num_nurses * req_E / total_demand))
+    target_n = max(req_N, round(num_nurses * req_N / total_demand))
+    # 調整總和到 num_nurses（多就削最大、少就補 D）
+    while target_d + target_e + target_n > num_nurses:
+        if target_d >= max(target_e, target_n) and target_d > req_D: target_d -= 1
+        elif target_e >= target_n and target_e > req_E: target_e -= 1
+        elif target_n > req_N: target_n -= 1
+        else: break  # 三個都剛好等於 req，無法再削（人力極緊，後面會自動處理）
+    while target_d + target_e + target_n < num_nurses:
+        target_d += 1  # 多餘人手都當 D
+
+    # 保護名單一律分到 D
+    d_pool = list(protected_ids)
+    remaining_d = max(0, target_d - len(d_pool))
+    idx = 0
+    d_pool.extend(non_prot_list[idx:idx + remaining_d]); idx += remaining_d
+    e_pool = non_prot_list[idx:idx + target_e]; idx += target_e
+    n_pool = non_prot_list[idx:idx + target_n]; idx += target_n
+    if idx < len(non_prot_list):
+        d_pool.extend(non_prot_list[idx:])
+
+    if len(e_pool) < req_E or len(n_pool) < req_N:
+        raise ValueError(
+            f"班別專一性 + 人力配置不可解："
+            f"E pool {len(e_pool)} 人 < req_E {req_E}，"
+            f"或 N pool {len(n_pool)} 人 < req_N {req_N}。"
+            "需要：放寬保護名單、降低 E/N 人力需求、或增加員工人數。"
+        )
+
+    # 記住每位護理師的「主班別」— 給 mutation 用，確保 swap 不會跨類型
+    nurse_home_type: Dict[str, str] = {}
+    for nid in d_pool: nurse_home_type[nid] = "D"
+    for nid in e_pool: nurse_home_type[nid] = "E"
+    for nid in n_pool: nurse_home_type[nid] = "N"
+    nurses_by_type = {
+        "D": list(d_pool),
+        "E": list(e_pool),
+        "N": list(n_pool),
+    }
+
+    # 每天從各 pool 抽出所需人數，沒當班的全進 RG/RC
     for d in range(1, num_days + 1):
-        non_prot = [nid for nid in nurses if nid not in protected_ids]
-        prot = list(protected_ids)
-        random.shuffle(non_prot)
-        random.shuffle(prot)
-        for _ in range(req_E): e_mem[d].append(non_prot.pop())
-        for _ in range(req_N): n_mem[d].append(non_prot.pop())
-        pool_for_d = non_prot + prot
-        random.shuffle(pool_for_d)
-        for _ in range(req_D): m_mem[d].append(pool_for_d.pop())
-        # 剩下的人均分到 RG / RC（50/50；SA penalty 會調整到符合月度配額）
-        rest_pool = pool_for_d
-        random.shuffle(rest_pool)
-        half = len(rest_pool) // 2
-        rg_mem[d].extend(rest_pool[:half])
-        rc_mem[d].extend(rest_pool[half:])
+        d_today = random.sample(d_pool, req_D)
+        e_today = random.sample(e_pool, req_E)
+        n_today = random.sample(n_pool, req_N)
+        m_mem[d] = list(d_today)
+        e_mem[d] = list(e_today)
+        n_mem[d] = list(n_today)
+        on_duty = set(d_today + e_today + n_today)
+        off_duty = [nid for nid in nurses if nid not in on_duty]
+        random.shuffle(off_duty)
+        half = len(off_duty) // 2
+        rg_mem[d] = off_duty[:half]
+        rc_mem[d] = off_duty[half:]
 
     # 解析 custom_rules
     force_off: List[Tuple[str, int]] = []
@@ -275,16 +330,31 @@ def run_sa(
                 total += W["monthly_hours_over_222"]
                 breakdown["monthly_hours_over_222"] += 1
 
-            # 月例假 ≥ 4 天（只算 RG！）
+            # 月例假 RG / 月休息日 RC 雙邊範圍 [4, 5]
             rg_count = sum(1 for s in sched if s == "RG")
             rc_count = sum(1 for s in sched if s == "RC")
             if rg_count < 4:
                 total += W["insufficient_rg"]
                 breakdown["insufficient_rg"] += 1
-            # 月 RG + RC ≥ 8 天
+            if rg_count > 5:
+                total += W["excess_rg"]
+                breakdown["excess_rg"] += 1
+            if rc_count < 4:
+                total += W["insufficient_rc"]
+                breakdown["insufficient_rc"] += 1
+            if rc_count > 5:
+                total += W["excess_rc"]
+                breakdown["excess_rc"] += 1
+            # 月 RG + RC ≥ 8 天（給寬鬆模式留著；嚴格模式被上面 4 條覆蓋）
             if (rg_count + rc_count) < 8:
                 total += W["insufficient_off"]
                 breakdown["insufficient_off"] += 1
+
+            # 班別專一性：同一位整月只能出現一種工作班別（D xor E xor N）
+            work_types_used = set(s for s in sched if s in WORK)
+            if len(work_types_used) > 1:
+                total += W["mixed_work_shifts"]
+                breakdown["mixed_work_shifts"] += 1
 
         sched_cache = {nid: get_sched(nid, mm, em, nm, rgm, rcm) for nid in nurses}
         for (nid, d) in force_off:
@@ -299,29 +369,49 @@ def run_sa(
 
         return total, dict(breakdown)
 
+    work_mem_of = {"D": m_mem, "E": e_mem, "N": n_mem}
+
     def antiport(day, mm, em, nm, rgm, rcm):
-        # 5 個 membrane 之間任選 2 個 swap；RG↔RC 的 swap 等於「換鋪別但不換工作」
-        mems = [mm, em, nm, rgm, rcm]
-        a, b = random.sample(mems, 2)
-        if a[day] and b[day]:
-            x = random.choice(a[day])
-            y = random.choice(b[day])
-            a[day].remove(x); a[day].append(y)
-            b[day].remove(y); b[day].append(x)
+        # 班別專一性版本：只在同類型內 swap。流程：
+        #   1. 隨機挑一個 type（D/E/N）
+        #   2. 從該 type pool 抽 2 個護理師
+        #   3. 兩人目前所在的 mem 必須在 {該 type 的 work_mem, RG, RC} 三選一
+        #      （依 init 與 mutation 不變式，這必定成立）
+        #   4. 若兩人在不同 mem，swap；同 mem 則跳過
+        # 結果：D 類型的護理師永遠不會被搬到 E_mem，自然避免 mixed_work_shifts。
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return
+        n1, n2 = random.sample(same_type, 2)
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
+        m1 = next((m for m in candidates if n1 in m[day]), None)
+        m2 = next((m for m in candidates if n2 in m[day]), None)
+        if m1 is None or m2 is None or m1 is m2:
+            return
+        m1[day].remove(n1); m1[day].append(n2)
+        m2[day].remove(n2); m2[day].append(n1)
 
     def block_antiport(mm, em, nm, rgm, rcm, block=3):
+        # 同邏輯但跨連續多天
         if num_days < block:
             return
         start = random.randint(1, num_days - block + 1)
-        x, y = random.sample(nurses, 2)
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return
+        n1, n2 = random.sample(same_type, 2)
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
         for d in range(start, start + block):
-            sx, sy = None, None
-            for mem in (mm, em, nm, rgm, rcm):
-                if x in mem[d]: sx = mem
-                if y in mem[d]: sy = mem
-            if sx is not None and sy is not None and sx is not sy:
-                sx[d].remove(x); sx[d].append(y)
-                sy[d].remove(y); sy[d].append(x)
+            m1 = next((m for m in candidates if n1 in m[d]), None)
+            m2 = next((m for m in candidates if n2 in m[d]), None)
+            if m1 is None or m2 is None or m1 is m2:
+                continue
+            m1[d].remove(n1); m1[d].append(n2)
+            m2[d].remove(n2); m2[d].append(n1)
 
     current_p, _ = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
     best_p = current_p

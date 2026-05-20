@@ -32,16 +32,16 @@ from health import calculate_team_health
 # 樣本員工資料（跟 run_demo.py 同步）
 # ============================================================
 SAMPLE_STAFF = [
-    {"staff_id": "N001", "name": "王小明", "tenure_years": 5,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N002", "name": "陳美麗", "tenure_years": 3,  "special_status": "Standard", "is_pregnant_or_nursing": True,  "leave_status": "None"},
-    {"staff_id": "N003", "name": "李志強", "tenure_years": 8,  "special_status": "BiWeekly", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N004", "name": "張慧君", "tenure_years": 2,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N005", "name": "黃志雄", "tenure_years": 10, "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N006", "name": "林雅婷", "tenure_years": 1,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N007", "name": "吳建宏", "tenure_years": 6,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N008", "name": "蘇佩玲", "tenure_years": 4,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
-    {"staff_id": "N009", "name": "周大維", "tenure_years": 0,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "Student"},
-    {"staff_id": "N010", "name": "鄭欣怡", "tenure_years": 7,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N001", "name": "N001", "tenure_years": 5,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N002", "name": "N002", "tenure_years": 3,  "special_status": "Standard", "is_pregnant_or_nursing": True,  "leave_status": "None"},
+    {"staff_id": "N003", "name": "N003", "tenure_years": 8,  "special_status": "BiWeekly", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N004", "name": "N004", "tenure_years": 2,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N005", "name": "N005", "tenure_years": 10, "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N006", "name": "N006", "tenure_years": 1,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N007", "name": "N007", "tenure_years": 6,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N008", "name": "N008", "tenure_years": 4,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N009", "name": "N009", "tenure_years": 0,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "Student"},
+    {"staff_id": "N010", "name": "N010", "tenure_years": 7,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
 ]
 
 SHIFT_COLORS = {
@@ -75,7 +75,7 @@ def _schedule_to_df(schedule_list, nurses, num_days, name_map):
 
     rows = []
     for nid in nurses:
-        row = {"員工": f"{nid} {name_map[nid]}"}
+        row = {"員工": nid}
         for d in range(1, num_days + 1):
             row[str(d)] = by_nurse[nid].get(d, "?")
         rows.append(row)
@@ -300,7 +300,7 @@ with tab_health:
     for nid in nurses:
         h = health["per_staff"][nid]
         score_rows.append({
-            "員工": f"{nid} {name_map[nid]}",
+            "員工": nid,
             "分數": h["score"],
             "扣分項目數": len(h["deductions"]),
         })
@@ -327,7 +327,7 @@ with tab_health:
         h = health["per_staff"][nid]
         if not h["deductions"]:
             continue
-        with st.expander(f"[{nid}] {name_map[nid]} — {h['score']} 分（扣 {len(h['deductions'])} 項）"):
+        with st.expander(f"[{nid}] {nid} — {h['score']} 分（扣 {len(h['deductions'])} 項）"):
             for d in h["deductions"]:
                 st.markdown(f"- {d}")
 
