@@ -9,9 +9,15 @@ import math
 import random
 import copy
 import calendar
+import sys
+import os
 from typing import List, Dict, Tuple
 from collections import defaultdict
 from time import time
+
+# 確保跑 `python local_test/scheduler.py` 或被別處 import 時都能找到 health module
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from health import calculate_health_score
 
 
 PENALTY = {
@@ -31,6 +37,14 @@ PENALTY = {
     "insufficient_rg":      1500,   # 月 RG (O) < 4 天
     "insufficient_off":      800,   # 月 RG+RC < 8 天
     "rg_interval_over_6":   1000,   # 兩 RG 之間 > 6 工作日
+
+    # —— 健康度移植（health.py calculate_health_score 的 SA 化）——
+    # Level 1：團隊整體健康度當軟提示。每位員工 (100 - 健康分數) × 5
+    #          鼓勵 SA 找出 health score 高的方案，跟硬規則互補。
+    "health_deficit_per_point": 5,
+    # Level 2：個人健康分數 < 70（deficit > 30）視為過勞，接近天譴罰分。
+    #          照 main2.py / TLPS 原始設計，保證沒有單一員工被排到極端。
+    "health_floor_breach":  50000,
 }
 
 # JS 違規類型 → SA penalty key 的對照表，給 run_sa_with_feedback() 用
@@ -217,6 +231,25 @@ def run_sa(
                     total += W["isolated_off"]
                     breakdown["isolated_off"] += 1
 
+            # 【健康度移植 Level 1+2】
+            # 直接呼叫 health.py 的 calculate_health_score 計算這位員工的健康度。
+            # 為什麼 SA 內部要重算（而不是事後 report）：因為 SA 在 20000 次迭代中
+            # 每次都要評估「目前班表好不好」，要把健康度當決策訊號就必須進 evaluate。
+            # 性能成本：~100 μs / 員工 / 次，10 員工 × 20000 iter ≈ 額外 20 秒，
+            # 可接受。若要極限優化可改成 incremental update（只算被 swap 影響的兩位）。
+            #
+            # Level 1：每扣 1 分健康度 → 5 penalty（軟提示，鼓勵高分方案）
+            # Level 2：deficit > 30（即 health_score < 70）→ 個人天花板炸開，
+            #          50000 罰分等於告訴 SA 這個方案絕對不要再考慮。
+            hr = calculate_health_score(sched)
+            deficit = 100 - hr["score"]
+            if deficit > 0:
+                total += deficit * W["health_deficit_per_point"]
+                breakdown["health_deficit_per_point"] += deficit
+            if deficit > 30:
+                total += W["health_floor_breach"]
+                breakdown["health_floor_breach"] += 1
+
             # 【新】每週工時 40h 上限（簡化版 — 統一用 Standard 制 40h；
             # BiWeekly 48h 因為 SA 沒拿到 staff_data，先不區分）
             for week_start in range(0, num_days, 7):
@@ -370,6 +403,7 @@ def run_sa_with_feedback(
     seed: int = None,
     max_rounds: int = 3,
     multiplier: float = 1.5,
+    initial_weight_overrides: Dict[str, int] = None,
 ) -> Dict:
     """
     跑 SA → 用 JS 端 check_labor_law_compliance 驗證 → 若有違規，把對應 SA 罰分
@@ -389,7 +423,9 @@ def run_sa_with_feedback(
     from compliance import check_labor_law_compliance
     from collections import Counter
 
-    weight_overrides: Dict[str, int] = {}
+    # 起手 overrides — 通常用來灌進健康度開關（health_deficit_per_point=0 等於停用）。
+    # auto-tighten 後續加重時會疊加在這之上。
+    weight_overrides: Dict[str, int] = dict(initial_weight_overrides or {})
     history = []
     result = None
 

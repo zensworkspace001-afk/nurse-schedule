@@ -125,6 +125,18 @@ with st.sidebar:
     seed = st.number_input("種子值", value=42, min_value=0, max_value=99999) if seed_mode == "固定 (可重現)" else None
 
     st.divider()
+    st.subheader("💪 健康度約束")
+    use_health = st.checkbox(
+        "啟用健康度規則 (Level 1+2)",
+        value=True,
+        help=(
+            "Level 1：每扣 1 分健康度 → 5 penalty（軟提示，鼓勵高健康分數）。\n"
+            "Level 2：個人健康分數 < 70 → 50000 天譴罰分（強制疲勞均分）。\n"
+            "取消勾選 = 把這兩條權重設 0，SA 完全不管健康度。"
+        ),
+    )
+
+    st.divider()
     st.subheader("🔁 自動加重 (feedback loop)")
     use_feedback = st.checkbox(
         "啟用 auto-tighten",
@@ -174,9 +186,23 @@ spinner_msg = (
     if use_feedback
     else f"🧮 SA 退火運算中（最多 {iters} 次迭代）..."
 )
+
+# 健康度 toggle 透過 weight_overrides 把兩條健康規則的權重壓 0 來停用
+base_overrides = {} if use_health else {
+    "health_deficit_per_point": 0,
+    "health_floor_breach": 0,
+}
+
 with st.spinner(spinner_msg):
     try:
         if use_feedback:
+            # auto-tighten 路徑：每輪都重新疊加 health overrides + auto-tighten overrides
+            # 把 base_overrides 透過 monkey-patching weight_overrides 起手值的方式注入
+            # （run_sa_with_feedback 內部會自己疊加加重的 overrides；這裡作為初始值）
+            from scheduler import run_sa as _run_sa_raw, run_sa_with_feedback as _wrap
+            # 簡單做法：feedback loop 跑完後不影響 health overrides，因為 health 沒在
+            # JS_TO_SA_MAP 裡所以 auto-tighten 不會碰它。在 run_sa_with_feedback 開頭
+            # 傳入初始 overrides 即可。
             result = run_sa_with_feedback(
                 year=year, month=month,
                 nurses=nurses, staff_data=SAMPLE_STAFF,
@@ -185,6 +211,7 @@ with st.spinner(spinner_msg):
                 custom_rules=[],
                 max_iterations=iters, seed=seed,
                 max_rounds=max_rounds, multiplier=multiplier,
+                initial_weight_overrides=base_overrides,
             )
         else:
             result = run_sa(
@@ -193,6 +220,7 @@ with st.spinner(spinner_msg):
                 daily_reqs={1: d_req, 2: e_req, 3: n_req},
                 custom_rules=[],
                 max_iterations=iters, seed=seed,
+                weight_overrides=base_overrides,
             )
     except ValueError as e:
         st.error(f"❌ Pre-flight 攔截：{e}")
