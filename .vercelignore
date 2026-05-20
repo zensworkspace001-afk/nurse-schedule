@@ -1,0 +1,13 @@
+# CP-SAT 微服務檔案 — 部署到 Render / Railway / Fly.io，不歸 Vercel 管。
+# 若不排除，Vercel 看到 requirements.txt + main1.py 會嘗試 uv pip install ortools，
+# 但 ortools 在 Vercel Python runtime 撞 250MB lambda 限制，build 直接掛掉。
+main1.py
+requirements.txt
+Dockerfile
+CPSAT_DEPLOY.md
+
+# 也順便排除其他不該上 Vercel 的本機檔案
+my-app/
+server/
+scripts/migration-realign-backup-*.json
+.qoder/
