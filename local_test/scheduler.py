@@ -140,11 +140,19 @@ def run_sa(
 
     t_start = time()
 
-    # 初始化四個細胞膜
-    m_mem = {d: [] for d in range(1, num_days + 1)}
-    e_mem = {d: [] for d in range(1, num_days + 1)}
-    n_mem = {d: [] for d in range(1, num_days + 1)}
-    o_mem = {d: [] for d in range(1, num_days + 1)}
+    # ==========================================
+    # 初始化五個細胞膜（D/E/N/RG/RC）
+    # ==========================================
+    # 為什麼把 o_mem 拆成 rg_mem + rc_mem：
+    #   RG (例假) 是勞基法 §36 強制不可出勤的休假日，每月必須 ≥ 4 天且兩 RG 之間
+    #   最多 6 工作日；RC (休息日) 是另一種休假，可付加班費後出勤。SA 之前用單一
+    #   'O' 代表所有休假等於放棄了「兩個 RG 之間 ≤ 6 工作日」這條法定要求的精度。
+    #   拆開後 SA 能精準對齊 JS 端 checkLaborLawCompliance 的判定。
+    m_mem  = {d: [] for d in range(1, num_days + 1)}
+    e_mem  = {d: [] for d in range(1, num_days + 1)}
+    n_mem  = {d: [] for d in range(1, num_days + 1)}
+    rg_mem = {d: [] for d in range(1, num_days + 1)}
+    rc_mem = {d: [] for d in range(1, num_days + 1)}
 
     for d in range(1, num_days + 1):
         non_prot = [nid for nid in nurses if nid not in protected_ids]
@@ -156,7 +164,12 @@ def run_sa(
         pool_for_d = non_prot + prot
         random.shuffle(pool_for_d)
         for _ in range(req_D): m_mem[d].append(pool_for_d.pop())
-        o_mem[d].extend(pool_for_d)
+        # 剩下的人均分到 RG / RC（50/50；SA penalty 會調整到符合月度配額）
+        rest_pool = pool_for_d
+        random.shuffle(rest_pool)
+        half = len(rest_pool) // 2
+        rg_mem[d].extend(rest_pool[:half])
+        rc_mem[d].extend(rest_pool[half:])
 
     # 解析 custom_rules
     force_off: List[Tuple[str, int]] = []
@@ -177,46 +190,53 @@ def run_sa(
             if sh in ("D", "E", "N"):
                 force_work.append((nid, d, sh))
 
-    def get_sched(nid: str, mm, em, nm) -> List[str]:
+    def get_sched(nid: str, mm, em, nm, rgm, rcm) -> List[str]:
         sched = []
         for d in range(1, num_days + 1):
-            if nid in mm[d]:   sched.append("D")
-            elif nid in em[d]: sched.append("E")
-            elif nid in nm[d]: sched.append("N")
-            else:              sched.append("O")
+            if nid in mm[d]:    sched.append("D")
+            elif nid in em[d]:  sched.append("E")
+            elif nid in nm[d]:  sched.append("N")
+            elif nid in rgm[d]: sched.append("RG")
+            elif nid in rcm[d]: sched.append("RC")
+            else:               sched.append("O")  # 理論上不該發生
         return sched
 
-    def evaluate(mm, em, nm) -> Tuple[int, Dict[str, int]]:
+    def evaluate(mm, em, nm, rgm, rcm) -> Tuple[int, Dict[str, int]]:
         total = 0
         breakdown = defaultdict(int)
+        REST = {"RG", "RC"}
+        WORK = {"D", "E", "N"}
         for nid in nurses:
-            sched = get_sched(nid, mm, em, nm)
+            sched = get_sched(nid, mm, em, nm, rgm, rcm)
             c_work = 0
             c_night = 0
-            days_since_o = 0   # RG 間隔追蹤（SA 的 'O' 視為 RG）
+            days_since_rg = 0   # 兩 RG 之間累計工作日（RC 不重置也不累加）
 
             for d in range(num_days):
-                if sched[d] != "O":
+                shift = sched[d]
+                if shift in WORK:
                     c_work += 1
-                    c_night = c_night + 1 if sched[d] == "N" else 0
-                    days_since_o += 1
-                else:
+                    c_night = c_night + 1 if shift == "N" else 0
+                    days_since_rg += 1
+                elif shift == "RG":
                     c_work, c_night = 0, 0
-                    days_since_o = 0
+                    days_since_rg = 0
+                else:  # RC — 重置連續工作 / 夜班，但 RG 間隔仍累計（RC 不算 RG）
+                    c_work, c_night = 0, 0
+                    # days_since_rg 不變
                 if c_work > 6:
                     total += W["consecutive_work_7"]
                     breakdown["consecutive_work_7"] += 1
                 if c_night > 3:
                     total += W["consecutive_night_4"]
                     breakdown["consecutive_night_4"] += 1
-                if nid in protected_ids and sched[d] in ("E", "N"):
+                if nid in protected_ids and shift in ("E", "N"):
                     total += W["protected_on_en"]
                     breakdown["protected_on_en"] += 1
-                # 【新】兩 RG 之間 > 6 工作日
-                if days_since_o > 6:
+                if days_since_rg > 6:
                     total += W["rg_interval_over_6"]
                     breakdown["rg_interval_over_6"] += 1
-                    days_since_o = 0  # 報錯後重置，避免同一段重複洗版
+                    days_since_rg = 0  # 報錯後重置，避免同一段重複洗版
 
             for d in range(num_days - 1):
                 if sched[d] == "N" and sched[d + 1] == "D":
@@ -227,20 +247,12 @@ def run_sa(
                     total += W["forbidden_e_d"]; breakdown["forbidden_e_d"] += 1
 
             for d in range(1, num_days - 1):
-                if sched[d - 1] != "O" and sched[d] == "O" and sched[d + 1] != "O":
+                # 孤立休假：任何 rest（RG 或 RC）夾在兩個工作日之間
+                if sched[d - 1] in WORK and sched[d] in REST and sched[d + 1] in WORK:
                     total += W["isolated_off"]
                     breakdown["isolated_off"] += 1
 
-            # 【健康度移植 Level 1+2】
-            # 直接呼叫 health.py 的 calculate_health_score 計算這位員工的健康度。
-            # 為什麼 SA 內部要重算（而不是事後 report）：因為 SA 在 20000 次迭代中
-            # 每次都要評估「目前班表好不好」，要把健康度當決策訊號就必須進 evaluate。
-            # 性能成本：~100 μs / 員工 / 次，10 員工 × 20000 iter ≈ 額外 20 秒，
-            # 可接受。若要極限優化可改成 incremental update（只算被 swap 影響的兩位）。
-            #
-            # Level 1：每扣 1 分健康度 → 5 penalty（軟提示，鼓勵高分方案）
-            # Level 2：deficit > 30（即 health_score < 70）→ 個人天花板炸開，
-            #          50000 罰分等於告訴 SA 這個方案絕對不要再考慮。
+            # 【健康度移植 Level 1+2】 — 詳見前述註解
             hr = calculate_health_score(sched)
             deficit = 100 - hr["score"]
             if deficit > 0:
@@ -250,33 +262,34 @@ def run_sa(
                 total += W["health_floor_breach"]
                 breakdown["health_floor_breach"] += 1
 
-            # 【新】每週工時 40h 上限（簡化版 — 統一用 Standard 制 40h；
-            # BiWeekly 48h 因為 SA 沒拿到 staff_data，先不區分）
+            # 每週工時 40h 上限
             for week_start in range(0, num_days, 7):
-                work_h = sum(8 for s in sched[week_start:week_start + 7] if s in ("D", "E", "N"))
+                work_h = sum(8 for s in sched[week_start:week_start + 7] if s in WORK)
                 if work_h > 40:
                     total += W["weekly_hours_over_40"]
                     breakdown["weekly_hours_over_40"] += 1
 
-            # 【新】月總工時 ≤ 222h（標準 176 + 月加班 46）
-            total_work_h = sum(8 for s in sched if s in ("D", "E", "N"))
+            # 月總工時 ≤ 222h
+            total_work_h = sum(8 for s in sched if s in WORK)
             if total_work_h > 222:
                 total += W["monthly_hours_over_222"]
                 breakdown["monthly_hours_over_222"] += 1
 
-            # 【新】月例假 ≥ 4 天（SA 的 'O' 全部當 RG）
-            o_count = sched.count("O")
-            if o_count < 4:
+            # 月例假 ≥ 4 天（只算 RG！）
+            rg_count = sum(1 for s in sched if s == "RG")
+            rc_count = sum(1 for s in sched if s == "RC")
+            if rg_count < 4:
                 total += W["insufficient_rg"]
                 breakdown["insufficient_rg"] += 1
-            # 【新】月 RG+RC ≥ 8 天（SA 沒區分，O 既當 RG 又當 RC）
-            if o_count < 8:
+            # 月 RG + RC ≥ 8 天
+            if (rg_count + rc_count) < 8:
                 total += W["insufficient_off"]
                 breakdown["insufficient_off"] += 1
 
-        sched_cache = {nid: get_sched(nid, mm, em, nm) for nid in nurses}
+        sched_cache = {nid: get_sched(nid, mm, em, nm, rgm, rcm) for nid in nurses}
         for (nid, d) in force_off:
-            if sched_cache[nid][d - 1] != "O":
+            # FORCE_OFF 跟原本一樣，允許 RG 或 RC（兩者皆視為「不出勤」）
+            if sched_cache[nid][d - 1] not in ("RG", "RC"):
                 total += W["custom_rule_violation"]
                 breakdown["custom_rule_violation"] += 1
         for (nid, d, sh) in force_work:
@@ -286,8 +299,9 @@ def run_sa(
 
         return total, dict(breakdown)
 
-    def antiport(day, mm, em, nm, om):
-        mems = [mm, em, nm, om]
+    def antiport(day, mm, em, nm, rgm, rcm):
+        # 5 個 membrane 之間任選 2 個 swap；RG↔RC 的 swap 等於「換鋪別但不換工作」
+        mems = [mm, em, nm, rgm, rcm]
         a, b = random.sample(mems, 2)
         if a[day] and b[day]:
             x = random.choice(a[day])
@@ -295,44 +309,46 @@ def run_sa(
             a[day].remove(x); a[day].append(y)
             b[day].remove(y); b[day].append(x)
 
-    def block_antiport(mm, em, nm, om, block=3):
+    def block_antiport(mm, em, nm, rgm, rcm, block=3):
         if num_days < block:
             return
         start = random.randint(1, num_days - block + 1)
         x, y = random.sample(nurses, 2)
         for d in range(start, start + block):
             sx, sy = None, None
-            for mem in (mm, em, nm, om):
+            for mem in (mm, em, nm, rgm, rcm):
                 if x in mem[d]: sx = mem
                 if y in mem[d]: sy = mem
             if sx is not None and sy is not None and sx is not sy:
                 sx[d].remove(x); sx[d].append(y)
                 sy[d].remove(y); sy[d].append(x)
 
-    current_p, _ = evaluate(m_mem, e_mem, n_mem)
+    current_p, _ = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
     best_p = current_p
     best_breakdown = {}
-    best_m = copy.deepcopy(m_mem)
-    best_e = copy.deepcopy(e_mem)
-    best_n = copy.deepcopy(n_mem)
-    best_o = copy.deepcopy(o_mem)
+    best_m  = copy.deepcopy(m_mem)
+    best_e  = copy.deepcopy(e_mem)
+    best_n  = copy.deepcopy(n_mem)
+    best_rg = copy.deepcopy(rg_mem)
+    best_rc = copy.deepcopy(rc_mem)
     best_iter = 0
 
     accepted_worse = 0
     rejected = 0
 
     for i in range(max_iterations):
-        snap_m = copy.deepcopy(m_mem)
-        snap_e = copy.deepcopy(e_mem)
-        snap_n = copy.deepcopy(n_mem)
-        snap_o = copy.deepcopy(o_mem)
+        snap_m  = copy.deepcopy(m_mem)
+        snap_e  = copy.deepcopy(e_mem)
+        snap_n  = copy.deepcopy(n_mem)
+        snap_rg = copy.deepcopy(rg_mem)
+        snap_rc = copy.deepcopy(rc_mem)
 
         if random.random() < 0.3:
-            block_antiport(m_mem, e_mem, n_mem, o_mem, block=3)
+            block_antiport(m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
         else:
-            antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, o_mem)
+            antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, rg_mem, rc_mem)
 
-        new_p, new_breakdown = evaluate(m_mem, e_mem, n_mem)
+        new_p, new_breakdown = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
         T = max(0.1, 1000 * (1 - i / max_iterations))
 
         if new_p <= current_p:
@@ -340,10 +356,11 @@ def run_sa(
             if current_p < best_p:
                 best_p = current_p
                 best_breakdown = new_breakdown
-                best_m = copy.deepcopy(m_mem)
-                best_e = copy.deepcopy(e_mem)
-                best_n = copy.deepcopy(n_mem)
-                best_o = copy.deepcopy(o_mem)
+                best_m  = copy.deepcopy(m_mem)
+                best_e  = copy.deepcopy(e_mem)
+                best_n  = copy.deepcopy(n_mem)
+                best_rg = copy.deepcopy(rg_mem)
+                best_rc = copy.deepcopy(rc_mem)
                 best_iter = i
         else:
             delta = new_p - current_p
@@ -351,7 +368,7 @@ def run_sa(
                 current_p = new_p
                 accepted_worse += 1
             else:
-                m_mem, e_mem, n_mem, o_mem = snap_m, snap_e, snap_n, snap_o
+                m_mem, e_mem, n_mem, rg_mem, rc_mem = snap_m, snap_e, snap_n, snap_rg, snap_rc
                 rejected += 1
 
         if current_p == 0:
@@ -361,7 +378,7 @@ def run_sa(
 
     result = []
     for nid in nurses:
-        sched = get_sched(nid, best_m, best_e, best_n)
+        sched = get_sched(nid, best_m, best_e, best_n, best_rg, best_rc)
         for d in range(num_days):
             result.append({
                 "nurse_id": nid,

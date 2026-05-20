@@ -45,10 +45,12 @@ SAMPLE_STAFF = [
 ]
 
 SHIFT_COLORS = {
-    "D": "#FFD93D",   # 白班 — 黃
-    "E": "#FF6B9D",   # 小夜 — 粉
-    "N": "#4D96FF",   # 大夜 — 藍
-    "O": "#E2E3E5",   # 休假 — 灰
+    "D":  "#FFD93D",  # 白班 — 黃
+    "E":  "#FF6B9D",  # 小夜 — 粉
+    "N":  "#4D96FF",  # 大夜 — 藍
+    "RG": "#2ECC71",  # 例假 — 深綠（強制休、不可出勤）
+    "RC": "#D5F5E3",  # 休息日 — 淺綠（可加班）
+    "O":  "#E2E3E5",  # 舊版單一休假 — 灰（向下相容）
 }
 
 
@@ -59,7 +61,8 @@ def _color_shift(val):
     color = SHIFT_COLORS.get(val, "")
     if not color:
         return ""
-    text_color = "#000" if val in ("D", "O") else "#fff"
+    # 淺色（黃/淺綠/灰）用黑字；深色（粉/藍/深綠）用白字
+    text_color = "#000" if val in ("D", "RC", "O") else "#fff"
     return f"background-color: {color}; color: {text_color}; text-align: center; font-weight: bold;"
 
 
@@ -275,16 +278,19 @@ with tab_grid:
     styled = df.style.applymap(_color_shift)
     st.dataframe(styled, use_container_width=True, height=420)
 
-    legend_cols = st.columns(4)
+    legend_cols = st.columns(5)
     for col, (code, label, desc) in zip(legend_cols, [
-        ("D", "白班", "07-16"), ("E", "小夜", "15-00"),
-        ("N", "大夜", "23-08"), ("O", "休假", ""),
+        ("D",  "白班", "07-16"),
+        ("E",  "小夜", "15-00"),
+        ("N",  "大夜", "23-08"),
+        ("RG", "例假", "§36 強制"),
+        ("RC", "休息日", "可加班"),
     ]):
         col.markdown(
             f"<div style='background:{SHIFT_COLORS[code]}; padding:8px; "
             f"border-radius:6px; text-align:center; "
-            f"color:{'#000' if code in ('D','O') else '#fff'}; font-weight:bold;'>"
-            f"{code} — {label} {desc}</div>",
+            f"color:{'#000' if code in ('D','RC','O') else '#fff'}; font-weight:bold;'>"
+            f"{code} — {label}<br/><span style='font-size:0.8em; opacity:0.85'>{desc}</span></div>",
             unsafe_allow_html=True,
         )
 
