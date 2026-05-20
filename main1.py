@@ -174,6 +174,21 @@ async def verify_firebase_token(authorization: Optional[str] = Header(None)) -> 
 # ==========================================
 # Endpoints
 # ==========================================
+@app.get("/")
+def root():
+    """根路徑提示 — 避免 admin 用瀏覽器打開時看到「Not Found」誤以為服務掛掉。"""
+    return {
+        "service": "nurse-schedule CP-SAT 排班引擎",
+        "endpoints": {
+            "GET /health": "健康檢查（無需 auth）",
+            "POST /generate_schedule": "排班求解（需 Firebase Bearer token）",
+            "GET /docs": "互動式 API 文件 (Swagger UI)",
+            "GET /redoc": "API 文件 (ReDoc)",
+        },
+        "frontend": "https://nurse-schedule-bachelor.vercel.app",
+    }
+
+
 @app.get("/health")
 def health():
     """負載平衡 / 監控用，不需 auth。回傳基本診斷資訊。"""
