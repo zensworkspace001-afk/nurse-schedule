@@ -28,6 +28,15 @@ Specs call `test.skip(...)` when creds are missing, so CI without secrets still 
 
 Dev server proxies `/api/*` requests to `https://nurse-schedule-bachelor.vercel.app` (configured in `vite.config.js`), so local frontend connects to the production Vercel serverless backend.
 
+**CP-SAT engine (separate Python microservice):**
+
+```bash
+pip install -r requirements.txt   # ortools + fastapi + firebase-admin
+uvicorn main1:app --reload --port 8000
+```
+
+Then set `VITE_CPSAT_URL=http://localhost:8000` in `.env.local` so SchedulePanel's 「CP-SAT 最佳化」 button hits the local instance instead of the deployed one. See `CPSAT_DEPLOY.md` for Render/Railway/Fly.io deployment.
+
 ## Environment Variables
 
 All keys live in Vercel dashboard (Settings > Environment Variables). For local dev, `.env.local` is pulled via `vercel env pull`:
@@ -37,6 +46,9 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — Firebase Admin SDK (backend only)
 - `CRON_SECRET` — Vercel Cron job authentication
 - `FIELD_ENC_KEY` — **AES-256-GCM master key for field-level encryption** (base64-encoded 32 bytes). Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Lose this and all encrypted fields are unrecoverable** — back it up offline. Used by `api/secure-field.js` and `scripts/migrate-encrypt.js`.
+- `VITE_CPSAT_URL` — Public URL of the CP-SAT microservice (e.g. `https://nurse-schedule-s0ro.onrender.com`). Read by `SchedulePanel` to call the optimizer. **Must also be added to `vercel.json` CSP `connect-src`** or production browser will block the fetch.
+
+**CP-SAT microservice env vars** (set on Render/Railway/Fly.io, NOT Vercel): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (mirror of Vercel values), `ALLOWED_ORIGINS` (CORS whitelist, comma-separated), `MAX_SOLVE_SECONDS` (default 60), `RATE_LIMIT_PER_MIN` (default 5).
 
 ## Architecture
 
@@ -54,18 +66,29 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 **Component hierarchy:**
 - `App.jsx` → `LoginPanel` (unauthenticated) | `ManagerInterface` (admin) | `ProfileWizard` (staff first-login, gated by `profile_completed !== true`) | `StaffDashboard` (staff)
+- Public routes (registered in `main.jsx`, no auth required): `/activate` (ActivatePage), `/privacy-notice` (PrivacyNoticePage)
 - `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`, `AccessLogPanel` (稽核日誌 — admin-only viewer for `access_logs`)
 
 **Key components:**
-- `SchedulePanel` — AI-powered schedule generation workspace with Gemini chat, drag-to-assign, and conflict detection
-- `PublishPanel` — Publish schedule for staff to claim; supports single/bulk unassign of staff
-- `ScheduleReviewPanel` — Historical schedule viewer, payroll settlement engine (base salary + OT + night bonus + level bonus 進階加給), health score calculator, Excel export
-- `StatisticsPanel` — Nurse-to-patient ratio monitoring (Taiwan 衛福部 regulations), AI cross-month analytics, agentic turn radar
-- `StaffDashboard` — Staff self-service: 4-step shift selection wizard, turn-based access control, password change
+- `SchedulePanel` — Schedule generation workspace with two AI engines side-by-side: **Gemini** (LLM, generates anonymous virtual D-slot patterns) and **CP-SAT** (Google OR-Tools, direct assignment to real staff_id, see CP-SAT section below). Both render via the same chat-style UI.
+- `PublishPanel` — Publish schedule for staff to claim; supports single/bulk unassign of staff; staff column shows `avatar_thumb` next to name.
+- `ScheduleReviewPanel` — Historical schedule viewer, payroll settlement engine (base salary + OT + night bonus + level bonus 進階加給), health score calculator, Excel export. Staff name columns include avatars.
+- `StatisticsPanel` — Nurse-to-patient ratio monitoring (Taiwan 衛福部 regulations), AI cross-month analytics, agentic turn radar.
+- `StaffDashboard` — Staff self-service: 4-step shift selection wizard, turn-based access control, password change, clickable avatar opens `AvatarEditModal`. Guards 3/4-pre/4 (long-leave, slot-claimed-out, not-your-turn) all mount a shared `dashboardHeader` with avatar + 修改密碼; guard 2 (deactivated) gets password access only, no avatar edit.
+- `AvatarEditModal` — Circular 220×220 crop frame with zoom slider + pan drag + wheel zoom; saves both 220×220 main + 64×64 thumbnail; runs BlazeFace (via `src/utils/faceDetect.js`) for soft face-detection check (warning + override checkbox, never hard block).
+- `ProfileWizard` — First-login flow with 3 steps; step 1 gates the form behind a PDPA §8 consent flow that requires opening `/privacy-notice` in a new tab, scrolling to bottom, then checking 同意. Persists `pdpa_consented_at` + `pdpa_notice_version` to staffData for audit.
+- `PrivacyNoticePage` — Standalone public route showing the full PDPA §8 notice in 10 sections. 「我已詳閱完畢」 button is disabled until scrolled to bottom; click writes `localStorage.pdpa_read_v1` so ProfileWizard (other tab) can detect via `storage` event + tab focus refresh.
 
 **Shift types:** D (day 07-16), E (evening 15-00), N (night 23-08), OFF, RG (例假/statutory rest), RC (休息日), 支援 (support), 事假, 病假, 特休.
 
-**Labor law compliance** (Taiwan 勞基法) via `checkLaborLawCompliance` in `constants.js`: max 40h/week, 46h/month OT, 11h min rest between shifts, max 6 consecutive days, forbidden sequences (E→D, N→D, N→E), maternity protection, RG interval rule (≤6 days, ≤12 for BiWeekly), and **七休一** (every 7-day window must contain at least one RG/RC day off). The 七休一 rule is also enforced post-AI in `SchedulePanel` and re-normalized at dashboard read-time as a defence-in-depth check.
+**Labor law compliance** (Taiwan 勞基法) via `checkLaborLawCompliance` in `constants.js`. Per-staff `special_status` flips between two regimes:
+
+- `Standard` — §30(1): ≤8h/day, ≤40h/week
+- `BiWeekly` — §30(2): ≤10h/day, ≤48h/week (2 weeks redistributed to ≤80h total)
+
+Both regimes share: 46h/month OT cap, 11h min shift interval, max 6 consecutive workdays (七休一), max 6 work days between RG (例假) — **counts only working days, not RC/OFF/leave** per 勞動部 105.10.07 函. Forbidden sequences (E→D, N→D, N→E), maternity protection (孕/哺乳 禁夜班), and 4-week rest aggregates (≥4 RG, ≥8 RG+RC) apply to both. The post-AI 七休一 normalizer in `SchedulePanel` and `StaffDashboard`'s read-time check are defence-in-depth duplicates that ensure even broken AI patterns don't lock staff.
+
+The naming `BiWeekly` matches §30(2) only; **§30-1 four-week flexible** (which would allow 12-day RG intervals + 12 consecutive workdays) is intentionally NOT implemented — if needed, add a new `special_status: 'FourWeek'` enum, do NOT reuse `BiWeekly`.
 
 **Staff levels:** N0/N1 = junior; N2/N3/N4 = senior. `checkSkillMixSafety` warns when a shift has no senior (N2+) or leader present. Each level has a configurable monthly bonus (`levelBonus` in Settings): N0=0, N1=1000, N2=2000, N3=3200, N4=5000 by default.
 
@@ -82,7 +105,7 @@ Vercel serverless functions:
 | `sendEmail.js` | Sends email via Resend |
 | `admin-user.js` | Admin-only multiplex (Bearer token + admin email). `body.action` switches: `'sync'` bulk-creates Firebase Auth accounts with `disabled:true` + random throwaway password and issues activation tokens / activation emails (no more hardcoded `123456`); `'reset'` issues a `purpose:'reset'` token and sends the same `/activate?token=...` link; `'delete-staff'` permanently offboards (transaction: archive avatar+name+date+actor to `ex_staff/{id}`, remove from `NurseApp/Staff` array, recompute `StaffPublic`, delete `StaffPrivate/{id}`; then disables Firebase Auth and writes `access_logs` action=`delete-staff`). All three actions share the activation-token lifecycle in `_lib/activationToken.js`. (Merged from former `sync-accounts.js` + `reset-password.js` to stay under Vercel Hobby plan's 12-function limit.) |
 | `activate-account.js` | Public endpoint (token IS the auth). `POST {token, newPassword}` → verifies token, enforces strength, sets the password via Admin SDK; for `purpose: 'activation'` also flips `disabled: false`. CSRF + per-IP rate limit. |
-| `complete-profile.js` | Authenticated endpoint (staff Firebase token). On first login the staff fills name / gender / tenure / 孕哺 / 大夜 / encrypted PII (idNumber, bankAccount, phone). Server validates, AES-encrypts the PII, writes the staff's row in `staffData`, sets `profile_completed: true`, and writes one `access_logs` row (action=`encrypt`). Admin cannot use this endpoint. |
+| `complete-profile.js` | Authenticated endpoint (staff Firebase token). Two modes via `body.mode`: `'first'` (default) — first-login flow, fills name/gender/tenure/孕哺/大夜/encrypted PII (idNumber, bankAccount, phone) + `pdpa_consented_at` audit timestamp, sets `profile_completed: true`, logs `action='encrypt'`. `'update'` — post-login self-service for basic fields and avatar (`avatar`, `avatar_thumb`); all fields optional, only patches what's provided, does NOT touch encrypted PII or `profile_completed`, logs `action='update-profile'` with the list of changed fields. Both modes batch-write all three staff docs (Staff + StaffPublic + StaffPrivate). Admin cannot use this endpoint. |
 | `log-login.js` | Login auditing multiplex. `body.success: true` requires Bearer token, writes `access_logs` action `'login'` (per-uid 10/min). `body.success: false` is unauthenticated (auth just failed by definition); IP-rate-limited 10/min, records `action='login-failure'` plus attempted email + Firebase error code in `extra`. (Merged from former `log-login.js` + `log-login-failure.js` to stay under Vercel Hobby plan's 12-function limit.) |
 | `claim-schedule.js` | Authenticated endpoint (staff Firebase token). Body `{year, month, virtualSlotId}`. Runs a Firestore transaction: read `Schedules/{ym}.finalizedSchedule`, verify the virtual D-slot still exists and the actor hasn't already claimed for this month, then atomically delete the virtual slot key and write the same pattern under the actor's UID. Inside the same tx also writes a masked projection to `SchedulesPublic/{ym}` (事假/病假/特休 → OFF) so colleagues' privacy stays consistent. Admin and direct client writes to the schedule are blocked by rules — staff route through this endpoint, eliminating the vertical-escalation hole where any staff could overwrite a colleague's whole month. |
 | `auto-settle.js` | Monthly payroll settlement; supports `?targetDate` for testing, `?force=true` to force |
@@ -99,8 +122,15 @@ NurseApp/Settings          — global app config (shiftOptions, priorityConfig, 
 NurseApp/Staff             — { staffData: [...], healthStats: [...] }   admin-only read
                              staffData[*] sensitive fields (encrypted blob): idNumber*, bankAccount*, phone*
                              staffData[*].profile_completed: true once the staff has filled the first-login wizard
-NurseApp/StaffPublic       — { staffData: [{staff_id,name,level,is_leader,is_active}, ...] }   any authed user reads
-                             sanitized projection — no PII, health, or financial fields. mirrored on every saveGlobalStaff.
+                             staffData[*].pdpa_consented_at + pdpa_notice_version: PDPA §8 audit timestamps
+                             staffData[*].avatar: 220×220 WebP base64 data URL (~20-30 KB) — full size for admin views
+                             staffData[*].avatar_thumb: 64×64 WebP base64 data URL (~3-5 KB) — used in shift cards
+NurseApp/StaffPublic       — { staffData: [{staff_id,name,level,is_leader,is_active,avatar_thumb}, ...] }   any authed user reads
+                             sanitized projection — no PII/health/financial. Only avatar_thumb (not full avatar) is included
+                             to stay under Firestore's 1 MiB single-doc limit (~100 staff × 4 KB thumb ≈ 400 KB). Mirrored
+                             on every saveGlobalStaff. Build via buildStaffPublicProjection — keep in sync across all four
+                             call sites: src/api/database.js, api/complete-profile.js, scripts/migrate-staff-public.js,
+                             scripts/restore-staff-from-private.js.
 StaffPrivate/{id}          — top-level collection; full row for a single staff   admin or matching staff uid reads
                              same shape as a single element of NurseApp/Staff.staffData
                              (top-level rather than NurseApp/StaffPrivate/* because Firestore doc paths must be even segments)
@@ -114,7 +144,8 @@ SelectionTurn/{YYYY_M}     — { active_staff_id, updatedAt }
 SelectionProgress/{YYYY_M} — { submitted_staff: [...] }
 AI_Decision_Logs           — { timestamp, selected_staff, ai_logic, candidates_data }
 pending_activation/{sha256(token)} — server-only; { uid, email, purpose: 'activation'|'reset', expiresAt, createdAt }
-access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access'|'update-profile'|'delete-staff'|'login'|'login-failure', target:{kind,id}, fields:[], ip, ua, extra? }
+access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access'|'ai-access-blocked'|'update-profile'|'delete-staff'|'login'|'login-failure'|'relock', target:{kind,id}, fields:[], ip, ua, extra? }
+                             ai-access-blocked: written when api/gemini.js detectSensitivePii catches身分證/手機 in prompt and refuses to forward to Google.
 ex_staff/{staff_id}        — 離職員工歸檔 (admin-only read)。{ staff_id, name, email, level, tenure_years, avatar, avatar_thumb, had_avatar, deleted_at, deleted_by:{uid,email} }
                              由 /api/admin-user action='delete-staff' 寫入。
                              刻意不複製加密 PII (idNumber/bankAccount/phone) — 離職應一併銷毀。
@@ -151,15 +182,34 @@ node scripts/migrate-encrypt.js --commit     # actually write
 
 Staff select shifts in a priority queue managed by AI (Gemini). `calculateAndNotifyNextStaff` in App.jsx builds a prompt with all candidate stats, calls Gemini to pick the most fatigued/deserving staff, writes to `SelectionTurn`, logs to `AI_Decision_Logs`, and sends email notification. Pregnant/nursing staff get absolute priority. `cron/check-timeout.js` auto-advances if no selection within 24h.
 
+### CP-SAT Optimization Engine (`main1.py`)
+
+Independent Python microservice (FastAPI + Google OR-Tools CP-SAT). Lives at repo root but **not deployed by Vercel** (see CSP/`.vercelignore` note). Complementary to the Gemini flow:
+
+- **Gemini path** (`api/gemini.js`): LLM generates anonymous `pattern` strings → frontend assigns virtual D-slot IDs → staff claim via agentic turn. Output is non-deterministic, retried up to 5 times client-side to pass the daily-headcount filter.
+- **CP-SAT path** (`main1.py`): Constraint solver computes mathematically optimal direct assignment to real `staff_id`. Output is deterministic (same input → same schedule), skips the claim flow, writes straight to `schedule` + `finalizedSchedule`.
+
+`SchedulePanel` exposes both via side-by-side buttons (「生成 AI 班表」 purple, 「CP-SAT 最佳化」 teal). Admin chooses per generation.
+
+CP-SAT model encodes: each-day-one-shift, illegal transitions (N→D/N→E/E→D), 七休一 (sliding 7-day window must contain off), post-night double off, 4-week ≥8 off + ≤27 work days, maternal/student E+N ban. Objective minimizes (shortfall × 100) + per-staff health penalties (consecutive-4-night −5, consecutive-6-work −5), with a per-staff penalty cap of 30 (guarantees ≥70 health score for everyone, may cause INFEASIBLE if conditions too strict).
+
+Service exposes `GET /` (landing), `GET /health` (no auth), `POST /generate_schedule` (Firebase Bearer token required, 5/min/uid rate limit), `GET /docs` (Swagger UI for testing). See `CPSAT_DEPLOY.md` for full deployment + integration steps.
+
 ### Auth Flow
 
 Three-layer security: (1) frontend route guard on session token, (2) zero-trust state validation (is_active, leave_status, turn ownership), (3) RBAC — admin (`admin@hospital.com`) vs staff roles. Backend APIs verify Firebase ID tokens via Bearer header.
+
+**First-login PDPA gate:** When `profile_completed === false`, App.jsx routes to `ProfileWizard` instead of `StaffDashboard`. Step 1 of the wizard blocks the form behind a PDPA §8 consent — the staff must click through to `/privacy-notice` (new tab), scroll to the bottom (localStorage flag `pdpa_read_v1` set there), then tick the agreement checkbox. The consent timestamp is persisted to `staffData[*].pdpa_consented_at`. Notice version bumps (`v1 → v2 …`) force everyone to re-consent.
+
+**Offboarding (永久離職):** Admin clicks 🗑 on a staff row in StaffManagementPanel → calls `/api/admin-user action='delete-staff'`. Backend runs a Firestore transaction: snapshot `staff_id/name/email/level/tenure/avatar/avatar_thumb` into `ex_staff/{id}` with `deleted_at` + `deleted_by`, remove from `NurseApp/Staff` array, rebuild StaffPublic, delete StaffPrivate. Then disables Firebase Auth + revokes tokens (non-fatal — logs warning if fails). Writes `access_logs` action=`delete-staff`. **Encrypted PII (idNumber/bankAccount/phone) is intentionally NOT copied to ex_staff** — offboarding should destroy ciphertext too, otherwise the org keeps a key-management burden for someone who's gone.
 
 ## Deployment
 
 Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron and rewrites all `/api/*` routes plus SPA fallback to `index.html`.
 
-`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, and jsDelivr. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
+`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, jsDelivr, **tfhub.dev + www.kaggle.com + storage.googleapis.com** (BlazeFace model weights), and **the CP-SAT microservice URL**. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
+
+`.vercelignore` excludes `main1.py`, `requirements.txt`, `Dockerfile`, and `CPSAT_DEPLOY.md` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` and runs `uv pip install`, which fails because ortools (~65MB wheel + libgomp native dep) doesn't fit in the 250MB unzipped lambda limit. Keep the files in git so Render/Railway can pull them.
 
 ### Legacy `server/` and `my-app/` Directories
 
