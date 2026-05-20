@@ -484,6 +484,22 @@
   box-shadow: none;
 }
 
+/* CP-SAT 最佳化按鈕 — 用青藍色區別於紫色 AI 排班，避免 admin 誤點 */
+.schedule-panel__toolbar-btn--cpsat {
+  background: rgba(22, 160, 133, 0.6);
+  border: 1px solid rgba(22, 160, 133, 0.4);
+  box-shadow: 0 2px 4px rgba(22, 160, 133, 0.3);
+}
+.schedule-panel__toolbar-btn--cpsat:hover:not(:disabled) {
+  background: rgba(22, 160, 133, 0.8);
+  transform: translateY(-1px);
+}
+.schedule-panel__toolbar-btn--cpsat:disabled {
+  background: rgba(255, 255, 255, 0.1);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
 .schedule-panel__toolbar-btn--clear {
   background: rgba(231, 76, 60, 0.6);
   border: 1px solid rgba(231, 76, 60, 0.4);
