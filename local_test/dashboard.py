@@ -24,7 +24,7 @@ import pandas as pd
 # 確保 import 同資料夾的模組
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from scheduler import run_sa, run_sa_with_feedback
+from scheduler import run_sa, run_sa_with_feedback, OPTIMAL_THRESHOLD
 from compliance import check_labor_law_compliance, summarize_violations
 from health import calculate_team_health
 
@@ -239,11 +239,13 @@ health = calculate_team_health(schedule_dict, stats["num_days"])
 # ============================================================
 m1, m2, m3, m4 = st.columns(4)
 
-penalty_color = "normal" if stats["final_penalty"] == 0 else "inverse"
+penalty_color = "normal" if stats["final_penalty"] < OPTIMAL_THRESHOLD else "inverse"
+_pen = stats["final_penalty"]
+_ok = _pen < OPTIMAL_THRESHOLD
 m1.metric(
     "SA 內部罰分",
-    stats["final_penalty"],
-    delta=f"第 {stats['best_iteration']}/{stats['max_iterations']} 次迭代",
+    f"{'✅' if _ok else '⚠️'} {_pen}",
+    delta=f"第 {stats['best_iteration']}/{stats['max_iterations']} 次迭代 / 門檻 <{OPTIMAL_THRESHOLD}",
     delta_color="off",
 )
 m2.metric(

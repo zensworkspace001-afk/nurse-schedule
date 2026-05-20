@@ -20,6 +20,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from health import calculate_health_score
 
 
+# 視為「已達成可接受最佳」的罰分上限。
+# 0    = 嚴格要求完全合規（先前預設）。
+# 1000 = 容忍極少軟限制違規 — 例如 20 處 isolated_off (×50)，或一條
+#        forbidden_*/insufficient_*/consecutive_night_4 (×1000)。
+# 影響兩個地方：
+#   1) 早停條件：current_p < OPTIMAL_THRESHOLD 就 break，不浪費剩餘迭代
+#   2) solver_status：< 門檻 → 'OPTIMAL'，>= 門檻 → 'FEASIBLE'
+OPTIMAL_THRESHOLD = 1000
+
+
 PENALTY = {
     # —— 原有規則 ——
     "consecutive_work_7":  2000,    # 連續上班 > 6 天（七休一）
@@ -461,7 +471,7 @@ def run_sa(
                 m_mem, e_mem, n_mem, rg_mem, rc_mem = snap_m, snap_e, snap_n, snap_rg, snap_rc
                 rejected += 1
 
-        if current_p == 0:
+        if current_p < OPTIMAL_THRESHOLD:
             break
 
     elapsed = time() - t_start
@@ -478,7 +488,7 @@ def run_sa(
 
     return {
         "status": "success",
-        "solver_status": "OPTIMAL" if best_p == 0 else "FEASIBLE",
+        "solver_status": "OPTIMAL" if best_p < OPTIMAL_THRESHOLD else "FEASIBLE",
         "elapsed_seconds": round(elapsed, 2),
         "schedule": result,
         "stats": {
