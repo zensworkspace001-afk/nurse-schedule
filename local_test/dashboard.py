@@ -182,7 +182,9 @@ with st.sidebar:
         # 即便人力建議剛好，rule set 本身會在 avg rest > 10（RG+RC 上限）或 avg work-days
         # /週 > 5（40h 上限）時造成「數學上無法避免」的違規。把這個下限揭露出來，
         # 避免使用者誤以為 SA 沒收斂；其實是 rule 本身把可行區壓到結構臨界。
-        _eff_n = max(min(n_have, target_count), 1)
+        # auto-adjust 之後實際會用的人數：clamp(n_have, lo, hi)
+        # 不依賴 target_count（在下方 if/elif 才設定），直接由 preflight 的 lo/hi 推導。
+        _eff_n = max(min(max(n_have, lo), hi), 1)
         _person_work = _est['person_days']['D'] + _est['person_days']['E'] + _est['person_days']['N']
         _avg_rest = _num_days - _person_work / _eff_n
         _avg_week_workdays = (_person_work / _eff_n) / (_num_days / 7)
