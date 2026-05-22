@@ -999,9 +999,12 @@ def run_sa(
             return True
         return antiport_focused(red_set, mm, em, nm, rgm, rcm)
 
-    current_p, _, current_per_nurse = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+    current_p, current_breakdown, current_per_nurse = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
     best_p = current_p
-    best_breakdown = {}
+    # 初始 breakdown 必須直接帶進 best_breakdown — 若 SA 連一次嚴格改善都沒發生
+    # （`current_p < best_p` 才更新），best_breakdown 會永遠是 `{}`，UI 顯示 penalty
+    # 16680 但「前 3 大違規」卻空 → 「無違規」假象。
+    best_breakdown = dict(current_breakdown)
     best_per_nurse = current_per_nurse
     best_m  = copy.deepcopy(m_mem)
     best_e  = copy.deepcopy(e_mem)
