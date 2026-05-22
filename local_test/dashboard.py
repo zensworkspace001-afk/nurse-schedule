@@ -24,7 +24,7 @@ import pandas as pd
 # 確保 import 同資料夾的模組
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from scheduler import run_sa, run_sa_with_feedback, OPTIMAL_THRESHOLD
+from scheduler import run_sa, run_sa_with_feedback, run_sa_multistart, OPTIMAL_THRESHOLD, estimate_required_staff
 from compliance import check_labor_law_compliance, summarize_violations
 from health import calculate_team_health
 
@@ -42,6 +42,10 @@ SAMPLE_STAFF = [
     {"staff_id": "N008", "name": "N008", "tenure_years": 4,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
     {"staff_id": "N009", "name": "N009", "tenure_years": 0,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "Student"},
     {"staff_id": "N010", "name": "N010", "tenure_years": 7,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N011", "name": "N011", "tenure_years": 4,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N012", "name": "N012", "tenure_years": 2,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N013", "name": "N013", "tenure_years": 6,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N014", "name": "N014", "tenure_years": 3,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
 ]
 
 SHIFT_COLORS = {
@@ -121,11 +125,128 @@ with st.sidebar:
     daily_total = d_req + e_req + n_req
     st.caption(f"每日需 **{daily_total}** 人上班；員工總數 **{len(SAMPLE_STAFF)}** 人")
 
+    # —— Pre-flight 人力試算（即時跑，不用按按鈕）——
+    import calendar as _cal
+    _, _num_days = _cal.monthrange(year, month)
+    _protected_count = sum(1 for s in SAMPLE_STAFF
+                           if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student")
+    # 放寬版：每人月工作天數 ∈ [num_days-11, num_days-7] = [20, 24]
+    _est = estimate_required_staff(
+        num_days=_num_days,
+        daily_reqs={1: d_req, 2: e_req, 3: n_req},
+        protected_count=_protected_count,
+        work_days_range=(_num_days - 11, _num_days - 7),
+    )
+    if "error" in _est:
+        st.error(f"⛔ {_est['error']}")
+    else:
+        # 數學不可解時提前警告（沒整數人數能讓人均工時落進區間）
+        if _est.get("infeasible_types"):
+            st.error("🚫 規則與人均工時範圍**數學不可解**：\n" +
+                     "\n".join(f"  • {t}" for t in _est["infeasible_types"]) +
+                     "\n\n建議放寬 work_days 範圍（例如 [21, 23] 或更寬）或降低 daily demand。")
+
+        n_have = len(SAMPLE_STAFF)
+        lo, hi = _est["total_min"], _est["total_max"]
+        # infeasible 時 max 可能小於 min（per-type 衝突）— 取高值避免出現「11~8」這種怪顯示
+        if hi < lo:
+            hi = lo
+        rest_lo, rest_hi = _est["rest_range_per_nurse"]
+        work_lo, work_hi = _est["work_range_per_nurse"]
+
+        if n_have < lo:
+            badge = f"⛔ 人力不足 — 至少需 {lo} 人，目前 {n_have}"
+            color = "error"
+        elif n_have > hi:
+            badge = f"⚠️ 人力過剩 — 建議 {lo}~{hi}，目前 {n_have}（會造成 RG/RC 上限超標）"
+            color = "warning"
+        else:
+            badge = f"✅ 人力適中（建議 {lo}~{hi}，目前 {n_have}）"
+            color = "success"
+
+        if color == "error":   st.error(badge)
+        elif color == "warning": st.warning(badge)
+        else:                  st.success(badge)
+
+        with st.expander("📐 試算細節"):
+            st.markdown(f"""
+- 每人月工作天數應在 **{work_lo} – {work_hi}** 天（休 {rest_lo}–{rest_hi} 天）
+- D 班需求 {d_req}/日 × {_num_days} 天 = {_est['person_days']['D']} 人-日 → **D pool {_est['min_d']}~{_est['max_d']} 人**
+- E 班需求 {e_req}/日 × {_num_days} 天 = {_est['person_days']['E']} 人-日 → **E pool {_est['min_e']}~{_est['max_e']} 人**
+- N 班需求 {n_req}/日 × {_num_days} 天 = {_est['person_days']['N']} 人-日 → **N pool {_est['min_n']}~{_est['max_n']} 人**
+- 保護名單 {_protected_count} 人強制入 D pool → 實際 D 下限 {_est['min_d_with_protected']}
+- **總計建議 {lo}~{hi} 人**
+""")
+
+        # —— 結構性下限預估 ——
+        # 即便人力建議剛好，rule set 本身會在 avg rest > 10（RG+RC 上限）或 avg work-days
+        # /週 > 5（40h 上限）時造成「數學上無法避免」的違規。把這個下限揭露出來，
+        # 避免使用者誤以為 SA 沒收斂；其實是 rule 本身把可行區壓到結構臨界。
+        _eff_n = max(min(n_have, target_count), 1)
+        _person_work = _est['person_days']['D'] + _est['person_days']['E'] + _est['person_days']['N']
+        _avg_rest = _num_days - _person_work / _eff_n
+        _avg_week_workdays = (_person_work / _eff_n) / (_num_days / 7)
+        _floor_hints = []
+        if _avg_rest > 10:
+            _over_rest = _avg_rest - 10
+            _floor_hints.append(
+                f"avg rest = **{_avg_rest:.1f} 天/人** > 10 (RG=5 + RC=5)，"
+                f"預期 ~{int(_over_rest * _eff_n)} 處 excess_rg/rc"
+            )
+        if _avg_week_workdays > 5:
+            _floor_hints.append(
+                f"avg 週工作 = **{_avg_week_workdays:.1f} 天/週** > 5 (40h 上限)，"
+                f"預期週時數違規結構性發生"
+            )
+        if _floor_hints:
+            st.warning(
+                "📐 **結構性下限**：以下規則的違規無法靠 SA 完全消除（rule set 與人力/需求組合鎖死）：\n\n"
+                + "\n".join(f"  • {h}" for h in _floor_hints)
+                + "\n\n→ 預估收斂下限約 **10,000 ~ 20,000** 罰分，"
+                "FEASIBLE 屬正常；要降到 OPTIMAL (<1000) 需放寬 rule 或調整人力/需求。"
+            )
+
+        # 自動調整人力：不足就補 placeholder、過剩就從尾端砍非保護員工
+        if n_have < lo:
+            auto_adjust = st.checkbox(
+                f"🤖 自動補足員工到建議下限 ({lo} 人)",
+                value=True,
+                help="勾選後跑 SA 前會產生 placeholder 員工 (N0XX, Standard, 非保護)，"
+                     "讓 pool 大小剛好符合每日需求。SAMPLE_STAFF 不會被改寫，只影響本次 run。",
+            )
+            adjust_mode = "fill"
+            target_count = lo
+        elif n_have > hi:
+            n_drop = n_have - hi
+            auto_adjust = st.checkbox(
+                f"🤖 自動裁減員工到建議上限 ({hi} 人，砍 {n_drop} 人)",
+                value=True,
+                help="勾選後跑 SA 前會從 SAMPLE_STAFF 尾端砍掉非保護員工。"
+                     "保護名單（孕婦/實習生）永遠留下。SAMPLE_STAFF 本身不會被改寫。",
+            )
+            adjust_mode = "trim"
+            target_count = hi
+        else:
+            auto_adjust = False
+            adjust_mode = None
+            target_count = n_have
+
     st.divider()
     st.subheader("🔧 SA 參數")
     iters = st.slider("最大迭代次數", 1000, 50000, 10000, step=1000)
     seed_mode = st.radio("隨機種子", options=["固定 (可重現)", "每次不同"], index=0, horizontal=True)
     seed = st.number_input("種子值", value=42, min_value=0, max_value=99999) if seed_mode == "固定 (可重現)" else None
+
+    st.divider()
+    st.subheader("🎲 Multi-start (取最佳)")
+    use_multistart = st.checkbox(
+        "啟用多次重跑",
+        value=False,
+        help="同 scenario 跑 N 次 SA（不同 seed），取罰分最低的那次。"
+             "SA 是隨機演算法，多跑幾次常能找到大幅更好的解。"
+    )
+    if use_multistart:
+        num_starts = st.slider("重跑次數", 2, 10, 5)
 
     st.divider()
     st.subheader("💪 健康度約束")
@@ -138,6 +259,27 @@ with st.sidebar:
             "取消勾選 = 把這兩條權重設 0，SA 完全不管健康度。"
         ),
     )
+
+    st.divider()
+    st.subheader("🎯 Focused SA (L3)")
+    use_focused = st.checkbox(
+        "啟用 Focused 模式",
+        value=True,
+        help=(
+            "L3 Focused SA：把每位 nurse 個人罰分拆開，分綠燈（凍結）／紅燈（active）。\n"
+            "Mutation 強制以紅燈 nurse 為主角，並依其主要違規類型路由到對症修復動作\n"
+            "（excess_rg → RG↔work swap、consecutive_work → 在 streak 中段插入休息 等）。\n"
+            "搭配 tabu list 防止反向操作，stagnation 偵測自動解凍攪局。"
+        ),
+    )
+    if use_focused:
+        freeze_th = st.slider("綠燈門檻（個人罰分 <）", 0, 5000, 500, step=100,
+                              help="個人罰分低於此就凍結為綠燈，mutation 不會挑為主角")
+        reclassify_n = st.slider("重新分類間隔（iter）", 50, 1000, 200, step=50)
+        stag_thaw_n = st.slider("解凍門檻（iter 無進步）", 200, 3000, 800, step=100)
+        tabu_n = st.slider("tabu list 長度", 0, 200, 50, step=10)
+    else:
+        freeze_th, reclassify_n, stag_thaw_n, tabu_n = 500, 200, 800, 50
 
     st.divider()
     st.subheader("🔁 自動加重 (feedback loop)")
@@ -175,20 +317,53 @@ if not run_btn:
 
 
 # ============================================================
-# 跑 SA
+# 跑 SA — 視 auto_fill 決定是否自動補足員工
 # ============================================================
-nurses = [s["staff_id"] for s in SAMPLE_STAFF]
-name_map = {s["staff_id"]: s["name"] for s in SAMPLE_STAFF}
+effective_staff = list(SAMPLE_STAFF)
+
+if 'auto_adjust' in dir() and auto_adjust and adjust_mode == "fill":
+    starting_id = len(effective_staff) + 1
+    needed = target_count - len(effective_staff)
+    new_ids = []
+    for i in range(starting_id, starting_id + needed):
+        sid = f"N{i:03d}"
+        new_ids.append(sid)
+        effective_staff.append({
+            "staff_id": sid, "name": sid,
+            "tenure_years": 3, "special_status": "Standard",
+            "is_pregnant_or_nursing": False, "leave_status": "None",
+        })
+    st.info(f"🤖 自動補足 {needed} 名 placeholder：{new_ids} → 共 {len(effective_staff)} 人")
+
+elif 'auto_adjust' in dir() and auto_adjust and adjust_mode == "trim":
+    # 保護名單永遠留；其餘從尾端往前砍
+    protected_set = {s["staff_id"] for s in SAMPLE_STAFF
+                     if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"}
+    kept_protected = [s for s in effective_staff if s["staff_id"] in protected_set]
+    non_protected = [s for s in effective_staff if s["staff_id"] not in protected_set]
+    keep_non_prot = target_count - len(kept_protected)
+    if keep_non_prot < 0:
+        st.error(f"⛔ 保護名單 {len(kept_protected)} 人已超過建議上限 {target_count}，無法裁減")
+        st.stop()
+    dropped = [s["staff_id"] for s in non_protected[keep_non_prot:]]
+    kept_non_prot = non_protected[:keep_non_prot]
+    # 保留原 SAMPLE_STAFF 中的順序：依 staff_id sort
+    effective_staff = sorted(kept_protected + kept_non_prot, key=lambda s: s["staff_id"])
+    st.info(f"🤖 自動裁減 {len(dropped)} 名員工：{dropped} → 留下 {len(effective_staff)} 人")
+
+nurses = [s["staff_id"] for s in effective_staff]
+name_map = {s["staff_id"]: s["name"] for s in effective_staff}
 protected_indices = [
-    i for i, s in enumerate(SAMPLE_STAFF)
+    i for i, s in enumerate(effective_staff)
     if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"
 ]
 
-spinner_msg = (
-    f"🔁 Auto-tighten 模式：最多跑 {max_rounds} 輪 SA..."
-    if use_feedback
-    else f"🧮 SA 退火運算中（最多 {iters} 次迭代）..."
-)
+if use_multistart:
+    spinner_msg = f"🎲 Multi-start：跑 {num_starts} 次 SA 取最佳..."
+elif use_feedback:
+    spinner_msg = f"🔁 Auto-tighten 模式：最多跑 {max_rounds} 輪 SA..."
+else:
+    spinner_msg = f"🧮 SA 退火運算中（最多 {iters} 次迭代）..."
 
 # 健康度 toggle 透過 weight_overrides 把兩條健康規則的權重壓 0 來停用
 base_overrides = {} if use_health else {
@@ -198,17 +373,25 @@ base_overrides = {} if use_health else {
 
 with st.spinner(spinner_msg):
     try:
-        if use_feedback:
-            # auto-tighten 路徑：每輪都重新疊加 health overrides + auto-tighten overrides
-            # 把 base_overrides 透過 monkey-patching weight_overrides 起手值的方式注入
-            # （run_sa_with_feedback 內部會自己疊加加重的 overrides；這裡作為初始值）
-            from scheduler import run_sa as _run_sa_raw, run_sa_with_feedback as _wrap
-            # 簡單做法：feedback loop 跑完後不影響 health overrides，因為 health 沒在
-            # JS_TO_SA_MAP 裡所以 auto-tighten 不會碰它。在 run_sa_with_feedback 開頭
-            # 傳入初始 overrides 即可。
+        if use_multistart:
+            result = run_sa_multistart(
+                year=year, month=month,
+                nurses=nurses, protected_indices=protected_indices,
+                daily_reqs={1: d_req, 2: e_req, 3: n_req},
+                custom_rules=[],
+                max_iterations=iters,
+                num_starts=num_starts, base_seed=seed,
+                weight_overrides=base_overrides,
+                focused_mode=use_focused,
+                freeze_threshold=freeze_th,
+                reclassify_every=reclassify_n,
+                tabu_size=tabu_n,
+                stagnation_thaw=stag_thaw_n,
+            )
+        elif use_feedback:
             result = run_sa_with_feedback(
                 year=year, month=month,
-                nurses=nurses, staff_data=SAMPLE_STAFF,
+                nurses=nurses, staff_data=effective_staff,
                 protected_indices=protected_indices,
                 daily_reqs={1: d_req, 2: e_req, 3: n_req},
                 custom_rules=[],
@@ -224,6 +407,11 @@ with st.spinner(spinner_msg):
                 custom_rules=[],
                 max_iterations=iters, seed=seed,
                 weight_overrides=base_overrides,
+                focused_mode=use_focused,
+                freeze_threshold=freeze_th,
+                reclassify_every=reclassify_n,
+                tabu_size=tabu_n,
+                stagnation_thaw=stag_thaw_n,
             )
     except ValueError as e:
         st.error(f"❌ Pre-flight 攔截：{e}")
@@ -231,7 +419,7 @@ with st.spinner(spinner_msg):
 
 stats = result["stats"]
 schedule_dict = _schedule_to_dict(result["schedule"])
-violations = check_labor_law_compliance(schedule_dict, SAMPLE_STAFF, year, month)
+violations = check_labor_law_compliance(schedule_dict, effective_staff, year, month)
 health = calculate_team_health(schedule_dict, stats["num_days"])
 
 # ============================================================
@@ -296,6 +484,48 @@ with tab_grid:
             unsafe_allow_html=True,
         )
 
+    st.divider()
+    st.subheader("📊 每人班別/休假天數統計")
+
+    count_rows = []
+    for nid in nurses:
+        days = schedule_dict.get(nid, {})
+        counts = {"D": 0, "E": 0, "N": 0, "RG": 0, "RC": 0, "O": 0}
+        for shift in days.values():
+            if shift in counts:
+                counts[shift] += 1
+        work_days = counts["D"] + counts["E"] + counts["N"]
+        rest_days = counts["RG"] + counts["RC"] + counts["O"]
+        row = {
+            "員工": nid,
+            "D 白班": counts["D"],
+            "E 小夜": counts["E"],
+            "N 大夜": counts["N"],
+            "RG 例假": counts["RG"],
+            "RC 休息日": counts["RC"],
+        }
+        if counts["O"]:
+            row["O 休假"] = counts["O"]
+        row["工作天"] = work_days
+        row["休假天"] = rest_days
+        count_rows.append(row)
+    count_df = pd.DataFrame(count_rows)
+
+    cc1, cc2 = st.columns([3, 2])
+    with cc1:
+        st.dataframe(count_df, use_container_width=True, hide_index=True, height=380)
+    with cc2:
+        st.markdown("**休假天數分布（RG + RC）**")
+        rest_chart = count_df.set_index("員工")[["RG 例假", "RC 休息日"]]
+        st.bar_chart(rest_chart)
+
+    st.caption(
+        f"📌 全月 **{stats['num_days']}** 天 ｜ "
+        f"團隊總休假 RG **{count_df['RG 例假'].sum()}** + "
+        f"RC **{count_df['RC 休息日'].sum()}** = **{count_df['RG 例假'].sum() + count_df['RC 休息日'].sum()}** 人-日 ｜ "
+        f"人均休假 **{count_df['休假天'].mean():.1f}** 天（工作 **{count_df['工作天'].mean():.1f}** 天）"
+    )
+
 # ----- Tab 2: 健康度 -----
 with tab_health:
     score_rows = []
@@ -335,6 +565,27 @@ with tab_health:
 
 # ----- Tab 3: SA 統計 + 法遵檢查（合併） -----
 with tab_sa:
+    # ============ Section -1: Multi-start summary（啟用時顯示）============
+    ms_summary = stats.get("multistart_summary")
+    if ms_summary:
+        st.markdown(f"### 🎲 Multi-start 結果（{len(ms_summary)} 次跑取最佳）")
+        st.caption(f"最佳是第 {stats.get('multistart_best_attempt', '?')} 次")
+        ms_df = pd.DataFrame([{
+            "嘗試 #": r["attempt"],
+            "Seed": r["seed"],
+            "罰分": r["penalty"],
+            "狀態": r["solver_status"],
+            "耗時 (s)": r["elapsed_seconds"],
+            "前 3 大違規": ", ".join(f"{k}×{v}" for k, v in r["top_violations"][:3]) or "無",
+        } for r in ms_summary])
+        st.dataframe(ms_df, use_container_width=True, hide_index=True)
+        # 罰分趨勢小圖
+        trend_df = pd.DataFrame([{
+            "嘗試 #": r["attempt"], "罰分": r["penalty"]
+        } for r in ms_summary]).set_index("嘗試 #")
+        st.line_chart(trend_df)
+        st.divider()
+
     # ============ Section 0: Auto-tighten 歷程（只在啟用時顯示） ============
     feedback_rounds = stats.get("feedback_rounds")
     if feedback_rounds:
@@ -355,6 +606,56 @@ with tab_sa:
             "JS 違規數 × 100": r["js_violations"] * 100,  # 同尺度方便比較
         } for r in feedback_rounds]).set_index("輪數")
         st.line_chart(trend_df)
+        st.divider()
+
+    # ============ Section -0.5: Focused SA stats（啟用時顯示）============
+    if stats.get("focused_mode"):
+        st.markdown("### 🎯 Focused SA 統計")
+        fc1, fc2, fc3, fc4, fc5 = st.columns(5)
+        fc1.metric("Focused iters", stats.get("focused_iterations", 0))
+        fc2.metric("對症 mutation", stats.get("targeted_iterations", 0))
+        fc3.metric("解凍攪局", stats.get("thaw_iterations", 0))
+        fc4.metric("tabu 阻擋", stats.get("tabu_hits", 0))
+        fc5.metric(
+            "綠燈/紅燈",
+            f"{len(stats.get('final_green_nurses', []))}/{len(stats.get('final_red_nurses', []))}",
+        )
+
+        fcc1, fcc2 = st.columns([1, 1])
+        with fcc1:
+            st.markdown("**🟢 綠燈名單（已收斂，凍結）**")
+            green = stats.get("final_green_nurses", [])
+            if green:
+                green_rows = [{"員工": nid, "個人罰分": stats["nurse_penalties"].get(nid, 0)}
+                              for nid in green]
+                st.dataframe(pd.DataFrame(green_rows), use_container_width=True,
+                             hide_index=True, height=240)
+            else:
+                st.caption("無 — 所有 nurse 都還有顯著違規")
+        with fcc2:
+            st.markdown("**🔴 紅燈名單（active，需修復）**")
+            red = stats.get("final_red_nurses", [])
+            if red:
+                dominant = stats.get("nurse_dominant_violation", {})
+                red_rows = [{
+                    "員工": nid,
+                    "個人罰分": stats["nurse_penalties"].get(nid, 0),
+                    "主違規": dominant.get(nid, "-"),
+                } for nid in red]
+                red_df = pd.DataFrame(red_rows).sort_values("個人罰分", ascending=False)
+                st.dataframe(red_df, use_container_width=True, hide_index=True, height=240)
+            else:
+                st.success("🎉 無紅燈 — 全員已收斂")
+
+        # 分類軌跡（紅燈數隨 iter 變化）
+        log = stats.get("classify_log", [])
+        if len(log) > 1:
+            trend_df = pd.DataFrame([{
+                "iter": x["iter"], "紅燈數": x["red"], "綠燈數": x["green"],
+            } for x in log]).set_index("iter")
+            st.markdown("**紅/綠燈數隨 iter 變化**")
+            st.line_chart(trend_df)
+
         st.divider()
 
     # ============ Section A: 退火動態 + SA 內部 breakdown ============

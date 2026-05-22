@@ -48,6 +48,10 @@ SAMPLE_STAFF = [
     {"staff_id": "N008", "name": "N008", "tenure_years": 4,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
     {"staff_id": "N009", "name": "N009", "tenure_years": 0,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "Student"},  # 實習生
     {"staff_id": "N010", "name": "N010", "tenure_years": 7,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N011", "name": "N011", "tenure_years": 4,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N012", "name": "N012", "tenure_years": 2,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N013", "name": "N013", "tenure_years": 6,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
+    {"staff_id": "N014", "name": "N014", "tenure_years": 3,  "special_status": "Standard", "is_pregnant_or_nursing": False, "leave_status": "None"},
 ]
 
 
