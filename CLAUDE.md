@@ -218,6 +218,26 @@ SA penalty function encodes hard rules with high weight (連續上班 >6 天 = 2
 
 Service exposes `GET /` (landing), `GET /health` (no auth), `POST /generate_schedule` (Firebase Bearer token required, 5/min/uid rate limit), `GET /docs` (Swagger UI for testing). See `CPSAT_DEPLOY.md` for full deployment + integration steps.
 
+### Local Test Harness (`local_test/`)
+
+Pure-Python (stdlib only, Python 3.9+, **no Firebase/Render/FastAPI**) offline mirror of three production pieces, for fast iteration + cross-validation of the SA algorithm and compliance rules. **Most recent commits land here first** (`feat(local-test): …`).
+
+```bash
+python local_test/run_demo.py                                          # default sample (10 staff, 2026/5)
+python local_test/run_demo.py --year 2026 --month 6 --d 4 --e 3 --n 2  # custom daily reqs
+python local_test/run_demo.py --iters 30000 --seed 42                  # longer run, reproducible
+```
+
+`run_demo.py` runs all three and prints SA stats + violation breakdown + per-staff health. Each module is independently importable (`run_sa`, `check_labor_law_compliance`, `calculate_health_score`):
+
+| Module | Hand-ported from |
+|---|---|
+| `scheduler.py` | `main1.py` `generate_schedule()` |
+| `compliance.py` | `src/constants.js` `checkLaborLawCompliance` |
+| `health.py` | `src/components/PublishPanel.jsx` `calculateHealthScore` |
+
+**Sync invariant:** these are hand-maintained ports, not imports. When you change the production scheduler / compliance / health logic, update the matching `local_test/*.py` or cross-validation silently drifts. Intended workflow: iterate here + verify with `--seed 42`, then port the change back to production. Known intentional relaxation: SA emits a single rest type `O`, so `compliance.py` treats `O` as a wildcard RG (looser than production's RG/RC split).
+
 ### Auth Flow
 
 Three-layer security: (1) frontend route guard on session token, (2) zero-trust state validation (is_active, leave_status, turn ownership), (3) RBAC — admin (`admin@hospital.com`) vs staff roles. Backend APIs verify Firebase ID tokens via Bearer header.
@@ -239,6 +259,8 @@ Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron a
 The `server/` folder contains a legacy local Express dev server (port 3001) backed by a JSON file (`db.json`). This is **not used in production** — it predates the Vercel serverless + Firebase architecture. Ignore it for new development.
 
 Likewise, `my-app/` is an unrelated scratch/sandbox directory with its own `node_modules` and configs. Ignore it for any work on the nurse-schedule app.
+
+Various **root-level scratch artifacts** are experiments unrelated to the app and safe to ignore: loose Python (`1.PY`, `coppy.py`, `gooo.py`), `consequence.ipynb`, `yolov8n.pt` (a stray YOLO model, unrelated to the in-browser BlazeFace avatar check), `ui-template/` + the design `.zip`, `markdown.md`, `001.txt`, and `demo_out.log`. The real Python services are only `main1.py` (SA microservice) and `local_test/` (test harness).
 
 ### Diagnostic & Repair Scripts
 
