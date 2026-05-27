@@ -6,6 +6,9 @@ requirements.txt
 Dockerfile
 CPSAT_DEPLOY.md
 
+# PHP / Laravel 後端移植（部署到 PHP 主機，不歸 Vercel 管）
+php-backend/
+
 # 也順便排除其他不該上 Vercel 的本機檔案
 my-app/
 server/
