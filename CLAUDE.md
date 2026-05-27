@@ -37,6 +37,25 @@ uvicorn main1:app --reload --port 8000
 
 Then set `VITE_CPSAT_URL=http://localhost:8000` in `.env.local` so SchedulePanel's 「SA 最佳化排班」 button hits the local instance instead of the deployed one. (The env var name predates the SA migration — kept as `VITE_CPSAT_URL` so existing deployments don't break.) See `CPSAT_DEPLOY.md` for Render/Railway/Fly.io deployment.
 
+**MySQL (optional — `access_logs` hybrid storage):**
+
+The app is Firestore-first, but the audit log (`access_logs`) can optionally live in MySQL instead — it's append-only, has no real-time UI, and benefits from SQL filtering/aggregation. This is a deliberate polyglot-persistence split: cold/queryable data → MySQL, hot/real-time data (schedules, selection turns, staff) → Firestore. MySQL is **off by default**; nothing connects unless you opt in.
+
+```bash
+# 1) create the table (any MySQL 8 instance — local, PlanetScale, Railway, RDS…)
+mysql -u USER -p DBNAME < sql/access_logs.sql
+
+# 2) point the backend at it (Vercel env, or .env.local)
+#    DATABASE_URL=mysql://user:pass@host:3306/dbname   (or MYSQL_HOST/USER/PASSWORD/DATABASE)
+#    ACCESS_LOG_BACKEND=both     # dual-write during transition; flip to `mysql` after backfill
+
+# 3) backfill existing Firestore rows (dry-run → commit)
+node --env-file=.env.local scripts/migrate-access-logs-to-mysql.js
+node --env-file=.env.local scripts/migrate-access-logs-to-mysql.js --commit
+```
+
+Writer is `api/_lib/accessLog.js` (`writeAccessLog`, signature unchanged so its ~13 callers need no edits); reader is `admin-user.js` action `list-access-logs` (folded in rather than a new function — Vercel Hobby's 12-function limit is full). `AccessLogPanel` fetches that endpoint instead of subscribing to Firestore (loses live updates — acceptable for an audit log).
+
 ## Environment Variables
 
 All keys live in Vercel dashboard (Settings > Environment Variables). For local dev, `.env.local` is pulled via `vercel env pull`:
@@ -47,6 +66,8 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 - `CRON_SECRET` — Vercel Cron job authentication
 - `FIELD_ENC_KEY` — **AES-256-GCM master key for field-level encryption** (base64-encoded 32 bytes). Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Lose this and all encrypted fields are unrecoverable** — back it up offline. Used by `api/secure-field.js` and `scripts/migrate-encrypt.js`.
 - `VITE_CPSAT_URL` — Public URL of the SA scheduling microservice (e.g. `https://nurse-schedule-s0ro.onrender.com`). Variable name predates the algorithm swap; kept stable to avoid breaking existing Vercel/Render deployments. Read by `SchedulePanel` to call the optimizer. **Must also be added to `vercel.json` CSP `connect-src`** or production browser will block the fetch.
+- `ACCESS_LOG_BACKEND` — selects where `api/_lib/accessLog.js` reads/writes audit rows: `firestore` (default — unset behaves exactly as before), `mysql`, or `both` (dual-write during a transition; reads prefer MySQL). Part of the hybrid/polyglot-persistence split where cold/append-only `access_logs` can live in MySQL while hot real-time data (schedules, turns, staff) stays in Firestore. See **MySQL (optional, access_logs only)** below.
+- `DATABASE_URL` **or** `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` (+ optional `MYSQL_POOL_SIZE`, default 3) — MySQL connection for `api/_lib/mysql.js`. Only needed when `ACCESS_LOG_BACKEND` includes `mysql`; otherwise no MySQL connection is ever opened.
 
 **SA microservice env vars** (set on Render/Railway/Fly.io, NOT Vercel): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (mirror of Vercel values), `ALLOWED_ORIGINS` (CORS whitelist, comma-separated), `SA_MAX_ITERATIONS` (default 20000), `RATE_LIMIT_PER_MIN` (default 5).
 
@@ -113,7 +134,7 @@ Vercel serverless functions:
 | `auto-relay.js` | Triggered when an agentic turn is force-relayed; uses Gemini to pick the next staff and emails the warning + diagnostics. Accepts `CRON_SECRET` or a Firebase ID token. |
 | `secure-field.js` | Field-level encryption gateway: `action: encrypt \| decrypt \| batchDecrypt \| logAiAccess`. Verifies Firebase token, applies RBAC (admin sees all; staff sees only own UID), writes audit row to `access_logs`. Requires `FIELD_ENC_KEY`. |
 
-**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs), `crypto.js` (AES-256-GCM encrypt/decrypt; ciphertext format `{ct, iv, tag, v}`), `accessLog.js` (writes audit rows to Firestore `access_logs` collection — fire-and-forget, never blocks business logic), `activationToken.js` (issue/verify/consume one-time tokens for account activation and password reset; stores sha256 hash, 24h TTL).
+**Shared middleware (`api/_lib/`):** Security utilities imported by the serverless functions — `csrf.js` (origin allowlist validation), `rateLimit.js` (in-memory per-user rate limiter, 1-min window), `sanitize.js` (HTML sanitizer stripping `<script>`, event attrs, `javascript:` URLs), `crypto.js` (AES-256-GCM encrypt/decrypt; ciphertext format `{ct, iv, tag, v}`), `accessLog.js` (reads/writes audit rows — fire-and-forget, never blocks business logic; backend selectable via `ACCESS_LOG_BACKEND` = Firestore/MySQL/both, also exports `readAccessLogs` used by `admin-user.js` action `list-access-logs`), `mysql.js` (lazy `mysql2` connection pool — only opened when `ACCESS_LOG_BACKEND` includes mysql; see `sql/access_logs.sql` for the table), `activationToken.js` (issue/verify/consume one-time tokens for account activation and password reset; stores sha256 hash, 24h TTL).
 
 ### Firestore Schema
 

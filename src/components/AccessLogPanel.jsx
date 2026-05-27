@@ -1,14 +1,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ShieldAlert, RefreshCw, Filter } from 'lucide-react';
-import {
-  collection, query, orderBy, limit, onSnapshot,
-} from 'firebase/firestore';
-import { db } from '../api/database';
+import { auth } from '../api/database';
 import './AccessLogPanel.css';
 
 // 敏感欄位存取稽核日誌檢視器（admin 專用）
 //
-// 從 Firestore `access_logs` collection 即時拉最近 N 筆，提供日期 / 動作 / 對象篩選。
+// 透過 /api/admin-user (action='list-access-logs') 拉最近 N 筆，提供日期 / 動作 / 對象篩選。
+// 後端依 ACCESS_LOG_BACKEND 決定資料來源（Firestore 或 MySQL）。稽核日誌不需即時，
+// 故採「拉取 + 手動 refresh」而非 onSnapshot 即時訂閱。
 const AccessLogPanel = () => {
   const [logs, setLogs] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -19,25 +18,36 @@ const AccessLogPanel = () => {
   const [tick, setTick] = useState(0); // 用於手動重新訂閱（refresh 按鈕）
 
   useEffect(() => {
-    setIsLoading(true);
-    setErrMsg(null);
-    const q = query(
-      collection(db, 'access_logs'),
-      orderBy('ts', 'desc'),
-      limit(maxRows),
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const rows = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setLogs(rows);
-      setIsLoading(false);
-    }, (err) => {
-      console.error('access_logs 訂閱失敗:', err);
-      setErrMsg(err.code === 'permission-denied'
-        ? '無權限讀取稽核日誌（請確認您以管理員身份登入，且 firestore.rules 已部署）'
-        : `稽核日誌訂閱失敗：${err.message}`);
-      setIsLoading(false);
-    });
-    return () => unsub();
+    let cancelled = false;
+    (async () => {
+      setIsLoading(true);
+      setErrMsg(null);
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const res = await fetch('/api/admin-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({ action: 'list-access-logs', limit: maxRows }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(res.status === 403
+            ? '無權限讀取稽核日誌（請確認您以管理員身份登入）'
+            : (data.error || `HTTP ${res.status}`));
+        }
+        if (!cancelled) {
+          setLogs(Array.isArray(data.logs) ? data.logs : []);
+          setIsLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          console.error('access_logs 載入失敗:', err);
+          setErrMsg(`稽核日誌載入失敗：${err.message}`);
+          setIsLoading(false);
+        }
+      }
+    })();
+    return () => { cancelled = true; };
   }, [maxRows, tick]);
 
   const filtered = useMemo(() => logs.filter(log => {
@@ -102,7 +112,7 @@ const AccessLogPanel = () => {
           <option value={500}>最近 500 筆</option>
           <option value={1000}>最近 1000 筆</option>
         </select>
-        <button onClick={() => setTick(t => t + 1)} className="acclog__refresh" title="重新訂閱（onSnapshot 本身已即時）">
+        <button onClick={() => setTick(t => t + 1)} className="acclog__refresh" title="重新載入">
           <RefreshCw size={12} />
         </button>
       </div>

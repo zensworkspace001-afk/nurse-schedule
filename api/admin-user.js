@@ -10,13 +10,15 @@
 //   { action: 'delete-staff', staffId: 'N001' }    ← 永久離職：歸檔頭貼到 ex_staff/{id}、
 //                                                     從 NurseApp/Staff + StaffPublic 移除、
 //                                                     刪除 StaffPrivate/{id}、停用 Auth、寫稽核
+//   { action: 'list-access-logs', limit, actionFilter, actorFilter }  ← 讀稽核日誌
+//                                                     （後端依 ACCESS_LOG_BACKEND 讀 Firestore 或 MySQL）
 //
 // 全部 action 都需要 admin 權限。共用 issueToken / revokeTokensForUid / sendActivationLink。
 import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
-import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
+import { writeAccessLog, readAccessLogs, extractClientMeta } from './_lib/accessLog.js';
 
 if (!admin.apps.length) {
   let serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -337,5 +339,25 @@ export default async function handler(req, res) {
     }
   }
 
-  return res.status(400).json({ error: `未知的 action：${action}（支援：sync / reset / delete-staff）` });
+  // —— list-access-logs：讀取稽核日誌 ——
+  // 取代 AccessLogPanel 原本直接 onSnapshot Firestore 的做法。改走後端後：
+  //   1. 可讀 MySQL（混合式儲存把 access_logs 搬去 MySQL 時）；後端用 ACCESS_LOG_BACKEND 決定來源
+  //   2. 不必為了讀取多開一支 serverless function（Vercel Hobby 12 支上限已滿）
+  // 失去即時更新（改為拉取 + 手動 refresh），但稽核日誌本就不需要即時。
+  if (action === 'list-access-logs') {
+    try {
+      const { limit, actionFilter, actorFilter } = req.body;
+      const logs = await readAccessLogs({
+        limit: limit || 200,
+        action: actionFilter || null,
+        actor: actorFilter || null,
+      });
+      return res.status(200).json({ logs });
+    } catch (error) {
+      console.error('list-access-logs 失敗:', error);
+      return res.status(500).json({ error: error.message || '讀取稽核日誌失敗' });
+    }
+  }
+
+  return res.status(400).json({ error: `未知的 action：${action}（支援：sync / reset / delete-staff / list-access-logs）` });
 }
