@@ -16,30 +16,69 @@
 //   DATABASE_URL=mysql://user:pass@host:3306/dbname        ← 二擇一
 //   或
 //   MYSQL_HOST / MYSQL_PORT / MYSQL_USER / MYSQL_PASSWORD / MYSQL_DATABASE
+//
+// TLS（雲端 MySQL 幾乎都強制）：
+//   本機 MySQL（Laragon 等）不支援也不需要 TLS；雲端（PlanetScale / Aiven / Railway /
+//   TiDB Cloud / RDS…）走的是公開網際網路，必須加密。所以這裡預設「自動判斷」：
+//   主機是 localhost/127.0.0.1 → 不加密；遠端 → 加密且驗證憑證。可用 env 覆寫：
+//     MYSQL_SSL=(unset)            自動（本機關、遠端開並驗證）
+//     MYSQL_SSL=true|require|strict  強制加密 + 驗證憑證（公開 CA 的雲端可直接用）
+//     MYSQL_SSL=relaxed|no-verify    加密但不驗憑證（自簽 / 測試用）
+//     MYSQL_SSL=false|off|disable    不加密
+//     MYSQL_SSL_CA=<PEM 內文>        自訂 CA（AWS RDS 這類非公開 CA；隱含 verify）
 import mysql from 'mysql2/promise';
 
 let pool = null;
 
+// 依 env + 主機位置決定 mysql2 的 ssl 選項。回傳 undefined = 不設 ssl（交給連線字串自己決定）。
+function resolveSsl(host) {
+  const ca = process.env.MYSQL_SSL_CA ? process.env.MYSQL_SSL_CA.replace(/\\n/g, '\n') : null;
+  const mode = (process.env.MYSQL_SSL || '').trim().toLowerCase();
+
+  if (['false', 'off', 'disable', 'disabled', '0', 'no'].includes(mode)) return undefined;
+  if (['relaxed', 'no-verify', 'skip-verify', 'allow'].includes(mode)) {
+    return { rejectUnauthorized: false, ...(ca ? { ca } : {}) };
+  }
+  if (['true', 'require', 'required', 'strict', 'verify', 'on', '1', 'yes'].includes(mode)) {
+    return { rejectUnauthorized: true, ...(ca ? { ca } : {}) };
+  }
+  // 未明確設定 → 自動：有自訂 CA 一律加密；否則本機關、遠端開並驗證
+  if (ca) return { rejectUnauthorized: true, ca };
+  const isLocal = !host || ['localhost', '127.0.0.1', '::1', '0.0.0.0'].includes(host);
+  return isLocal ? undefined : { rejectUnauthorized: true };
+}
+
 export function getPool() {
   if (pool) return pool;
 
+  // serverless 友善的共用池設定（兩種連線來源都套用）
+  const base = {
+    connectionLimit: Number(process.env.MYSQL_POOL_SIZE) || 3,
+    // JSON 欄位由 mysql2 自動 parse；timezone 用 UTC 避免本地時區干擾
+    timezone: 'Z',
+    enableKeepAlive: true,
+  };
+
   const url = process.env.DATABASE_URL || process.env.MYSQL_URL;
   if (url) {
-    pool = mysql.createPool(url);
+    let host = null;
+    try { host = new URL(url).hostname; } catch { /* 非標準字串就交給 mysql2 自己 parse */ }
+    const ssl = resolveSsl(host);
+    // mysql2 支援 { uri, ...額外選項 }：先 parse 連線字串，再合併下列選項（ssl 為加法疊上）
+    pool = mysql.createPool({ uri: url, ...base, ...(ssl ? { ssl } : {}) });
   } else {
     if (!process.env.MYSQL_HOST) {
       throw new Error('MySQL 未設定：請設 DATABASE_URL 或 MYSQL_HOST 等 env');
     }
+    const ssl = resolveSsl(process.env.MYSQL_HOST);
     pool = mysql.createPool({
       host: process.env.MYSQL_HOST,
       port: Number(process.env.MYSQL_PORT) || 3306,
       user: process.env.MYSQL_USER,
       password: process.env.MYSQL_PASSWORD,
       database: process.env.MYSQL_DATABASE,
-      connectionLimit: Number(process.env.MYSQL_POOL_SIZE) || 3,
-      // JSON 欄位由 mysql2 自動 parse；timezone 用 UTC 避免本地時區干擾
-      timezone: 'Z',
-      enableKeepAlive: true,
+      ...base,
+      ...(ssl ? { ssl } : {}),
     });
   }
   return pool;
