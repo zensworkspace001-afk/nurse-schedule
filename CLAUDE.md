@@ -243,9 +243,41 @@ python local_test/run_demo.py --iters 30000 --seed 42                  # longer 
 
 Three-layer security: (1) frontend route guard on session token, (2) zero-trust state validation (is_active, leave_status, turn ownership), (3) RBAC — admin (`admin@hospital.com`) vs staff roles. Backend APIs verify Firebase ID tokens via Bearer header.
 
+**`staff_id ↔ email` convention (load-bearing invariant):** Firebase Auth has no concept of staff IDs. The system bridges them via `${staff_id.toLowerCase()}@hospital.com` — used by both the frontend login form (`src/components/LoginPanel.jsx:51` constructs the email from typed staff_id) and the backend account creator (`api/admin-user.js:144` creates the Auth account with this exact email). Any code path that creates a Firebase Auth account MUST use this pattern; an account with a different email exists in Auth but is unreachable via the login form. Admin is the lone exception: `admin@hospital.com` (no staff_id prefix).
+
 **First-login PDPA gate:** When `profile_completed === false`, App.jsx routes to `ProfileWizard` instead of `StaffDashboard`. Step 1 of the wizard blocks the form behind a PDPA §8 consent — the staff must click through to `/privacy-notice` (new tab), scroll to the bottom (localStorage flag `pdpa_read_v1` set there), then tick the agreement checkbox. The consent timestamp is persisted to `staffData[*].pdpa_consented_at`. Notice version bumps (`v1 → v2 …`) force everyone to re-consent.
 
 **Offboarding (永久離職):** Admin clicks 🗑 on a staff row in StaffManagementPanel → calls `/api/admin-user action='delete-staff'`. Backend runs a Firestore transaction: snapshot `staff_id/name/email/level/tenure/avatar/avatar_thumb` into `ex_staff/{id}` with `deleted_at` + `deleted_by`, remove from `NurseApp/Staff` array, rebuild StaffPublic, delete StaffPrivate. Then disables Firebase Auth + revokes tokens (non-fatal — logs warning if fails). Writes `access_logs` action=`delete-staff`. **Encrypted PII (idNumber/bankAccount/phone) is intentionally NOT copied to ex_staff** — offboarding should destroy ciphertext too, otherwise the org keeps a key-management burden for someone who's gone.
+
+### PHP / Laravel Backend Migration POC (`php-backend/`)
+
+A runnable Laravel 13 app at the repo root, sitting alongside the Node backend — a parallel implementation of the Vercel `api/*` endpoints used to validate a potential migration off serverless Node. **Not deployed**; production still runs the Node `api/*` on Vercel. Excluded from Vercel build via `.vercelignore`.
+
+Strategy: only the backend API moves to PHP; the React frontend + Firestore + Firebase Auth + real-time `onSnapshot` subscriptions stay (PHP can't provide server push).
+
+```bash
+cd php-backend
+composer install              # vendor/ is gitignored, ~760MB
+cp .env.example .env
+php artisan key:generate
+# Fill FIREBASE_*, FIELD_ENC_KEY, RESEND_API_KEY, CRON_SECRET from your .env.local
+php artisan serve --port=8000
+```
+
+**Ported (green batch, end-to-end verified against real Firebase):** `sendEmail`, `activate-account`, `log-login` + shared layer (`FieldCrypto`, `Sanitizer`, `Csrf`, `RateLimit`, `Firebase`, `ActivationToken`, `AccessLog`).
+**Pending:** middle batch (`complete-profile`, `claim-schedule`, `auto-settle`, `cron/check-timeout`), hard batch (`gemini`, `auto-relay`, `analyze-excel`, `admin-user`).
+
+**Three non-obvious things that bite when working here:**
+
+1. **kreait `createFirestore()` does NOT pass the service account to the underlying `FirestoreClient`** — it falls back to ADC and fails. `app/Support/Firebase.php` bypasses kreait's Firestore wrapper and constructs `FirestoreClient` directly with `['credentials' => $serviceAccount, 'transport' => ...]`. Auth still uses kreait normally. Note `google/cloud-firestore` v2 uses the `'credentials'` option key, not v1's `'keyFile'`.
+
+2. **Windows ZTS PHP + grpc → ACCESS_VIOLATION on first request.** Even with `php_grpc.dll` correctly installed and `php -m` showing grpc loaded, the first real Firestore call segfaults (`0xC0000005`). Default `FIRESTORE_TRANSPORT=rest` works on every platform with identical SDK API; Linux production may set `FIRESTORE_TRANSPORT=grpc` for HTTP/2 + protobuf speed.
+
+3. **Crypto envelope must match Node byte-for-byte.** `FieldCrypto::encrypt/decrypt` wraps the plaintext in a `{t, v}` JSON envelope before AES-GCM (mirroring `api/_lib/crypto.js` `serialize()`). **`FIELD_ENC_KEY` must be the same key as the Node backend** or PHP cannot decrypt existing Firestore ciphertext.
+
+**Rate limiting differs from Node:** Node uses an in-process `Map`; PHP-FPM is request-per-process so `app/Support/RateLimit.php` uses Laravel's `RateLimiter` facade (cache-backed). Multi-instance deployments need `CACHE_STORE=redis`, otherwise per-instance counters defeat the limiter.
+
+**`.env` editing gotcha:** vlucas/phpdotenv processes `\n` escapes in double-quoted values as actual newlines, which breaks the parser mid-PEM. Wrap `FIREBASE_PRIVATE_KEY` in single quotes (PEM stays as literal `\n` strings; `Firebase::factory()` does the `str_replace('\\n', "\n", $pk)` itself, matching Node behavior). Pasting a multi-line PEM unquoted leaves orphan lines that phpdotenv also chokes on — strip them.
 
 ## Deployment
 
@@ -253,7 +285,7 @@ Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron a
 
 `vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, jsDelivr, **tfhub.dev + www.kaggle.com + storage.googleapis.com** (BlazeFace model weights), and **the SA microservice URL**. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
 
-`.vercelignore` excludes `main1.py`, `requirements.txt`, `Dockerfile`, and `CPSAT_DEPLOY.md` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` and runs `uv pip install`, which is irrelevant work that just slows down the frontend deploy. Keep the files in git so Render/Railway can pull them.
+`.vercelignore` excludes `main1.py`, `requirements.txt`, `Dockerfile`, `CPSAT_DEPLOY.md`, and `php-backend/` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` or `php-backend/composer.json` and tries to install Python/PHP toolchains, which is irrelevant work that slows down the frontend deploy. Keep the files in git so Render/Railway/PHP hosts can pull them.
 
 ### Legacy `server/` and `my-app/` Directories
 
