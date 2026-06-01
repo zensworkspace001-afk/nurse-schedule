@@ -10,7 +10,12 @@ healthcheck），演算法換成「Tissue-Like P-System」+ 模擬退火 (SA)：
   - 透過跨膜 antiport 交換 + 區塊交換進行 mutation
   - 模擬退火接受策略：用 Boltzmann 機率跳出局部最佳
   - Penalty function 把違規行為（連上 >6、連大夜 >3、禁止輪班序列、
-    保護名單上 E/N、custom_rules）轉成數字罰分
+    保護名單上 E/N、大夜後沒連休 2 天、月休 <8、月工作 >27、
+    個人健康扣分 >30 防護網、custom_rules）轉成數字罰分
+  - custom_rules 支援三種 action：
+      UPDATE_DEMAND  改寫某日某班別的需求人數（LLM 動態調整）
+      FORCE_OFF      強制某員工某日休假
+      FORCE_WORK     強制某員工某日上指定班
 
 ⚠️ SA 跟 CP-SAT 的本質差異：CP-SAT 數學保證硬限制全滿足；SA 只是「盡量低
    罰分」，可能停在還有違規的解（penalty > 0 但已是 20000 次迭代內最佳）。
@@ -226,59 +231,31 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
     _, num_days = calendar.monthrange(year, month)
     num_nurses = len(req.nurses)
     protected = set(req.protected_indices)
+    nurses = req.nurses
+    protected_ids = {nurses[i] for i in protected}
+    non_protected = num_nurses - len(protected)
 
     # daily_reqs 進來時 key 可能是 int 也可能是 str（pydantic v1 / v2 行為差異）
     def _req(code: int) -> int:
         return int(req.daily_reqs.get(code, req.daily_reqs.get(str(code), 0)))
-
     req_D, req_E, req_N = _req(1), _req(2), _req(3)
-    daily_demand = req_D + req_E + req_N
-
-    log.info(f"求解 {year}/{month} ({num_days}天) | {num_nurses} 名 | 保護 {len(protected)} | "
-             f"需求 D{req_D}/E{req_E}/N{req_N}={daily_demand} | rules {len(req.custom_rules or [])}")
-
-    # —— Pre-flight 檢查：人力顯然不足直接擋下，省得跑 20000 次白工 ——
-    if num_nurses < daily_demand:
-        raise HTTPException(status_code=400,
-            detail=f"人力顯然不足：每天需要 {daily_demand} 人上班（D{req_D}+E{req_E}+N{req_N}），"
-                   f"但只有 {num_nurses} 名員工。")
-    non_protected = num_nurses - len(protected)
-    if non_protected < req_E + req_N:
-        raise HTTPException(status_code=400,
-            detail=f"保護名單過多：{len(protected)} 人受保護不能排 E/N，"
-                   f"剩餘 {non_protected} 人不足以填每日 E({req_E})+N({req_N})={req_E + req_N} 班。")
 
     # ==========================================
-    # 初始化四個細胞膜（D/E/N/OFF）
+    # 解析 custom_rules — 三種 action：
+    #   UPDATE_DEMAND  改寫某日某班別需求（前端 / LLM 動態調整）
+    #   FORCE_OFF      強制某員工某日休假
+    #   FORCE_WORK     強制某員工某日上指定班
+    # 每日 target_reqs 以 daily_reqs 為基準、由 UPDATE_DEMAND 覆寫；
+    # 之後的初始化、pre-flight、antiport 全部以這份「每日」需求為準
+    # （antiport 在同日內換人，會自動保持每日配額）。
     # ==========================================
-    m_mem = {d: [] for d in range(1, num_days + 1)}
-    e_mem = {d: [] for d in range(1, num_days + 1)}
-    n_mem = {d: [] for d in range(1, num_days + 1)}
-    o_mem = {d: [] for d in range(1, num_days + 1)}
-
-    nurses = req.nurses
-    protected_ids = {nurses[i] for i in protected}
-
-    for d in range(1, num_days + 1):
-        # 先把非保護的丟進候選池排 E/N，剩下的再給 D，最後 O
-        non_prot = [nid for nid in nurses if nid not in protected_ids]
-        prot = list(protected_ids)
-        random.shuffle(non_prot)
-        random.shuffle(prot)
-
-        for _ in range(req_E): e_mem[d].append(non_prot.pop())
-        for _ in range(req_N): n_mem[d].append(non_prot.pop())
-        # D 可以任意人排
-        pool_for_d = non_prot + prot
-        random.shuffle(pool_for_d)
-        for _ in range(req_D): m_mem[d].append(pool_for_d.pop())
-        o_mem[d].extend(pool_for_d)
-
-    # ==========================================
-    # 預先把 custom_rules 解析成可快取的結構
-    # ==========================================
+    target_reqs: Dict[int, Dict[str, int]] = {
+        d: {"D": req_D, "E": req_E, "N": req_N} for d in range(1, num_days + 1)
+    }
+    SHIFT_INT_TO_LETTER = {1: "D", 2: "E", 3: "N"}
     force_off: List[tuple] = []   # (nurse_id, day)
     force_work: List[tuple] = []  # (nurse_id, day, shift_letter)
+
     for rule in req.custom_rules or []:
         try:
             d = int(str(rule.get("date", "")).split("-")[2])
@@ -287,6 +264,14 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
         except Exception:
             continue
         action = rule.get("action")
+        if action == "UPDATE_DEMAND":
+            sh = rule.get("shift")
+            if isinstance(sh, int):
+                sh = SHIFT_INT_TO_LETTER.get(sh)
+            new_val = rule.get("new_value")
+            if sh in ("D", "E", "N") and isinstance(new_val, (int, float)) and 0 <= int(new_val) <= num_nurses:
+                target_reqs[d][sh] = int(new_val)
+            continue
         nid = rule.get("nurse_id")
         if action == "FORCE_OFF" and nid in nurses:
             force_off.append((nid, d))
@@ -294,6 +279,56 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
             sh = rule.get("shift")
             if sh in ("D", "E", "N"):
                 force_work.append((nid, d, sh))
+
+    max_daily = max(sum(v.values()) for v in target_reqs.values())
+    log.info(
+        f"求解 {year}/{month} ({num_days}天) | {num_nurses} 名 | 保護 {len(protected)} | "
+        f"基準 D{req_D}/E{req_E}/N{req_N} | rules {len(req.custom_rules or [])} "
+        f"(UPDATE_DEMAND 後 max-daily-total={max_daily})"
+    )
+
+    # —— Pre-flight：每一日都要可行，否則跑 20000 次白工 ——
+    for d in range(1, num_days + 1):
+        rD = target_reqs[d]["D"]
+        rE = target_reqs[d]["E"]
+        rN = target_reqs[d]["N"]
+        if rD + rE + rN > num_nurses:
+            raise HTTPException(
+                status_code=400,
+                detail=f"第 {d} 日總需求 {rD + rE + rN}（D{rD}+E{rE}+N{rN}）> 員工數 {num_nurses}",
+            )
+        if rE + rN > non_protected:
+            raise HTTPException(
+                status_code=400,
+                detail=f"第 {d} 日 E+N 需求 {rE + rN} > 可排夜班人數 {non_protected}"
+                       f"（扣除保護名單 {len(protected)} 人）",
+            )
+
+    # ==========================================
+    # 初始化四個細胞膜（D/E/N/OFF）— 依每日 target_reqs 配額
+    # ==========================================
+    m_mem = {d: [] for d in range(1, num_days + 1)}
+    e_mem = {d: [] for d in range(1, num_days + 1)}
+    n_mem = {d: [] for d in range(1, num_days + 1)}
+    o_mem = {d: [] for d in range(1, num_days + 1)}
+
+    for d in range(1, num_days + 1):
+        rD = target_reqs[d]["D"]
+        rE = target_reqs[d]["E"]
+        rN = target_reqs[d]["N"]
+        # 先把非保護的丟進候選池排 E/N，剩下的再給 D，最後 O
+        non_prot = [nid for nid in nurses if nid not in protected_ids]
+        prot = list(protected_ids)
+        random.shuffle(non_prot)
+        random.shuffle(prot)
+
+        for _ in range(rE): e_mem[d].append(non_prot.pop())
+        for _ in range(rN): n_mem[d].append(non_prot.pop())
+        # D 可以任意人排
+        pool_for_d = non_prot + prot
+        random.shuffle(pool_for_d)
+        for _ in range(rD): m_mem[d].append(pool_for_d.pop())
+        o_mem[d].extend(pool_for_d)
 
     # ==========================================
     # 輔助：取單一護理師的整月班別字串
@@ -311,44 +346,72 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
     # 適應度（罰分越低越好）
     # ==========================================
     PENALTY = {
-        "consecutive_work_7":  2000,   # 連續上班 > 6 天（七休一）
-        "consecutive_night_4": 1000,   # 連續大夜 > 3 天
-        "forbidden_n_d":       1000,   # N→D 違反 11h 輪班間隔
-        "forbidden_n_e":       1000,   # N→E
-        "forbidden_e_d":       1000,   # E→D
-        "isolated_off":          50,   # 孤立休假（軟限制）
-        "protected_on_en":   500000,   # 保護名單上 E/N（接近天譴）
-        "custom_rule_violation": 1000000,  # FORCE_OFF / FORCE_WORK 違反
+        "consecutive_work_7":      2000,   # 連續上班 > 6 天（七休一）
+        "consecutive_night_4":     1000,   # 連續大夜 > 3 天
+        "forbidden_n_d":           1000,   # N→D 違反 11h 輪班間隔
+        "forbidden_n_e":           1000,   # N→E
+        "forbidden_e_d":           1000,   # E→D
+        "isolated_off":              50,   # 孤立休假（軟限制）
+        "protected_on_en":       500000,   # 保護名單上 E/N（接近天譴）
+        "custom_rule_violation":1000000,   # FORCE_OFF / FORCE_WORK 違反
+        # ↓ 對應 main.py 最新模型的硬限制（SA 以重罰實現）
+        "post_night_not_off_2":    2000,   # 大夜後沒連休 2 天（每違規日 +2000）
+        "monthly_off_below_8":      500,   # 月休 < 8（per missing day）
+        "monthly_work_above_27":    500,   # 月工作 > 27（per excess day）
+        "health_cap_exceeded":   500000,   # 個人健康扣分 > 30（防護網）
     }
 
+    # 健康扣分（對應 main.py「連 4 大夜 -5」「連 6 上班 -5」+「個人扣分 ≤ 30 防護網」）
+    HEALTH_DEBIT_PER_NIGHT_WINDOW = 5
+    HEALTH_DEBIT_PER_WORK_WINDOW  = 5
+    HEALTH_CAP_PER_NURSE          = 30
+
     def evaluate(mm, em, nm) -> tuple:
-        """回傳 (total_penalty, violation_breakdown)。"""
+        """回傳 (total_penalty, violation_breakdown)。
+        sched_cache 只算一次（取代原本兩次的 get_sched），新增規則均在此一輪掃完。"""
         total = 0
         breakdown = defaultdict(int)
+        sched_cache = {nid: get_sched(nid, mm, em, nm) for nid in nurses}
+
         for nid in nurses:
-            sched = get_sched(nid, mm, em, nm)
+            sched = sched_cache[nid]
             c_work = 0
             c_night = 0
+            work_days = 0
+            off_days = 0
+            health_debit = 0
+
+            # —— 1. 每日掃描：連續上班 / 連大夜 / 保護名單 / 月休工作天累計 ——
             for d in range(num_days):
-                # 1. 連續工時
                 if sched[d] != "O":
                     c_work += 1
+                    work_days += 1
                     c_night = c_night + 1 if sched[d] == "N" else 0
                 else:
                     c_work, c_night = 0, 0
+                    off_days += 1
+
                 if c_work > 6:
                     total += PENALTY["consecutive_work_7"]
                     breakdown["consecutive_work_7"] += 1
                 if c_night > 3:
                     total += PENALTY["consecutive_night_4"]
                     breakdown["consecutive_night_4"] += 1
-
-                # 2. 保護名單 — 不可上 E/N
                 if nid in protected_ids and sched[d] in ("E", "N"):
                     total += PENALTY["protected_on_en"]
                     breakdown["protected_on_en"] += 1
 
-            # 3. 班別間隔（11h 規則）
+            # —— 2. 月休 ≥ 8、月工作 ≤ 27（main.py 的四週彈性工時整月剎車）——
+            if off_days < 8:
+                miss = 8 - off_days
+                total += PENALTY["monthly_off_below_8"] * miss
+                breakdown["monthly_off_below_8"] += miss
+            if work_days > 27:
+                excess = work_days - 27
+                total += PENALTY["monthly_work_above_27"] * excess
+                breakdown["monthly_work_above_27"] += excess
+
+            # —— 3. 11h 輪班間隔（N→D / N→E / E→D 全禁）——
             for d in range(num_days - 1):
                 if sched[d] == "N" and sched[d + 1] == "D":
                     total += PENALTY["forbidden_n_d"]; breakdown["forbidden_n_d"] += 1
@@ -357,14 +420,36 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
                 if sched[d] == "E" and sched[d + 1] == "D":
                     total += PENALTY["forbidden_e_d"]; breakdown["forbidden_e_d"] += 1
 
-            # 4. 孤立休假
+            # —— 4. 大夜後連休 2 天：d 是 N、d+1 非 N → d+1 必 O、d+2 也必 O ——
+            for d in range(num_days - 1):
+                if sched[d] == "N" and sched[d + 1] != "N":
+                    if sched[d + 1] != "O":
+                        total += PENALTY["post_night_not_off_2"]
+                        breakdown["post_night_not_off_2"] += 1
+                    if d + 2 < num_days and sched[d + 2] != "O":
+                        total += PENALTY["post_night_not_off_2"]
+                        breakdown["post_night_not_off_2"] += 1
+
+            # —— 5. 健康扣分（連 4 大夜 -5、連 6 上班 -5；滑動窗）——
+            for d in range(num_days - 3):
+                if all(sched[d + i] == "N" for i in range(4)):
+                    health_debit += HEALTH_DEBIT_PER_NIGHT_WINDOW
+            for d in range(num_days - 5):
+                if all(sched[d + i] != "O" for i in range(6)):
+                    health_debit += HEALTH_DEBIT_PER_WORK_WINDOW
+
+            # —— 6. 健康防護網（個人扣分 > 30 = 違規，對應 main.py model.Add(... <= 30)）——
+            if health_debit > HEALTH_CAP_PER_NURSE:
+                total += PENALTY["health_cap_exceeded"]
+                breakdown["health_cap_exceeded"] += 1
+
+            # —— 7. 孤立休假（既有軟限）——
             for d in range(1, num_days - 1):
                 if sched[d - 1] != "O" and sched[d] == "O" and sched[d + 1] != "O":
                     total += PENALTY["isolated_off"]
                     breakdown["isolated_off"] += 1
 
-        # 5. custom rules（在外圈一次處理避免雙重迴圈）
-        sched_cache = {nid: get_sched(nid, mm, em, nm) for nid in nurses}
+        # —— 8. custom_rules（外圈統一）——
         for (nid, d) in force_off:
             if sched_cache[nid][d - 1] != "O":
                 total += PENALTY["custom_rule_violation"]
