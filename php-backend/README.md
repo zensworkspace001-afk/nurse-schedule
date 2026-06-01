@@ -12,8 +12,8 @@
 | 端點 | 對應 Node | 狀態 |
 |---|---|---|
 | `POST /api/sendEmail` | `api/sendEmail.js` | ✅ 已實測（Resend SDK 接通，回 `API key is invalid` 證明走到 Resend 端） |
-| `POST /api/activate-account` | `api/activate-account.js` | ⚠️ 路由+控制器 OK；Firestore 部分需 grpc，見下方 |
-| `POST /api/log-login` | `api/log-login.js` | ✅ 已實測（CSRF 403、healthCheck 200、寫稽核 fire-and-forget 不擋業務） |
+| `POST /api/activate-account` | `api/activate-account.js` | 🟡 路由+控制器+Firestore 連線 OK；端到端待真實 staff_id 測 |
+| `POST /api/log-login` | `api/log-login.js` | ✅ **端到端通過**：CSRF 403、healthCheck 200、Firestore 寫入 access_logs 並用 kreait 查回確認 |
 
 共用層：`FieldCrypto` (AES-256-GCM + Node 同款 `{t,v}` 信封)、`Sanitizer`、`Csrf`、
 `RateLimit` (Laravel cache)、`Firebase` (kreait 入口)、`ActivationToken`、`AccessLog`。
@@ -55,25 +55,19 @@ POST api/sendEmail
 | HTTP 200：fire-and-forget 在 Firestore 失敗時不擋業務 | ✅ |
 | HTTP 503：sendEmail healthCheck 真的打到 Resend API | ✅ |
 
-## ⚠️ Firestore (grpc) 注意事項
+## Firestore 傳輸層：本機走 REST、生產可換 grpc
 
-`google/cloud-firestore` 在 Windows 上**需要 ext-grpc** 才能用。本機目前沒裝 grpc，
-所以下列功能會在 Firestore 呼叫處失敗（但**不會讓 app 崩潰**，因為 `AccessLog::write`
-是 fire-and-forget，`ActivationToken` 的失敗會被 controller 包成 400/500 回去）：
+`google/cloud-firestore` v2 兩種 transport 都支援，由 `FIRESTORE_TRANSPORT` 控制（預設 `rest`）。
+`Firebase::firestore()` 直接 new `FirestoreClient`（繞過 kreait 的 `createFirestore()` —
+那層在 8.x 不會把 service account 傳給底層 client，會 fallback 到 ADC 失敗）。
 
-- `activate-account` 的 token 讀寫
-- `log-login` 的稽核寫入（成功登入分支 + 失敗稽核分支）
+| 平台 | 建議 | 為什麼 |
+|---|---|---|
+| Windows + Laragon (ZTS PHP) | `FIRESTORE_TRANSPORT=rest`（預設） | grpc DLL 安裝沒問題、`php -m` 看得到，但第一個請求就 `ACCESS_VIOLATION (0xC0000005)`。已知 grpc-on-ZTS-Windows 不穩 |
+| Linux 生產 (Forge/Railway/Docker) | `FIRESTORE_TRANSPORT=grpc` | `apt install php-grpc` 即可，HTTP/2 + protobuf 比 REST 快、高併發更穩 |
 
-兩條路二選一：
-
-1. **裝 grpc DLL**：從 PECL 下載對應 PHP 8.3 TS x64 VS16 的 `php_grpc.dll`，放進
-   `C:\laragon\bin\php\php-8.3.30-Win32-vs16-x64\ext\`，並在 `php.ini` 加
-   `extension=grpc`，然後 `composer require google/cloud-firestore`。
-2. **改走 Firestore REST API**：用 Guzzle 直接打 `https://firestore.googleapis.com/v1/...`，
-   service account 用 `google/auth` 取 OAuth token。純 PHP、無原生擴充，但要多寫一些程式碼。
-
-正式部署到 Linux 主機 (Laravel Forge / Railway / Docker) 時 grpc 比較好裝，本機開發
-偷懶選 REST 也合理。
+兩種 transport 的 SDK API 完全一致，`ActivationToken` / `AccessLog` 一個字不用改。
+低流量場景（稽核日誌、token CRUD）REST 的效能差異感覺不到。
 
 ## 刻意保留 / 與 Node 版的差異
 
