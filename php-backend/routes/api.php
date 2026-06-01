@@ -3,6 +3,7 @@
 use App\Http\Controllers\ActivateAccountController;
 use App\Http\Controllers\CompleteProfileController;
 use App\Http\Controllers\LogLoginController;
+use App\Http\Controllers\SecureFieldController;
 use App\Http\Controllers\SendEmailController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,3 +20,6 @@ Route::post('/log-login', [LogLoginController::class, 'handle']);
 
 // 中批次（員工個資 + PII 加密）
 Route::post('/complete-profile', [CompleteProfileController::class, 'handle']);
+
+// 加解密 / 稽核閘道（<EncryptedField> 元件呼叫）
+Route::post('/secure-field', [SecureFieldController::class, 'handle']);
