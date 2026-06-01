@@ -123,6 +123,9 @@ PENALTY = {
     # —— 原有規則 ——
     "consecutive_work_7":  2000,    # 連續上班 > 6 天（七休一）
     "consecutive_night_4": 1000,    # 連續大夜 > 3 天
+    # 大夜後連休 2 天：d=N、d+1≠N → d+1 與 d+2 必為 RG/RC，否則每違規日 +2000。
+    # 對齊 main.py / main1.py 新模型（生理時鐘恢復需 2 天）。
+    "post_night_not_off_2":2000,
     "forbidden_n_d":       1000,    # N→D 違反 11h 輪班間隔
     "forbidden_n_e":       1000,    # N→E
     "forbidden_e_d":       1000,    # E→D
@@ -457,7 +460,18 @@ def run_sa(
         rg_mem[d] = list(d_rot[d]["rg"]) + list(e_rot[d]["rg"]) + list(n_rot[d]["rg"])
         rc_mem[d] = list(d_rot[d]["rc"]) + list(e_rot[d]["rc"]) + list(n_rot[d]["rc"])
 
-    # 解析 custom_rules
+    # —— 解析 custom_rules 並同時建構 per-day 需求對照表 ——
+    # target_reqs_per_day / target_reqs_max_per_day 預設為均一（沿用 req_D/E/N 與
+    # req_D_max/E_max/N_max），UPDATE_DEMAND 規則可逐日覆寫。之後的 daily_demand
+    # 檢查改讀這份 per-day 對照（取代原本固定的 req_D/req_E/req_N），讓 SA 能順著
+    # LLM/前端傳來的「某日某班特殊需求」收斂。
+    target_reqs_per_day: Dict[int, Dict[str, int]] = {
+        d: {"D": req_D, "E": req_E, "N": req_N} for d in range(1, num_days + 1)
+    }
+    target_reqs_max_per_day: Dict[int, Dict[str, int]] = {
+        d: {"D": req_D_max, "E": req_E_max, "N": req_N_max} for d in range(1, num_days + 1)
+    }
+    SHIFT_INT_TO_LETTER = {1: "D", 2: "E", 3: "N"}
     force_off: List[Tuple[str, int]] = []
     force_work: List[Tuple[str, int, str]] = []
     for rule in custom_rules:
@@ -468,6 +482,17 @@ def run_sa(
         except Exception:
             continue
         action = rule.get("action")
+        if action == "UPDATE_DEMAND":
+            sh = rule.get("shift")
+            if isinstance(sh, int):
+                sh = SHIFT_INT_TO_LETTER.get(sh)
+            new_val = rule.get("new_value")
+            if sh in ("D", "E", "N") and isinstance(new_val, (int, float)) and 0 <= int(new_val) <= num_nurses:
+                v = int(new_val)
+                target_reqs_per_day[d][sh] = v
+                # 維持「彈性 1 人」與其他天一致；若原本 max 更高（呼叫端有設）就保留
+                target_reqs_max_per_day[d][sh] = max(target_reqs_max_per_day[d][sh], v + 1)
+            continue
         nid = rule.get("nurse_id")
         if action == "FORCE_OFF" and nid in nurses:
             force_off.append((nid, d))
@@ -551,6 +576,16 @@ def run_sa(
                 if sched[d] == "E" and sched[d + 1] == "D":
                     _add(nid, "forbidden_e_d")
 
+            # —— 大夜後連休 2 天：d=N、d+1≠N → d+1 必為 RG/RC、d+2 也必為 RG/RC ——
+            # 對齊 main.py 新模型（生理時鐘恢復需 2 天）。scheduler.py 把 OFF 拆成
+            # RG/RC，所以判定用 "in REST"（{"RG","RC"}）而非 main1.py 那邊的 "==O"。
+            for d in range(num_days - 1):
+                if sched[d] == "N" and sched[d + 1] != "N":
+                    if sched[d + 1] not in REST:
+                        _add(nid, "post_night_not_off_2")
+                    if d + 2 < num_days and sched[d + 2] not in REST:
+                        _add(nid, "post_night_not_off_2")
+
             for d in range(1, num_days - 1):
                 # 孤立休假（工-休-工）分兩級：N 敏感、D/E 不敏感
                 if sched[d - 1] in WORK and sched[d] in REST and sched[d + 1] in WORK:
@@ -610,36 +645,27 @@ def run_sa(
             if len(work_types_used) > 1:
                 _add(nid, "mixed_work_shifts")
 
-        # —— 每日各班別人數需 ∈ [req_min, req_max]（防衛性檢查）——
-        # 現行 1↔1 swap mutation 永遠保持每日人數不變，這條不會觸發；
-        # 若未來加入非對稱 mutation 或 init 邏輯有 bug，會立刻被抓出來。
+        # —— 每日各班別人數需 ∈ [req_min, req_max]（含 UPDATE_DEMAND 覆寫感知）——
+        # 改讀 target_reqs_per_day / target_reqs_max_per_day（custom_rules 的
+        # UPDATE_DEMAND 會逐日覆寫）。1↔1 swap mutation 不破壞每日總人數，但 init
+        # 用均一 req 配額時，UPDATE_DEMAND 覆寫的日子第 0 round 就會 unmet/exceeded，
+        # 由 SA 透過跨日 mutation（block_antiport）逐步調整。
         # 不歸屬任何單一 nurse → 不寫 per_nurse，只計入 total + breakdown。
         for d in range(1, num_days + 1):
-            d_count, e_count, n_count = len(mm[d]), len(em[d]), len(nm[d])
-            if d_count < req_D:
-                shortfall = req_D - d_count
-                total += W["daily_demand_unmet"] * shortfall
-                breakdown["daily_demand_unmet"] += shortfall
-            if d_count > req_D_max:
-                excess = d_count - req_D_max
-                total += W["daily_demand_exceeded"] * excess
-                breakdown["daily_demand_exceeded"] += excess
-            if e_count < req_E:
-                shortfall = req_E - e_count
-                total += W["daily_demand_unmet"] * shortfall
-                breakdown["daily_demand_unmet"] += shortfall
-            if e_count > req_E_max:
-                excess = e_count - req_E_max
-                total += W["daily_demand_exceeded"] * excess
-                breakdown["daily_demand_exceeded"] += excess
-            if n_count < req_N:
-                shortfall = req_N - n_count
-                total += W["daily_demand_unmet"] * shortfall
-                breakdown["daily_demand_unmet"] += shortfall
-            if n_count > req_N_max:
-                excess = n_count - req_N_max
-                total += W["daily_demand_exceeded"] * excess
-                breakdown["daily_demand_exceeded"] += excess
+            d_count = len(mm[d])
+            e_count = len(em[d])
+            n_count = len(nm[d])
+            tr = target_reqs_per_day[d]
+            trm = target_reqs_max_per_day[d]
+            for sh_letter, cnt in (("D", d_count), ("E", e_count), ("N", n_count)):
+                if cnt < tr[sh_letter]:
+                    shortfall = tr[sh_letter] - cnt
+                    total += W["daily_demand_unmet"] * shortfall
+                    breakdown["daily_demand_unmet"] += shortfall
+                if cnt > trm[sh_letter]:
+                    excess = cnt - trm[sh_letter]
+                    total += W["daily_demand_exceeded"] * excess
+                    breakdown["daily_demand_exceeded"] += excess
 
         # FORCE_OFF / FORCE_WORK — 歸屬到指定 nurse
         sched_cache = {nid: get_sched(nid, mm, em, nm, rgm, rcm) for nid in nurses}
