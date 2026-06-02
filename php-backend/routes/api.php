@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivateAccountController;
+use App\Http\Controllers\AutoSettleController;
 use App\Http\Controllers\ClaimScheduleController;
 use App\Http\Controllers\CompleteProfileController;
 use App\Http\Controllers\LogLoginController;
@@ -27,3 +28,6 @@ Route::post('/secure-field', [SecureFieldController::class, 'handle']);
 
 // 班次認領（Firestore 交易 — 員工從虛擬空缺認領自己的整月 pattern）
 Route::post('/claim-schedule', [ClaimScheduleController::class, 'handle']);
+
+// 月底自動結算（cron 觸發 / admin 手動 force）
+Route::post('/auto-settle', [AutoSettleController::class, 'handle']);
