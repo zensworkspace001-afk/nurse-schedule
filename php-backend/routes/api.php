@@ -4,6 +4,7 @@ use App\Http\Controllers\ActivateAccountController;
 use App\Http\Controllers\AutoSettleController;
 use App\Http\Controllers\ClaimScheduleController;
 use App\Http\Controllers\CompleteProfileController;
+use App\Http\Controllers\CronCheckTimeoutController;
 use App\Http\Controllers\LogLoginController;
 use App\Http\Controllers\SecureFieldController;
 use App\Http\Controllers\SendEmailController;
@@ -31,3 +32,6 @@ Route::post('/claim-schedule', [ClaimScheduleController::class, 'handle']);
 
 // 月底自動結算（cron 觸發 / admin 手動 force）
 Route::post('/auto-settle', [AutoSettleController::class, 'handle']);
+
+// 巡邏機器人（cron 每日觸發 — agentic turn 24h 逾時跳過 + 個資保留期掃除）
+Route::post('/cron/check-timeout', [CronCheckTimeoutController::class, 'handle']);
