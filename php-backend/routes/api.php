@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ActivateAccountController;
+use App\Http\Controllers\ClaimScheduleController;
 use App\Http\Controllers\CompleteProfileController;
 use App\Http\Controllers\LogLoginController;
 use App\Http\Controllers\SecureFieldController;
@@ -23,3 +24,6 @@ Route::post('/complete-profile', [CompleteProfileController::class, 'handle']);
 
 // 加解密 / 稽核閘道（<EncryptedField> 元件呼叫）
 Route::post('/secure-field', [SecureFieldController::class, 'handle']);
+
+// 班次認領（Firestore 交易 — 員工從虛擬空缺認領自己的整月 pattern）
+Route::post('/claim-schedule', [ClaimScheduleController::class, 'handle']);
