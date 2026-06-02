@@ -7,6 +7,7 @@ use App\Services\FieldCrypto;
 use App\Support\Csrf;
 use App\Support\Firebase;
 use App\Support\RateLimit;
+use Google\Cloud\Firestore\Transaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -182,15 +183,20 @@ class CompleteProfileController extends Controller
                 ];
             }, $staffData);
 
-            // 三層 doc 批次寫入 — Staff merge（只動 staffData 欄位）/ Public+Private 整 doc 覆寫
+            // 三層 doc 原子寫入 — google/cloud-firestore v2 拿掉了 batch() 方法，改用
+            // runTransaction 達成同樣的「all-or-nothing」語意(write-only transaction 在
+            // v2 SDK 是允許的，底層 RPC 走 commit batch)。
+            // Staff merge(只動 staffData 欄位) / Public+Private 整 doc 覆寫。
             $publicRef  = $firestore->document('NurseApp/StaffPublic');
             $privateRef = $firestore->document('StaffPrivate/' . $updatedRow['staff_id']);
 
-            $batch = $firestore->batch();
-            $batch->set($staffRef,   ['staffData' => $staffData], ['merge' => true]);
-            $batch->set($publicRef,  ['staffData' => $publicList]);
-            $batch->set($privateRef, $updatedRow);
-            $batch->commit();
+            $firestore->runTransaction(
+                function (Transaction $tx) use ($staffRef, $publicRef, $privateRef, $staffData, $publicList, $updatedRow) {
+                    $tx->set($staffRef,   ['staffData' => $staffData], ['merge' => true]);
+                    $tx->set($publicRef,  ['staffData' => $publicList]);
+                    $tx->set($privateRef, $updatedRow);
+                }
+            );
 
             // 稽核（fire-and-forget，AccessLog::write 內部已吞例外）
             AccessLog::write([
