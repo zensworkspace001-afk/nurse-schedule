@@ -217,11 +217,10 @@ const SchedulePanel = ({
     // 3. 跑前再次跟 admin 確認
     const okGo = window.confirm(
       `🧮 SA 模擬退火排班\n\n` +
-      `將為 ${selectedYear}/${selectedMonth} 直接分配給 ${eligibleStaff.length} 位員工\n` +
-      `（${protectedIndices.length} 人列為保護名單禁排 E/N）\n\n` +
-      `⚠️ 不同於 AI 排班的「虛擬 pattern → 員工選班」流程：\n` +
-      `SA 會直接把班表分配到每位員工身上，員工只能看不能選。\n\n` +
-      `預估運算時間 10-30 秒；若仍有違規會在訊息列列出，要繼續嗎？`
+      `將為 ${selectedYear}/${selectedMonth} 生成 ${eligibleStaff.length} 份匿名班表\n` +
+      `（${protectedIndices.length} 人列為保護名單，SA 會盡量讓部分班表不含 E/N 供其認領）\n\n` +
+      `✅ 跟 AI 排班相同流程：產出「虛擬 pattern → 員工自己選班認領」的待選班表，\n` +
+      `不會直接定案。預估運算 10-30 秒；若仍有違規會在訊息列列出，要繼續嗎？`
     );
     if (!okGo) return;
 
@@ -250,25 +249,38 @@ const SchedulePanel = ({
         throw new Error(data.detail || `排班服務回應 ${response.status}`);
       }
 
-      // 4. 把 [{nurse_id, date, shift}] 轉回前端 schedule 結構：
-      //    { "N01": { 1: {type:'D'}, 2: {type:'OFF'}, ... }, "N02": ... }
-      const newSchedule = {};
+      // 4. SA 回傳的是「直接分配到真實 staff_id」的結果。但為了跟 AI generate 一致
+      //    （產出匿名虛擬班表、員工自己選班認領），這裡把每位 nurse 的整月 pattern
+      //    抽離身份、重新編成匿名虛擬 slot D001…DNNN。
+      //    後端 rest 班別是 RG / RC（例假 / 休息日），前端 SHIFT_TYPES 直接支援；
+      //    舊版若回傳 'O' 仍相容（轉成 OFF）。
+      const byNurse = {};
       data.schedule.forEach(cell => {
         const day = parseInt(cell.date.split('-')[2], 10);
-        if (!newSchedule[cell.nurse_id]) newSchedule[cell.nurse_id] = {};
-        // 後端用 'O' 代表休假，前端用 'OFF'；其他班別代碼一致
+        if (!byNurse[cell.nurse_id]) byNurse[cell.nurse_id] = {};
         const type = cell.shift === 'O' ? 'OFF' : cell.shift;
-        newSchedule[cell.nurse_id][day] = { type, time: '' };
+        byNurse[cell.nurse_id][day] = { type, time: '' };
       });
 
-      // 5. 同步寫進 schedule（草稿）與 finalizedSchedule（已分配），讓 PublishPanel 直接顯示
-      setSchedule(newSchedule);
-      if (setFinalizedSchedule) setFinalizedSchedule(newSchedule);
+      // 重新編成匿名虛擬 slot，丟棄真實 staff_id 對應（誰排哪張由員工選班決定）
+      const virtualSchedule = {};
+      Object.values(byNurse).forEach((monthPattern, index) => {
+        const virtualId = `D${String(index + 1).padStart(3, '0')}`;
+        virtualSchedule[virtualId] = monthPattern;
+      });
+
+      // 5. 走跟 AI generate 同一條路：onGenerateSchedule 會設草稿、把 finalizedSchedule
+      //    清成 null（待選狀態），員工再透過選班認領，而不是 SA 直接定案。
       setJustGenerated(true);
+      onGenerateSchedule(virtualSchedule);
 
       const elapsedClient = ((Date.now() - t0) / 1000).toFixed(1);
       const stats = data.stats || {};
-      const compliant = stats.final_penalty === 0;
+      // solver_status === 'OPTIMAL' 代表罰分已低於後端門檻（殘留違規可忽略）；
+      // FEASIBLE 表示仍有殘留違規。SA 內部罰分含「比勞基法更嚴」的客製規則，
+      // 即使法遵已過，penalty 仍可能 > 0，所以用 solver_status 判定而非 ===0。
+      const compliant = data.solver_status === 'OPTIMAL';
+      const slotCount = Object.keys(virtualSchedule).length;
       const breakdownLines = Object.entries(stats.violation_breakdown || {})
         .map(([k, v]) => `  • ${k}: ${v} 處`).join('\n') || '  • 無';
 
@@ -277,11 +289,11 @@ const SchedulePanel = ({
         content:
           `${compliant ? '✅' : '⚠️'} SA 收斂 (${data.solver_status})\n` +
           `⏱️ 伺服器運算 ${data.elapsed_seconds}s / 含網路 ${elapsedClient}s\n` +
-          `📊 最終罰分：${stats.final_penalty}（0 = 完全合規）\n` +
+          `📊 最終罰分：${stats.final_penalty}（含比勞基法更嚴的客製規則）\n` +
           `🔄 最佳解出現在第 ${stats.best_iteration}/${stats.max_iterations} 次迭代\n` +
           `🌡️ 退火接受 ${stats.accepted_worse_swaps} 次次優 / 拒絕 ${stats.rejected_swaps} 次\n` +
           `📋 殘留違規類別：\n${breakdownLines}\n\n` +
-          `班表已寫入「總班表」與「已發布班表」，可在 PublishPanel 檢視/微調。${compliant ? '' : '\n⚠️ 有違規需人工調整。'}`
+          `已生成 ${slotCount} 份匿名待選班表，員工可自行選班認領（與 AI 排班相同流程）。${compliant ? '' : '\n⚠️ 有殘留違規，建議人工檢視後再開放選班。'}`
       }]);
     } catch (err) {
       console.error('SA 排班失敗:', err);

@@ -1,26 +1,31 @@
 """
-護理排班 TLPS 模擬退火引擎
-============================
+護理排班 TLPS 模擬退火引擎（進階版 / L3 Focused SA）
+====================================================
 獨立微服務（部署於 Render / Railway / Fly.io），與 Vercel 上的 nurse-schedule
 前端配合運作。架構承襲先前 CP-SAT 版本的安全骨架（auth/CORS/rate-limit/
-healthcheck），演算法換成「Tissue-Like P-System」+ 模擬退火 (SA)：
+healthcheck），演算法為「Tissue-Like P-System」+ 模擬退火 (SA)。
 
-  - 4 個「細胞膜」分別代表 D/E/N/OFF 四種班別
-  - 隨機初始化，保證每日 D/E/N 人數正好符合 daily_reqs
-  - 透過跨膜 antiport 交換 + 區塊交換進行 mutation
+本檔的 run_sa() 與 local_test/scheduler.py 逐字對齊（同 seed 可對拍），差別只在
+這裡多包了 FastAPI / Firebase auth / rate-limit / Pydantic 外殼。當你在 local_test
+調好演算法後，把 run_sa（含 PENALTY / calculate_health_score）整段同步過來即可。
+
+  - 5 個「細胞膜」分別代表 D/E/N/RG/RC（把休假拆成例假 RG + 休息日 RC，
+    才能精準對齊勞基法 §36「兩 RG 之間 ≤ 6 工作日」這條法定要求）
+  - 貪婪 rotation 初始化 + 班別專一化（每位護理師整月只排一種工作班別）
+  - L3 Focused SA：紅/綠燈分類 + tabu list + 對症 mutation + adaptive thaw
   - 模擬退火接受策略：用 Boltzmann 機率跳出局部最佳
-  - Penalty function 把違規行為（連上 >6、連大夜 >3、禁止輪班序列、
-    保護名單上 E/N、大夜後沒連休 2 天、月休 <8、月工作 >27、
-    個人健康扣分 >30 防護網、custom_rules）轉成數字罰分
+  - Penalty function 把違規（連上 >6、連大夜 >3、禁止輪班序列、保護名單 E/N、
+    大夜後沒連休 2 天、RG/RC 範圍、每週節律、健康度防護網、custom_rules）轉成罰分
   - custom_rules 支援三種 action：
       UPDATE_DEMAND  改寫某日某班別的需求人數（LLM 動態調整）
       FORCE_OFF      強制某員工某日休假
       FORCE_WORK     強制某員工某日上指定班
 
-⚠️ SA 跟 CP-SAT 的本質差異：CP-SAT 數學保證硬限制全滿足；SA 只是「盡量低
-   罰分」，可能停在還有違規的解（penalty > 0 但已是 20000 次迭代內最佳）。
-   返回的 stats.final_penalty == 0 才代表完全合規；> 0 表示有殘留違規，
-   admin 必須人工檢視 / 微調。
+⚠️ SA 跟 CP-SAT 的本質差異：CP-SAT 數學保證硬限制全滿足；SA 只是「盡量低罰分」，
+   可能停在還有殘留違規的解。stats.final_penalty < OPTIMAL_THRESHOLD（預設 1000）
+   才回報 solver_status='OPTIMAL'；否則 'FEASIBLE'，admin 須人工檢視 / 微調。
+   實務上真正要過的關是前端 src/constants.js 的 checkLaborLawCompliance == 0 違規，
+   SA 內部罰分含「比法律更嚴」的客製規則，所以即使合規 penalty 仍可能 > 0。
 
 API
   POST /generate_schedule       — 主要排班入口（需 Firebase ID token）
@@ -46,8 +51,8 @@ import random
 import copy
 import calendar
 import logging
-from typing import List, Dict, Optional, Any
-from collections import defaultdict
+from typing import List, Dict, Optional, Any, Tuple, Set
+from collections import defaultdict, deque
 from time import time
 
 from fastapi import FastAPI, HTTPException, Header, Depends, Request
@@ -59,7 +64,7 @@ from firebase_admin import auth as fb_auth, credentials
 import uvicorn
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-log = logging.getLogger("cpsat-schedule")
+log = logging.getLogger("sa-schedule")
 
 # ==========================================
 # Firebase Admin SDK 初始化
@@ -127,7 +132,7 @@ class ScheduleRequest(BaseModel):
 class ScheduleCell(BaseModel):
     nurse_id: str
     date: str
-    shift: str  # 'O' | 'D' | 'E' | 'N'
+    shift: str  # 'D' | 'E' | 'N' | 'RG' | 'RC'
 
 
 class ScheduleResponse(BaseModel):
@@ -141,7 +146,7 @@ class ScheduleResponse(BaseModel):
 # ==========================================
 # FastAPI 實例 + middleware
 # ==========================================
-app = FastAPI(title="護理排班 CP-SAT 最佳化引擎", version="1.0.0")
+app = FastAPI(title="護理排班 SA 最佳化引擎", version="2.0.0")
 
 ALLOWED_ORIGINS = [
     o.strip() for o in os.getenv(
@@ -160,7 +165,7 @@ app.add_middleware(
 )
 
 # 簡易 in-memory rate limiter（per-uid 每分鐘 5 次求解）
-# CP-SAT 求解很重，rate limit 比一般 API 要嚴
+# SA 求解很重，rate limit 比一般 API 要嚴
 _rate_buckets: Dict[str, List[float]] = defaultdict(list)
 RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "5"))
 
@@ -171,7 +176,7 @@ def _check_rate_limit(uid: str):
     if len(_rate_buckets[uid]) >= RATE_LIMIT_PER_MIN:
         raise HTTPException(
             status_code=429,
-            detail=f"求解請求過於頻繁（{RATE_LIMIT_PER_MIN}/分鐘上限）。CP-SAT 計算昂貴，請稍候。",
+            detail=f"求解請求過於頻繁（{RATE_LIMIT_PER_MIN}/分鐘上限）。SA 計算昂貴，請稍候。",
         )
     _rate_buckets[uid].append(now)
 
@@ -192,13 +197,948 @@ async def verify_firebase_token(authorization: Optional[str] = Header(None)) -> 
 
 
 # ==========================================
+# 健康度計算 — inlined port of PublishPanel.jsx calculateHealthScore
+# （與 local_test/health.py 的 calculate_health_score 逐字對齊）
+# 每位護理師起始 100 分：
+#   -20  E→D / N→D / N→E（輪班間隔過短，每處）
+#   -5   連續 4+ 大夜（每段 streak 一次）
+#   -5   連續 6+ 上班（每段 streak 一次）
+# ==========================================
+_HEALTH_WORKING = {"D", "E", "N", "支援"}
+
+def _is_work(shift: str) -> bool:
+    if not shift:
+        return False
+    return shift in _HEALTH_WORKING or "OT" in shift
+
+def calculate_health_score(shifts: List[str]) -> Dict:
+    score = 100
+    deductions = []
+    for i in range(len(shifts) - 1):
+        cur, nxt = shifts[i], shifts[i + 1]
+        if (cur == "E" and nxt == "D") or (cur == "N" and nxt in ("D", "E")):
+            score -= 20
+            deductions.append(f"[-20] {cur}→{nxt} 短間隔 (day {i+1}-{i+2})")
+    consecutive_n = 0
+    consecutive_work = 0
+    for i in range(len(shifts) + 1):
+        s = shifts[i] if i < len(shifts) else None
+        if s == "N":
+            consecutive_n += 1
+        else:
+            if consecutive_n >= 4:
+                score -= 5
+                deductions.append(f"[-5] 連續大夜 {consecutive_n} 天 (~day {i})")
+            consecutive_n = 0
+        if s and _is_work(s):
+            consecutive_work += 1
+        else:
+            if consecutive_work >= 6:
+                score -= 5
+                deductions.append(f"[-5] 連六疲勞 {consecutive_work} 天 (~day {i})")
+            consecutive_work = 0
+    return {"score": score, "deductions": deductions}
+
+
+# 視為「已達成可接受最佳」的罰分上限。
+# 0    = 嚴格要求完全合規。
+# 1000 = 容忍極少軟限制違規。影響：早停條件 + solver_status 判定。
+OPTIMAL_THRESHOLD = 1000
+
+
+PENALTY = {
+    # —— 原有規則 ——
+    "consecutive_work_7":  2000,    # 連續上班 > 6 天（七休一）
+    "consecutive_night_4": 1000,    # 連續大夜 > 3 天
+    "post_night_not_off_2":2000,    # 大夜後沒連休 2 天（每違規日）
+    "forbidden_n_d":       1000,    # N→D 違反 11h 輪班間隔
+    "forbidden_n_e":       1000,    # N→E
+    "forbidden_e_d":       1000,    # E→D
+    "isolated_off":           0,    # （已棄用，由 isolated_off_n / isolated_off_de 取代）
+    # —— 班別敏感的孤立休假懲罰 ——
+    "isolated_off_n":       100,    # 至少一側是 N → 重罰
+    "isolated_off_de":       10,    # 兩側都是 D 或 E → 輕罰
+    "consecutive_rest_after_work": 20,  # 工作班後接 2+ 連休
+    "protected_on_en":   500000,    # 保護名單上 E/N（接近天譴）
+    "custom_rule_violation": 1000000,  # FORCE_OFF / FORCE_WORK 違反
+
+    # —— 對齊 JS 端 checkLaborLawCompliance ——
+    "weekly_hours_over_40":  800,   # 每週 > 40h
+    "monthly_hours_over_222":1200,  # 月總工時 > 176 + 46
+    "insufficient_rg":      1500,   # 月 RG < 4 天
+    "insufficient_off":        0,   # 已棄用
+    "total_rest_below_8":   1500,   # RG+RC < 8
+    "total_rest_above_9":   1500,   # RG+RC > 11（變數名沿用早期）
+    "rg_interval_over_6":   1000,   # 兩 RG 之間 > 6 工作日
+
+    # —— 健康度移植 ——
+    "health_deficit_per_point": 5,  # 每位員工 (100 - 健康分數) × 5
+    "health_floor_breach":  50000,  # 個人健康 < 70（deficit > 30）
+
+    # —— 客製化規則（比勞基法嚴）——
+    "excess_rg":            1500,   # RG > 5
+    "insufficient_rc":      1500,   # RC < 4
+    "excess_rc":            1500,   # RC > 5
+    "mixed_work_shifts":    5000,   # 整月只能一種工作班別
+
+    # —— 每週節律 ——
+    "week_missing_rg":      1000,
+    "week_missing_rc":      1000,
+
+    # —— 每人月工作天數嚴格範圍 ——
+    "work_days_below_22":   1200,   # work < num_days - 9
+    "work_days_above_23":   1200,   # work > num_days - 8
+
+    # —— streak / OT ——
+    "consecutive_work_pair": 10,    # streak 第 4 天起每天 +10
+    "overtime_6th_day_pay":  500,   # 連 6 天起算 OT
+
+    # —— 每日各班別人數需在 [req_min, req_max] ——
+    "daily_demand_unmet":   3000,
+    "daily_demand_exceeded":1500,
+}
+
+
+def run_sa(
+    year: int,
+    month: int,
+    nurses: List[str],
+    protected_indices: List[int] = None,
+    daily_reqs: Dict[int, int] = None,
+    daily_reqs_max: Dict[int, int] = None,
+    custom_rules: List[Dict] = None,
+    max_iterations: int = 20000,
+    seed: int = None,
+    weight_overrides: Dict[str, int] = None,
+    # —— L3 Focused SA 參數 ——
+    focused_mode: bool = True,        # 啟用 freeze + targeted mutation
+    freeze_threshold: int = 500,      # nurse 個人罰分 < 此 → 凍結為「綠燈」
+    reclassify_every: int = 200,      # 每 N iter 重新分類綠/紅燈
+    tabu_size: int = 50,              # tabu list 長度
+    stagnation_thaw: int = 800,       # 連續 N iter 沒進步 → 強制亂數攪局
+) -> Dict:
+    """執行 TLPS 模擬退火排班（L3 Focused SA）。回傳格式見檔頭。
+
+    Raises:
+      ValueError: 人力顯然不足或保護名單過多（呼叫端應轉成 HTTP 400）。
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    protected_indices = protected_indices or []
+    daily_reqs = daily_reqs or {}
+    custom_rules = custom_rules or []
+
+    weight_overrides = weight_overrides or {}
+    W = {**PENALTY, **weight_overrides}
+
+    protected = set(protected_indices)
+
+    def _req(code: int) -> int:
+        return int(daily_reqs.get(code, daily_reqs.get(str(code), 0)))
+
+    req_D, req_E, req_N = _req(1), _req(2), _req(3)
+    daily_demand = req_D + req_E + req_N
+
+    daily_reqs_max = daily_reqs_max or {}
+    def _req_max(code: int, fallback: int) -> int:
+        v = daily_reqs_max.get(code, daily_reqs_max.get(str(code)))
+        return int(v) if v is not None else fallback + 1
+    req_D_max = _req_max(1, req_D)
+    req_E_max = _req_max(2, req_E)
+    req_N_max = _req_max(3, req_N)
+
+    _, num_days = calendar.monthrange(year, month)
+    num_nurses = len(nurses)
+    protected_ids = {nurses[i] for i in protected}
+
+    def _calendar_weeks():
+        weeks = []
+        day1_wd = calendar.weekday(year, month, 1)  # 0=Mon, 6=Sun
+        current = 1 - day1_wd
+        while current <= num_days:
+            start = max(current, 1)
+            end = min(current + 6, num_days)
+            is_full = (end - start + 1) == 7
+            weeks.append((start, end, is_full))
+            current += 7
+        return weeks
+    weeks_info = _calendar_weeks()
+
+    # Pre-flight
+    if num_nurses < daily_demand:
+        raise ValueError(
+            f"人力顯然不足：每天需 {daily_demand} 人 (D{req_D}+E{req_E}+N{req_N})，"
+            f"但只有 {num_nurses} 名員工。"
+        )
+    non_protected = num_nurses - len(protected)
+    if non_protected < req_E + req_N:
+        raise ValueError(
+            f"保護名單過多：{len(protected)} 人受保護，"
+            f"剩餘 {non_protected} 人不足以填每日 E({req_E})+N({req_N})。"
+        )
+
+    t_start = time()
+
+    # ==========================================
+    # 初始化五個細胞膜（D/E/N/RG/RC）
+    # ==========================================
+    m_mem  = {d: [] for d in range(1, num_days + 1)}
+    e_mem  = {d: [] for d in range(1, num_days + 1)}
+    n_mem  = {d: [] for d in range(1, num_days + 1)}
+    rg_mem = {d: [] for d in range(1, num_days + 1)}
+    rc_mem = {d: [] for d in range(1, num_days + 1)}
+
+    # —— 班別專一化：預先把每位護理師指派到一種工作班別 ——
+    non_prot_list = [nid for nid in nurses if nid not in protected_ids]
+    random.shuffle(non_prot_list)
+    total_demand = max(1, req_D + req_E + req_N)
+    target_d = max(req_D, round(num_nurses * req_D / total_demand))
+    target_e = max(req_E, round(num_nurses * req_E / total_demand))
+    target_n = max(req_N, round(num_nurses * req_N / total_demand))
+    while target_d + target_e + target_n > num_nurses:
+        if target_d >= max(target_e, target_n) and target_d > req_D: target_d -= 1
+        elif target_e >= target_n and target_e > req_E: target_e -= 1
+        elif target_n > req_N: target_n -= 1
+        else: break
+    while target_d + target_e + target_n < num_nurses:
+        target_d += 1
+
+    d_pool = list(protected_ids)
+    remaining_d = max(0, target_d - len(d_pool))
+    idx = 0
+    d_pool.extend(non_prot_list[idx:idx + remaining_d]); idx += remaining_d
+    e_pool = non_prot_list[idx:idx + target_e]; idx += target_e
+    n_pool = non_prot_list[idx:idx + target_n]; idx += target_n
+    if idx < len(non_prot_list):
+        d_pool.extend(non_prot_list[idx:])
+
+    if len(e_pool) < req_E or len(n_pool) < req_N:
+        raise ValueError(
+            f"班別專一性 + 人力配置不可解："
+            f"E pool {len(e_pool)} 人 < req_E {req_E}，"
+            f"或 N pool {len(n_pool)} 人 < req_N {req_N}。"
+            "需要：放寬保護名單、降低 E/N 人力需求、或增加員工人數。"
+        )
+
+    nurse_home_type: Dict[str, str] = {}
+    for nid in d_pool: nurse_home_type[nid] = "D"
+    for nid in e_pool: nurse_home_type[nid] = "E"
+    for nid in n_pool: nurse_home_type[nid] = "N"
+    nurses_by_type = {
+        "D": list(d_pool),
+        "E": list(e_pool),
+        "N": list(n_pool),
+    }
+
+    # —— 貪婪 rotation init ——
+    def _rotation_init(pool: List[str], daily_req: int):
+        P = len(pool)
+        R = daily_req
+        result = {d: {"work": [], "rg": [], "rc": []} for d in range(1, num_days + 1)}
+        if P == 0:
+            return result
+        if R >= P:
+            for d in range(1, num_days + 1):
+                result[d]["work"] = list(pool)
+            return result
+
+        work_count = {nid: 0 for nid in pool}
+        rest_count = {nid: 0 for nid in pool}
+        tiebreak_offset = 0
+
+        for d in range(1, num_days + 1):
+            ranked = sorted(
+                enumerate(pool),
+                key=lambda x: (work_count[x[1]], (x[0] + tiebreak_offset) % P),
+            )
+            for rank, (i, nid) in enumerate(ranked):
+                if rank < R:
+                    result[d]["work"].append(nid)
+                    work_count[nid] += 1
+                else:
+                    if rest_count[nid] % 2 == 0:
+                        result[d]["rg"].append(nid)
+                    else:
+                        result[d]["rc"].append(nid)
+                    rest_count[nid] += 1
+            tiebreak_offset = (tiebreak_offset + 1) % P
+        return result
+
+    d_rot = _rotation_init(d_pool, req_D)
+    e_rot = _rotation_init(e_pool, req_E)
+    n_rot = _rotation_init(n_pool, req_N)
+
+    for d in range(1, num_days + 1):
+        m_mem[d] = list(d_rot[d]["work"])
+        e_mem[d] = list(e_rot[d]["work"])
+        n_mem[d] = list(n_rot[d]["work"])
+        rg_mem[d] = list(d_rot[d]["rg"]) + list(e_rot[d]["rg"]) + list(n_rot[d]["rg"])
+        rc_mem[d] = list(d_rot[d]["rc"]) + list(e_rot[d]["rc"]) + list(n_rot[d]["rc"])
+
+    # —— 解析 custom_rules + per-day 需求對照表 ——
+    target_reqs_per_day: Dict[int, Dict[str, int]] = {
+        d: {"D": req_D, "E": req_E, "N": req_N} for d in range(1, num_days + 1)
+    }
+    target_reqs_max_per_day: Dict[int, Dict[str, int]] = {
+        d: {"D": req_D_max, "E": req_E_max, "N": req_N_max} for d in range(1, num_days + 1)
+    }
+    SHIFT_INT_TO_LETTER = {1: "D", 2: "E", 3: "N"}
+    force_off: List[Tuple[str, int]] = []
+    force_work: List[Tuple[str, int, str]] = []
+    for rule in custom_rules:
+        try:
+            d = int(str(rule.get("date", "")).split("-")[2])
+            if d < 1 or d > num_days:
+                continue
+        except Exception:
+            continue
+        action = rule.get("action")
+        if action == "UPDATE_DEMAND":
+            sh = rule.get("shift")
+            if isinstance(sh, int):
+                sh = SHIFT_INT_TO_LETTER.get(sh)
+            new_val = rule.get("new_value")
+            if sh in ("D", "E", "N") and isinstance(new_val, (int, float)) and 0 <= int(new_val) <= num_nurses:
+                v = int(new_val)
+                target_reqs_per_day[d][sh] = v
+                target_reqs_max_per_day[d][sh] = max(target_reqs_max_per_day[d][sh], v + 1)
+            continue
+        nid = rule.get("nurse_id")
+        if action == "FORCE_OFF" and nid in nurses:
+            force_off.append((nid, d))
+        elif action == "FORCE_WORK" and nid in nurses:
+            sh = rule.get("shift")
+            if sh in ("D", "E", "N"):
+                force_work.append((nid, d, sh))
+
+    def get_sched(nid: str, mm, em, nm, rgm, rcm) -> List[str]:
+        sched = []
+        for d in range(1, num_days + 1):
+            if nid in mm[d]:    sched.append("D")
+            elif nid in em[d]:  sched.append("E")
+            elif nid in nm[d]:  sched.append("N")
+            elif nid in rgm[d]: sched.append("RG")
+            elif nid in rcm[d]: sched.append("RC")
+            else:
+                raise RuntimeError(f"Day {d} 護理師 {nid} 不在任何膜中 — 違反 init 不變式")
+        return sched
+
+    def evaluate(mm, em, nm, rgm, rcm) -> Tuple[int, Dict[str, int], Dict[str, Dict[str, int]]]:
+        total = 0
+        breakdown = defaultdict(int)
+        per_nurse: Dict[str, Dict[str, int]] = {nid: defaultdict(int) for nid in nurses}
+        REST = {"RG", "RC"}
+        WORK = {"D", "E", "N"}
+
+        def _add(nid, key, count=1):
+            nonlocal total
+            total += W[key] * count
+            breakdown[key] += count
+            per_nurse[nid][key] += count
+
+        for nid in nurses:
+            sched = get_sched(nid, mm, em, nm, rgm, rcm)
+            c_work = 0
+            c_night = 0
+            days_since_rg = 0
+
+            for d in range(num_days):
+                shift = sched[d]
+                if shift in WORK:
+                    c_work += 1
+                    c_night = c_night + 1 if shift == "N" else 0
+                    days_since_rg += 1
+                elif shift == "RG":
+                    c_work, c_night = 0, 0
+                    days_since_rg = 0
+                else:  # RC
+                    c_work, c_night = 0, 0
+                if c_work > 3:
+                    _add(nid, "consecutive_work_pair")
+                if c_work >= 6:
+                    _add(nid, "overtime_6th_day_pay")
+                if c_work > 6:
+                    _add(nid, "consecutive_work_7")
+                if c_night > 3:
+                    _add(nid, "consecutive_night_4")
+                if nid in protected_ids and shift in ("E", "N"):
+                    _add(nid, "protected_on_en")
+                if days_since_rg > 6:
+                    _add(nid, "rg_interval_over_6")
+                    days_since_rg = 0
+
+            for d in range(num_days - 1):
+                if sched[d] == "N" and sched[d + 1] == "D":
+                    _add(nid, "forbidden_n_d")
+                if sched[d] == "N" and sched[d + 1] == "E":
+                    _add(nid, "forbidden_n_e")
+                if sched[d] == "E" and sched[d + 1] == "D":
+                    _add(nid, "forbidden_e_d")
+
+            for d in range(num_days - 1):
+                if sched[d] == "N" and sched[d + 1] != "N":
+                    if sched[d + 1] not in REST:
+                        _add(nid, "post_night_not_off_2")
+                    if d + 2 < num_days and sched[d + 2] not in REST:
+                        _add(nid, "post_night_not_off_2")
+
+            for d in range(1, num_days - 1):
+                if sched[d - 1] in WORK and sched[d] in REST and sched[d + 1] in WORK:
+                    if sched[d - 1] == "N" or sched[d + 1] == "N":
+                        _add(nid, "isolated_off_n")
+                    else:
+                        _add(nid, "isolated_off_de")
+
+            for d in range(num_days - 2):
+                if sched[d] in WORK and sched[d + 1] in REST and sched[d + 2] in REST:
+                    _add(nid, "consecutive_rest_after_work")
+
+            # 【健康度移植 Level 1+2】
+            hr = calculate_health_score(sched)
+            deficit = 100 - hr["score"]
+            if deficit > 0:
+                _add(nid, "health_deficit_per_point", count=deficit)
+            if deficit > 30:
+                _add(nid, "health_floor_breach")
+
+            for week_start_day, week_end_day, is_full in weeks_info:
+                week = sched[week_start_day - 1:week_end_day]
+                work_h = sum(8 for s in week if s in WORK)
+                if work_h > 40:
+                    _add(nid, "weekly_hours_over_40")
+                if is_full:
+                    if "RG" not in week:
+                        _add(nid, "week_missing_rg")
+                    if "RC" not in week:
+                        _add(nid, "week_missing_rc")
+
+            total_work_days = sum(1 for s in sched if s in WORK)
+            total_work_h = total_work_days * 8
+            if total_work_h > 222:
+                _add(nid, "monthly_hours_over_222")
+            if total_work_days < num_days - 11:
+                _add(nid, "work_days_below_22")
+            if total_work_days > num_days - 7:
+                _add(nid, "work_days_above_23")
+
+            rg_count = sum(1 for s in sched if s == "RG")
+            rc_count = sum(1 for s in sched if s == "RC")
+            if rg_count < 4:  _add(nid, "insufficient_rg")
+            if rg_count > 5:  _add(nid, "excess_rg")
+            if rc_count < 4:  _add(nid, "insufficient_rc")
+            if rc_count > 5:  _add(nid, "excess_rc")
+            total_rest = rg_count + rc_count
+            if total_rest < 8:  _add(nid, "total_rest_below_8")
+            if total_rest > 11: _add(nid, "total_rest_above_9")
+
+            work_types_used = set(s for s in sched if s in WORK)
+            if len(work_types_used) > 1:
+                _add(nid, "mixed_work_shifts")
+
+        # —— 每日各班別人數需 ∈ [req_min, req_max] ——
+        for d in range(1, num_days + 1):
+            d_count = len(mm[d])
+            e_count = len(em[d])
+            n_count = len(nm[d])
+            tr = target_reqs_per_day[d]
+            trm = target_reqs_max_per_day[d]
+            for sh_letter, cnt in (("D", d_count), ("E", e_count), ("N", n_count)):
+                if cnt < tr[sh_letter]:
+                    shortfall = tr[sh_letter] - cnt
+                    total += W["daily_demand_unmet"] * shortfall
+                    breakdown["daily_demand_unmet"] += shortfall
+                if cnt > trm[sh_letter]:
+                    excess = cnt - trm[sh_letter]
+                    total += W["daily_demand_exceeded"] * excess
+                    breakdown["daily_demand_exceeded"] += excess
+
+        # FORCE_OFF / FORCE_WORK
+        sched_cache = {nid: get_sched(nid, mm, em, nm, rgm, rcm) for nid in nurses}
+        for (nid, d) in force_off:
+            if sched_cache[nid][d - 1] not in ("RG", "RC"):
+                _add(nid, "custom_rule_violation")
+        for (nid, d, sh) in force_work:
+            if sched_cache[nid][d - 1] != sh:
+                _add(nid, "custom_rule_violation")
+
+        per_nurse_plain = {nid: dict(v) for nid, v in per_nurse.items()}
+        return total, dict(breakdown), per_nurse_plain
+
+    work_mem_of = {"D": m_mem, "E": e_mem, "N": n_mem}
+
+    def antiport(day, mm, em, nm, rgm, rcm):
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return
+        n1, n2 = random.sample(same_type, 2)
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
+        m1 = next((m for m in candidates if n1 in m[day]), None)
+        m2 = next((m for m in candidates if n2 in m[day]), None)
+        if m1 is None or m2 is None or m1 is m2:
+            return
+        m1[day].remove(n1); m1[day].append(n2)
+        m2[day].remove(n2); m2[day].append(n1)
+
+    def block_antiport(mm, em, nm, rgm, rcm, block=3):
+        if num_days < block:
+            return
+        start = random.randint(1, num_days - block + 1)
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return
+        n1, n2 = random.sample(same_type, 2)
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
+        for d in range(start, start + block):
+            m1 = next((m for m in candidates if n1 in m[d]), None)
+            m2 = next((m for m in candidates if n2 in m[d]), None)
+            if m1 is None or m2 is None or m1 is m2:
+                continue
+            m1[d].remove(n1); m1[d].append(n2)
+            m2[d].remove(n2); m2[d].append(n1)
+
+    def month_swap(mm, em, nm, rgm, rcm):
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return
+        n1, n2 = random.sample(same_type, 2)
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
+        for d in range(1, num_days + 1):
+            m1 = next((m for m in candidates if n1 in m[d]), None)
+            m2 = next((m for m in candidates if n2 in m[d]), None)
+            if m1 is None or m2 is None or m1 is m2:
+                continue
+            m1[d].remove(n1); m1[d].append(n2)
+            m2[d].remove(n2); m2[d].append(n1)
+
+    def week_rotation(mm, em, nm, rgm, rcm):
+        if num_days < 7:
+            return
+        nid = random.choice(nurses)
+        home = nurse_home_type[nid]
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
+        week_start = random.randint(1, num_days - 6)
+        days = list(range(week_start, week_start + 7))
+
+        nid_locations = []
+        for d in days:
+            m = next((mem for mem in candidates if nid in mem[d]), None)
+            if m is None:
+                return
+            nid_locations.append(m)
+
+        rotated = [nid_locations[-1]] + nid_locations[:-1]
+        if rotated == nid_locations:
+            return
+
+        for d, (old_m, new_m) in zip(days, zip(nid_locations, rotated)):
+            if old_m is new_m:
+                continue
+            old_m[d].remove(nid)
+            new_m[d].append(nid)
+
+    # ==========================================
+    # L3 Focused SA：分類器 + tabu + 對症 mutation
+    # ==========================================
+    tabu: deque = deque(maxlen=tabu_size)
+
+    def _tabu_key(n1: str, n2: str, day: int) -> Tuple:
+        a, b = sorted([n1, n2])
+        return (a, b, day)
+
+    def _classify_nurses(per_nurse: Dict[str, Dict[str, int]]):
+        totals: Dict[str, int] = {}
+        dominant: Dict[str, Optional[str]] = {}
+        for nid in nurses:
+            contribs = per_nurse.get(nid, {})
+            t = sum(W[k] * c for k, c in contribs.items() if k in W)
+            totals[nid] = t
+            if contribs:
+                dom_key = max(contribs.items(), key=lambda kv: W.get(kv[0], 0) * kv[1])[0]
+                dominant[nid] = dom_key
+            else:
+                dominant[nid] = None
+        red = {nid for nid, t in totals.items() if t >= freeze_threshold}
+        green = {nid for nid in nurses if nid not in red}
+        return red, green, dominant, totals
+
+    def _swap_two(n1: str, n2: str, day: int, mm, em, nm, rgm, rcm) -> bool:
+        if _tabu_key(n1, n2, day) in tabu:
+            return False
+        home = nurse_home_type.get(n1)
+        if home != nurse_home_type.get(n2):
+            return False
+        work_mem = work_mem_of[home]
+        candidates = (work_mem, rgm, rcm)
+        m1 = next((m for m in candidates if n1 in m[day]), None)
+        m2 = next((m for m in candidates if n2 in m[day]), None)
+        if m1 is None or m2 is None or m1 is m2:
+            return False
+        m1[day].remove(n1); m1[day].append(n2)
+        m2[day].remove(n2); m2[day].append(n1)
+        tabu.append(_tabu_key(n1, n2, day))
+        return True
+
+    def antiport_focused(red_set: Set[str], mm, em, nm, rgm, rcm) -> bool:
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return False
+        red_in = [n for n in same_type if n in red_set]
+        if not red_in:
+            return False
+        n1 = random.choice(red_in)
+        n2 = random.choice([n for n in same_type if n != n1])
+        day = random.randint(1, num_days)
+        return _swap_two(n1, n2, day, mm, em, nm, rgm, rcm)
+
+    def block_antiport_focused(red_set: Set[str], mm, em, nm, rgm, rcm, block: int = 3) -> bool:
+        if num_days < block:
+            return False
+        home = random.choice(("D", "E", "N"))
+        same_type = nurses_by_type[home]
+        if len(same_type) < 2:
+            return False
+        red_in = [n for n in same_type if n in red_set]
+        if not red_in:
+            return False
+        n1 = random.choice(red_in)
+        n2 = random.choice([n for n in same_type if n != n1])
+        start = random.randint(1, num_days - block + 1)
+        any_swapped = False
+        for d in range(start, start + block):
+            if _swap_two(n1, n2, d, mm, em, nm, rgm, rcm):
+                any_swapped = True
+        return any_swapped
+
+    # ==========================================
+    # L2 對症 mutation
+    # ==========================================
+    def fix_excess_rg(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        cands = [n for n in red_set if dominant.get(n) in ("excess_rg", "total_rest_above_9")]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        days_in_rg = [d for d in range(1, num_days + 1) if actor in rgm[d]]
+        if not days_in_rg:
+            return False
+        day = random.choice(days_in_rg)
+        partners = [n for n in nurses_by_type[home] if n != actor and n in work_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
+    def fix_excess_rc(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        cands = [n for n in red_set if dominant.get(n) in ("excess_rc", "total_rest_above_9")]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        days_in_rc = [d for d in range(1, num_days + 1) if actor in rcm[d]]
+        if not days_in_rc:
+            return False
+        day = random.choice(days_in_rc)
+        partners = [n for n in nurses_by_type[home] if n != actor and n in work_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
+    def fix_insufficient_rest(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        targets = ("work_days_above_23", "insufficient_rg", "insufficient_rc", "total_rest_below_8")
+        cands = [n for n in red_set if dominant.get(n) in targets]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        days_at_work = [d for d in range(1, num_days + 1) if actor in work_mem[d]]
+        if not days_at_work:
+            return False
+        day = random.choice(days_at_work)
+        rest_mem = random.choice((rgm, rcm))
+        partners = [n for n in nurses_by_type[home] if n != actor and n in rest_mem[day]]
+        if not partners:
+            rest_mem = rcm if rest_mem is rgm else rgm
+            partners = [n for n in nurses_by_type[home] if n != actor and n in rest_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
+    def fix_consecutive_work(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        targets = ("consecutive_work_7", "consecutive_work_pair", "overtime_6th_day_pay", "consecutive_night_4")
+        cands = [n for n in red_set if dominant.get(n) in targets]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        sched = get_sched(actor, mm, em, nm, rgm, rcm)
+        WORK = {"D", "E", "N"}
+        best_start = -1
+        best_len = 0
+        cur_start = -1
+        cur_len = 0
+        for d, s in enumerate(sched):
+            if s in WORK:
+                if cur_len == 0:
+                    cur_start = d
+                cur_len += 1
+                if cur_len > best_len:
+                    best_len = cur_len
+                    best_start = cur_start
+            else:
+                cur_len = 0
+        if best_len < 4:
+            return False
+        mid = best_start + best_len // 2
+        day = mid + 1
+        rest_mem = random.choice((rgm, rcm))
+        partners = [n for n in nurses_by_type[home] if n != actor and n in rest_mem[day]]
+        if not partners:
+            rest_mem = rcm if rest_mem is rgm else rgm
+            partners = [n for n in nurses_by_type[home] if n != actor and n in rest_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
+    def fix_isolated_off(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        cands = [n for n in red_set if dominant.get(n) in ("isolated_off_n", "isolated_off_de")]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        sched = get_sched(actor, mm, em, nm, rgm, rcm)
+        WORK = {"D", "E", "N"}
+        REST = {"RG", "RC"}
+        iso_days = []
+        for d in range(1, len(sched) - 1):
+            if sched[d - 1] in WORK and sched[d] in REST and sched[d + 1] in WORK:
+                iso_days.append(d)
+        if not iso_days:
+            return False
+        iso_d = random.choice(iso_days)
+        adj_day_idx = random.choice((iso_d - 1, iso_d + 1))
+        day = adj_day_idx + 1
+        if day < 1 or day > num_days:
+            return False
+        rest_mem = rgm if sched[iso_d] == "RG" else rcm
+        partners = [n for n in nurses_by_type[home] if n != actor and n in rest_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
+    TARGETED_FIX = {
+        "excess_rg":             fix_excess_rg,
+        "excess_rc":             fix_excess_rc,
+        "total_rest_above_9":    fix_excess_rg,
+        "work_days_above_23":    fix_insufficient_rest,
+        "insufficient_rg":       fix_insufficient_rest,
+        "insufficient_rc":       fix_insufficient_rest,
+        "total_rest_below_8":    fix_insufficient_rest,
+        "work_days_below_22":    fix_excess_rg,
+        "consecutive_work_7":    fix_consecutive_work,
+        "consecutive_work_pair": fix_consecutive_work,
+        "consecutive_night_4":   fix_consecutive_work,
+        "overtime_6th_day_pay":  fix_consecutive_work,
+        "isolated_off_n":        fix_isolated_off,
+        "isolated_off_de":       fix_isolated_off,
+    }
+
+    def targeted_mutation(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        if not red_set:
+            return False
+        actor = random.choice(list(red_set))
+        dom = dominant.get(actor)
+        fix = TARGETED_FIX.get(dom)
+        if fix is not None and fix(red_set, dominant, mm, em, nm, rgm, rcm):
+            return True
+        return antiport_focused(red_set, mm, em, nm, rgm, rcm)
+
+    current_p, current_breakdown, current_per_nurse = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+    best_p = current_p
+    best_breakdown = dict(current_breakdown)
+    best_per_nurse = current_per_nurse
+    best_m  = copy.deepcopy(m_mem)
+    best_e  = copy.deepcopy(e_mem)
+    best_n  = copy.deepcopy(n_mem)
+    best_rg = copy.deepcopy(rg_mem)
+    best_rc = copy.deepcopy(rc_mem)
+    best_iter = 0
+
+    accepted_worse = 0
+    rejected = 0
+    focused_iters = 0
+    targeted_iters = 0
+    thaw_iters = 0
+    tabu_hits = 0
+    stagnation_counter = 0
+    classify_log = []
+
+    red_set, green_set, dominant, _ = _classify_nurses(current_per_nurse)
+    classify_log.append({"iter": 0, "red": len(red_set), "green": len(green_set)})
+
+    def _restore_from_snap(snap_m, snap_e, snap_n, snap_rg, snap_rc):
+        for d in range(1, num_days + 1):
+            m_mem[d]  = list(snap_m[d])
+            e_mem[d]  = list(snap_e[d])
+            n_mem[d]  = list(snap_n[d])
+            rg_mem[d] = list(snap_rg[d])
+            rc_mem[d] = list(snap_rc[d])
+
+    for i in range(max_iterations):
+        snap_m  = copy.deepcopy(m_mem)
+        snap_e  = copy.deepcopy(e_mem)
+        snap_n  = copy.deepcopy(n_mem)
+        snap_rg = copy.deepcopy(rg_mem)
+        snap_rc = copy.deepcopy(rc_mem)
+
+        if focused_mode and i > 0 and i % reclassify_every == 0:
+            red_set, green_set, dominant, _ = _classify_nurses(current_per_nurse)
+            classify_log.append({"iter": i, "red": len(red_set), "green": len(green_set)})
+
+        force_thaw = focused_mode and stagnation_counter >= stagnation_thaw
+        if force_thaw:
+            thaw_iters += 1
+            stagnation_counter = 0
+            roll = random.random()
+            if roll < 0.5:
+                antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, rg_mem, rc_mem)
+            elif roll < 0.8:
+                block_antiport(m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
+            else:
+                month_swap(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+        elif focused_mode and red_set:
+            focused_iters += 1
+            roll = random.random()
+            mutated = False
+            if roll < 0.60:
+                mutated = targeted_mutation(red_set, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem)
+                if mutated:
+                    targeted_iters += 1
+            if not mutated and roll < 0.85:
+                mutated = antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem)
+            if not mutated:
+                mutated = block_antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
+            if not mutated:
+                antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, rg_mem, rc_mem)
+                tabu_hits += 1
+        else:
+            roll = random.random()
+            if roll < 0.50:
+                antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, rg_mem, rc_mem)
+            elif roll < 0.70:
+                block_antiport(m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
+            elif roll < 0.85:
+                block_antiport(m_mem, e_mem, n_mem, rg_mem, rc_mem, block=7)
+            elif roll < 0.95:
+                month_swap(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+            else:
+                week_rotation(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+
+        new_p, new_breakdown, new_per_nurse = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+        T = max(0.1, 1000 * (1 - i / max_iterations))
+
+        if new_p <= current_p:
+            current_p = new_p
+            current_per_nurse = new_per_nurse
+            if current_p < best_p:
+                best_p = current_p
+                best_breakdown = new_breakdown
+                best_per_nurse = new_per_nurse
+                best_m  = copy.deepcopy(m_mem)
+                best_e  = copy.deepcopy(e_mem)
+                best_n  = copy.deepcopy(n_mem)
+                best_rg = copy.deepcopy(rg_mem)
+                best_rc = copy.deepcopy(rc_mem)
+                best_iter = i
+                stagnation_counter = 0
+            else:
+                stagnation_counter += 1
+        else:
+            delta = new_p - current_p
+            if random.random() < math.exp(-delta / T):
+                current_p = new_p
+                current_per_nurse = new_per_nurse
+                accepted_worse += 1
+                stagnation_counter += 1
+            else:
+                _restore_from_snap(snap_m, snap_e, snap_n, snap_rg, snap_rc)
+                rejected += 1
+                stagnation_counter += 1
+
+        if current_p < OPTIMAL_THRESHOLD:
+            break
+
+    elapsed = time() - t_start
+
+    result = []
+    for nid in nurses:
+        sched = get_sched(nid, best_m, best_e, best_n, best_rg, best_rc)
+        for d in range(num_days):
+            result.append({
+                "nurse_id": nid,
+                "date": f"{year}-{month:02d}-{d + 1:02d}",
+                "shift": sched[d],
+            })
+
+    final_red, final_green, final_dominant, final_totals = _classify_nurses(best_per_nurse)
+
+    return {
+        "status": "success",
+        "solver_status": "OPTIMAL" if best_p < OPTIMAL_THRESHOLD else "FEASIBLE",
+        "elapsed_seconds": round(elapsed, 2),
+        "schedule": result,
+        "stats": {
+            "final_penalty": best_p,
+            "best_iteration": best_iter,
+            "max_iterations": max_iterations,
+            "accepted_worse_swaps": accepted_worse,
+            "rejected_swaps": rejected,
+            "violation_breakdown": best_breakdown,
+            "num_days": num_days,
+            "num_nurses": num_nurses,
+            "weight_overrides": weight_overrides,
+            "focused_mode": focused_mode,
+            "focused_iterations": focused_iters,
+            "targeted_iterations": targeted_iters,
+            "thaw_iterations": thaw_iters,
+            "tabu_hits": tabu_hits,
+            "classify_log": classify_log,
+            "final_red_nurses": sorted(final_red),
+            "final_green_nurses": sorted(final_green),
+            "nurse_penalties": final_totals,
+            "nurse_dominant_violation": {nid: v for nid, v in final_dominant.items() if v},
+            "per_nurse_breakdown": best_per_nurse,
+        },
+    }
+
+
+# ==========================================
 # Endpoints
 # ==========================================
 @app.get("/")
 def root():
     """根路徑提示 — 避免 admin 用瀏覽器打開時看到「Not Found」誤以為服務掛掉。"""
     return {
-        "service": "nurse-schedule CP-SAT 排班引擎",
+        "service": "nurse-schedule SA 排班引擎",
+        "version": "2.0.0",
+        "algorithm": "TLPS + Simulated Annealing (L3 Focused SA)",
         "endpoints": {
             "GET /health": "健康檢查（無需 auth）",
             "POST /generate_schedule": "排班求解（需 Firebase Bearer token）",
@@ -214,8 +1154,8 @@ def health():
     """負載平衡 / 監控用，不需 auth。回傳基本診斷資訊。"""
     return {
         "ok": True,
-        "service": "cpsat-schedule",
-        "version": "1.0.0",
+        "service": "sa-schedule",
+        "version": "2.0.0",
         "firebase_ready": bool(firebase_admin._apps),
         "cors_origins": ALLOWED_ORIGINS,
     }
@@ -223,360 +1163,46 @@ def health():
 
 @app.post("/generate_schedule", response_model=ScheduleResponse)
 def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase_token)):
-    """主要排班入口（TLPS 模擬退火）。"""
+    """主要排班入口（TLPS L3 Focused 模擬退火）。"""
     _check_rate_limit(user.get("uid", "anonymous"))
-    t_start = time()
 
-    year, month = req.year, req.month
-    _, num_days = calendar.monthrange(year, month)
-    num_nurses = len(req.nurses)
-    protected = set(req.protected_indices)
-    nurses = req.nurses
-    protected_ids = {nurses[i] for i in protected}
-    non_protected = num_nurses - len(protected)
-
-    # daily_reqs 進來時 key 可能是 int 也可能是 str（pydantic v1 / v2 行為差異）
-    def _req(code: int) -> int:
-        return int(req.daily_reqs.get(code, req.daily_reqs.get(str(code), 0)))
-    req_D, req_E, req_N = _req(1), _req(2), _req(3)
-
-    # ==========================================
-    # 解析 custom_rules — 三種 action：
-    #   UPDATE_DEMAND  改寫某日某班別需求（前端 / LLM 動態調整）
-    #   FORCE_OFF      強制某員工某日休假
-    #   FORCE_WORK     強制某員工某日上指定班
-    # 每日 target_reqs 以 daily_reqs 為基準、由 UPDATE_DEMAND 覆寫；
-    # 之後的初始化、pre-flight、antiport 全部以這份「每日」需求為準
-    # （antiport 在同日內換人，會自動保持每日配額）。
-    # ==========================================
-    target_reqs: Dict[int, Dict[str, int]] = {
-        d: {"D": req_D, "E": req_E, "N": req_N} for d in range(1, num_days + 1)
-    }
-    SHIFT_INT_TO_LETTER = {1: "D", 2: "E", 3: "N"}
-    force_off: List[tuple] = []   # (nurse_id, day)
-    force_work: List[tuple] = []  # (nurse_id, day, shift_letter)
-
-    for rule in req.custom_rules or []:
-        try:
-            d = int(str(rule.get("date", "")).split("-")[2])
-            if d < 1 or d > num_days:
-                continue
-        except Exception:
-            continue
-        action = rule.get("action")
-        if action == "UPDATE_DEMAND":
-            sh = rule.get("shift")
-            if isinstance(sh, int):
-                sh = SHIFT_INT_TO_LETTER.get(sh)
-            new_val = rule.get("new_value")
-            if sh in ("D", "E", "N") and isinstance(new_val, (int, float)) and 0 <= int(new_val) <= num_nurses:
-                target_reqs[d][sh] = int(new_val)
-            continue
-        nid = rule.get("nurse_id")
-        if action == "FORCE_OFF" and nid in nurses:
-            force_off.append((nid, d))
-        elif action == "FORCE_WORK" and nid in nurses:
-            sh = rule.get("shift")
-            if sh in ("D", "E", "N"):
-                force_work.append((nid, d, sh))
-
-    max_daily = max(sum(v.values()) for v in target_reqs.values())
-    log.info(
-        f"求解 {year}/{month} ({num_days}天) | {num_nurses} 名 | 保護 {len(protected)} | "
-        f"基準 D{req_D}/E{req_E}/N{req_N} | rules {len(req.custom_rules or [])} "
-        f"(UPDATE_DEMAND 後 max-daily-total={max_daily})"
-    )
-
-    # —— Pre-flight：每一日都要可行，否則跑 20000 次白工 ——
-    for d in range(1, num_days + 1):
-        rD = target_reqs[d]["D"]
-        rE = target_reqs[d]["E"]
-        rN = target_reqs[d]["N"]
-        if rD + rE + rN > num_nurses:
-            raise HTTPException(
-                status_code=400,
-                detail=f"第 {d} 日總需求 {rD + rE + rN}（D{rD}+E{rE}+N{rN}）> 員工數 {num_nurses}",
-            )
-        if rE + rN > non_protected:
-            raise HTTPException(
-                status_code=400,
-                detail=f"第 {d} 日 E+N 需求 {rE + rN} > 可排夜班人數 {non_protected}"
-                       f"（扣除保護名單 {len(protected)} 人）",
-            )
-
-    # ==========================================
-    # 初始化四個細胞膜（D/E/N/OFF）— 依每日 target_reqs 配額
-    # ==========================================
-    m_mem = {d: [] for d in range(1, num_days + 1)}
-    e_mem = {d: [] for d in range(1, num_days + 1)}
-    n_mem = {d: [] for d in range(1, num_days + 1)}
-    o_mem = {d: [] for d in range(1, num_days + 1)}
-
-    for d in range(1, num_days + 1):
-        rD = target_reqs[d]["D"]
-        rE = target_reqs[d]["E"]
-        rN = target_reqs[d]["N"]
-        # 先把非保護的丟進候選池排 E/N，剩下的再給 D，最後 O
-        non_prot = [nid for nid in nurses if nid not in protected_ids]
-        prot = list(protected_ids)
-        random.shuffle(non_prot)
-        random.shuffle(prot)
-
-        for _ in range(rE): e_mem[d].append(non_prot.pop())
-        for _ in range(rN): n_mem[d].append(non_prot.pop())
-        # D 可以任意人排
-        pool_for_d = non_prot + prot
-        random.shuffle(pool_for_d)
-        for _ in range(rD): m_mem[d].append(pool_for_d.pop())
-        o_mem[d].extend(pool_for_d)
-
-    # ==========================================
-    # 輔助：取單一護理師的整月班別字串
-    # ==========================================
-    def get_sched(nid: str, mm, em, nm) -> List[str]:
-        sched = []
-        for d in range(1, num_days + 1):
-            if nid in mm[d]:   sched.append("D")
-            elif nid in em[d]: sched.append("E")
-            elif nid in nm[d]: sched.append("N")
-            else:              sched.append("O")
-        return sched
-
-    # ==========================================
-    # 適應度（罰分越低越好）
-    # ==========================================
-    PENALTY = {
-        "consecutive_work_7":      2000,   # 連續上班 > 6 天（七休一）
-        "consecutive_night_4":     1000,   # 連續大夜 > 3 天
-        "forbidden_n_d":           1000,   # N→D 違反 11h 輪班間隔
-        "forbidden_n_e":           1000,   # N→E
-        "forbidden_e_d":           1000,   # E→D
-        "isolated_off":              50,   # 孤立休假（軟限制）
-        "protected_on_en":       500000,   # 保護名單上 E/N（接近天譴）
-        "custom_rule_violation":1000000,   # FORCE_OFF / FORCE_WORK 違反
-        # ↓ 對應 main.py 最新模型的硬限制（SA 以重罰實現）
-        "post_night_not_off_2":    2000,   # 大夜後沒連休 2 天（每違規日 +2000）
-        "monthly_off_below_8":      500,   # 月休 < 8（per missing day）
-        "monthly_work_above_27":    500,   # 月工作 > 27（per excess day）
-        "health_cap_exceeded":   500000,   # 個人健康扣分 > 30（防護網）
-    }
-
-    # 健康扣分（對應 main.py「連 4 大夜 -5」「連 6 上班 -5」+「個人扣分 ≤ 30 防護網」）
-    HEALTH_DEBIT_PER_NIGHT_WINDOW = 5
-    HEALTH_DEBIT_PER_WORK_WINDOW  = 5
-    HEALTH_CAP_PER_NURSE          = 30
-
-    def evaluate(mm, em, nm) -> tuple:
-        """回傳 (total_penalty, violation_breakdown)。
-        sched_cache 只算一次（取代原本兩次的 get_sched），新增規則均在此一輪掃完。"""
-        total = 0
-        breakdown = defaultdict(int)
-        sched_cache = {nid: get_sched(nid, mm, em, nm) for nid in nurses}
-
-        for nid in nurses:
-            sched = sched_cache[nid]
-            c_work = 0
-            c_night = 0
-            work_days = 0
-            off_days = 0
-            health_debit = 0
-
-            # —— 1. 每日掃描：連續上班 / 連大夜 / 保護名單 / 月休工作天累計 ——
-            for d in range(num_days):
-                if sched[d] != "O":
-                    c_work += 1
-                    work_days += 1
-                    c_night = c_night + 1 if sched[d] == "N" else 0
-                else:
-                    c_work, c_night = 0, 0
-                    off_days += 1
-
-                if c_work > 6:
-                    total += PENALTY["consecutive_work_7"]
-                    breakdown["consecutive_work_7"] += 1
-                if c_night > 3:
-                    total += PENALTY["consecutive_night_4"]
-                    breakdown["consecutive_night_4"] += 1
-                if nid in protected_ids and sched[d] in ("E", "N"):
-                    total += PENALTY["protected_on_en"]
-                    breakdown["protected_on_en"] += 1
-
-            # —— 2. 月休 ≥ 8、月工作 ≤ 27（main.py 的四週彈性工時整月剎車）——
-            if off_days < 8:
-                miss = 8 - off_days
-                total += PENALTY["monthly_off_below_8"] * miss
-                breakdown["monthly_off_below_8"] += miss
-            if work_days > 27:
-                excess = work_days - 27
-                total += PENALTY["monthly_work_above_27"] * excess
-                breakdown["monthly_work_above_27"] += excess
-
-            # —— 3. 11h 輪班間隔（N→D / N→E / E→D 全禁）——
-            for d in range(num_days - 1):
-                if sched[d] == "N" and sched[d + 1] == "D":
-                    total += PENALTY["forbidden_n_d"]; breakdown["forbidden_n_d"] += 1
-                if sched[d] == "N" and sched[d + 1] == "E":
-                    total += PENALTY["forbidden_n_e"]; breakdown["forbidden_n_e"] += 1
-                if sched[d] == "E" and sched[d + 1] == "D":
-                    total += PENALTY["forbidden_e_d"]; breakdown["forbidden_e_d"] += 1
-
-            # —— 4. 大夜後連休 2 天：d 是 N、d+1 非 N → d+1 必 O、d+2 也必 O ——
-            for d in range(num_days - 1):
-                if sched[d] == "N" and sched[d + 1] != "N":
-                    if sched[d + 1] != "O":
-                        total += PENALTY["post_night_not_off_2"]
-                        breakdown["post_night_not_off_2"] += 1
-                    if d + 2 < num_days and sched[d + 2] != "O":
-                        total += PENALTY["post_night_not_off_2"]
-                        breakdown["post_night_not_off_2"] += 1
-
-            # —— 5. 健康扣分（連 4 大夜 -5、連 6 上班 -5；滑動窗）——
-            for d in range(num_days - 3):
-                if all(sched[d + i] == "N" for i in range(4)):
-                    health_debit += HEALTH_DEBIT_PER_NIGHT_WINDOW
-            for d in range(num_days - 5):
-                if all(sched[d + i] != "O" for i in range(6)):
-                    health_debit += HEALTH_DEBIT_PER_WORK_WINDOW
-
-            # —— 6. 健康防護網（個人扣分 > 30 = 違規，對應 main.py model.Add(... <= 30)）——
-            if health_debit > HEALTH_CAP_PER_NURSE:
-                total += PENALTY["health_cap_exceeded"]
-                breakdown["health_cap_exceeded"] += 1
-
-            # —— 7. 孤立休假（既有軟限）——
-            for d in range(1, num_days - 1):
-                if sched[d - 1] != "O" and sched[d] == "O" and sched[d + 1] != "O":
-                    total += PENALTY["isolated_off"]
-                    breakdown["isolated_off"] += 1
-
-        # —— 8. custom_rules（外圈統一）——
-        for (nid, d) in force_off:
-            if sched_cache[nid][d - 1] != "O":
-                total += PENALTY["custom_rule_violation"]
-                breakdown["custom_rule_violation"] += 1
-        for (nid, d, sh) in force_work:
-            if sched_cache[nid][d - 1] != sh:
-                total += PENALTY["custom_rule_violation"]
-                breakdown["custom_rule_violation"] += 1
-
-        return total, dict(breakdown)
-
-    # ==========================================
-    # Mutation: 單點 / 區塊交換
-    # ==========================================
-    def antiport(day, mm, em, nm, om):
-        mems = [mm, em, nm, om]
-        a, b = random.sample(mems, 2)
-        if a[day] and b[day]:
-            x = random.choice(a[day])
-            y = random.choice(b[day])
-            a[day].remove(x); a[day].append(y)
-            b[day].remove(y); b[day].append(x)
-
-    def block_antiport(mm, em, nm, om, block=3):
-        if num_days < block:
-            return
-        start = random.randint(1, num_days - block + 1)
-        x, y = random.sample(nurses, 2)
-        for d in range(start, start + block):
-            sx, sy = None, None
-            for mem in (mm, em, nm, om):
-                if x in mem[d]: sx = mem
-                if y in mem[d]: sy = mem
-            if sx is not None and sy is not None and sx is not sy:
-                sx[d].remove(x); sx[d].append(y)
-                sy[d].remove(y); sy[d].append(x)
-
-    # ==========================================
-    # 模擬退火主迴圈
-    # ==========================================
     max_iter = req.max_iterations or int(os.getenv("SA_MAX_ITERATIONS", "20000"))
-    current_p, _ = evaluate(m_mem, e_mem, n_mem)
-    best_p = current_p
-    best_breakdown = {}
-    best_m = copy.deepcopy(m_mem)
-    best_e = copy.deepcopy(e_mem)
-    best_n = copy.deepcopy(n_mem)
-    best_o = copy.deepcopy(o_mem)
-    best_iter = 0
+    # daily_reqs key 在 pydantic v1 進來已是 int；保險再轉一次
+    daily_reqs = {int(k): int(v) for k, v in req.daily_reqs.items()}
 
-    accepted_worse = 0
-    rejected = 0
-
-    for i in range(max_iter):
-        # 備份當前狀態（為 rollback 用）
-        snap_m = copy.deepcopy(m_mem)
-        snap_e = copy.deepcopy(e_mem)
-        snap_n = copy.deepcopy(n_mem)
-        snap_o = copy.deepcopy(o_mem)
-
-        if random.random() < 0.3:
-            block_antiport(m_mem, e_mem, n_mem, o_mem, block=3)
-        else:
-            antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, o_mem)
-
-        new_p, new_breakdown = evaluate(m_mem, e_mem, n_mem)
-        T = max(0.1, 1000 * (1 - i / max_iter))
-
-        if new_p <= current_p:
-            current_p = new_p
-            if current_p < best_p:
-                best_p = current_p
-                best_breakdown = new_breakdown
-                best_m = copy.deepcopy(m_mem)
-                best_e = copy.deepcopy(e_mem)
-                best_n = copy.deepcopy(n_mem)
-                best_o = copy.deepcopy(o_mem)
-                best_iter = i
-        else:
-            delta = new_p - current_p
-            if random.random() < math.exp(-delta / T):
-                current_p = new_p
-                accepted_worse += 1
-            else:
-                m_mem, e_mem, n_mem, o_mem = snap_m, snap_e, snap_n, snap_o
-                rejected += 1
-
-        if current_p == 0:
-            break
-
-    elapsed = time() - t_start
-
-    # ==========================================
-    # 格式化輸出
-    # ==========================================
-    result = []
-    for nid in nurses:
-        sched = get_sched(nid, best_m, best_e, best_n)
-        for d in range(num_days):
-            result.append(ScheduleCell(
-                nurse_id=nid,
-                date=f"{year}-{month:02d}-{d + 1:02d}",
-                shift=sched[d],
-            ))
-
-    solver_status = "OPTIMAL" if best_p == 0 else "FEASIBLE"
-    if best_p > 0:
-        log.warning(f"SA 收斂未到 0：best_penalty={best_p} @ iter {best_iter} | breakdown={best_breakdown}")
-    else:
-        log.info(f"SA 完美收斂：best_penalty=0 @ iter {best_iter} | 耗時 {elapsed:.2f}s")
-
-    return ScheduleResponse(
-        status="success",
-        solver_status=solver_status,
-        elapsed_seconds=round(elapsed, 2),
-        schedule=result,
-        stats={
-            "final_penalty": best_p,
-            "best_iteration": best_iter,
-            "max_iterations": max_iter,
-            "accepted_worse_swaps": accepted_worse,
-            "rejected_swaps": rejected,
-            "violation_breakdown": best_breakdown,
-            "num_days": num_days,
-            "num_nurses": num_nurses,
-        },
+    log.info(
+        f"求解 {req.year}/{req.month} | {len(req.nurses)} 名 | 保護 {len(req.protected_indices)} | "
+        f"D{daily_reqs.get(1,0)}/E{daily_reqs.get(2,0)}/N{daily_reqs.get(3,0)} | "
+        f"rules {len(req.custom_rules or [])} | max_iter {max_iter}"
     )
+
+    try:
+        result = run_sa(
+            year=req.year,
+            month=req.month,
+            nurses=req.nurses,
+            protected_indices=req.protected_indices,
+            daily_reqs=daily_reqs,
+            custom_rules=req.custom_rules or [],
+            max_iterations=max_iter,
+        )
+    except ValueError as e:
+        # 人力不足 / 保護名單過多 → 條件無法滿足，回 400 讓前端顯示原因
+        raise HTTPException(status_code=400, detail=str(e))
+
+    stats = result["stats"]
+    if stats["final_penalty"] >= OPTIMAL_THRESHOLD:
+        log.warning(
+            f"SA 收斂未達門檻：best_penalty={stats['final_penalty']} "
+            f"@ iter {stats['best_iteration']} | breakdown={stats['violation_breakdown']}"
+        )
+    else:
+        log.info(
+            f"SA 收斂達標：best_penalty={stats['final_penalty']} "
+            f"@ iter {stats['best_iteration']} | 耗時 {result['elapsed_seconds']}s"
+        )
+
+    return result
 
 
 @app.exception_handler(Exception)
