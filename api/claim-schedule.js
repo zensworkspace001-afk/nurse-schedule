@@ -88,10 +88,15 @@ export default async function handler(req, res) {
 
   const docId = `${year}_${month}`;
   const scheduleRef = admin.firestore().doc(`Schedules/${docId}`);
+  // 員工自己的私有資料（含 is_pregnant_or_nursing / leave_status）。
+  // doc id 即 staff_id（actor.uid 已從 email 反推成大寫 staff_id）。
+  const staffPrivateRef = admin.firestore().doc(`StaffPrivate/${actor.uid}`);
 
   try {
     const result = await admin.firestore().runTransaction(async (tx) => {
+      // Firestore transaction 要求「所有讀取必須在任何寫入之前」，故兩個 get 都放最前面。
       const snap = await tx.get(scheduleRef);
+      const staffSnap = await tx.get(staffPrivateRef);
       if (!snap.exists) throw new HttpError(404, '找不到該月份的班表');
       const data = snap.data();
       const finalized = data.finalizedSchedule || {};
@@ -104,6 +109,22 @@ export default async function handler(req, res) {
       }
 
       const claimedPattern = finalized[virtualSlotId];
+
+      // ★ 母性保護 / 實習生限制（後端硬擋，與前端 StaffDashboard.checkCompliance 一致）：
+      //   匿名虛擬 slot 任何人都能認領，前端只在 UI 層擋孕婦/實習生選含 E/N 的班表；
+      //   繞過 UI 直接打這個端點仍可能違反勞基法 §49（孕婦/哺乳禁夜班）。這裡用後端
+      //   權威資料（StaffPrivate）再擋一次。讀不到資料（舊帳號無 StaffPrivate）則放行，
+      //   避免誤鎖；前端仍有 UI 防護兜底。
+      const staff = staffSnap.exists ? staffSnap.data() : null;
+      if (staff) {
+        const p = staff.is_pregnant_or_nursing;
+        const isPregnant = p === true || p === 'True' || p === 'true';
+        const isStudent = staff.leave_status === 'Student';
+        if ((isPregnant || isStudent) && patternHasNightShift(claimedPattern)) {
+          const who = isPregnant ? '母性保護（孕期/哺乳）' : '實習生';
+          throw new HttpError(403, `${who}限制：此班表含小夜(E)/大夜(N)，依勞基法不得認領，請選擇純白班的班表`);
+        }
+      }
 
       // 用 dot-path 同時刪除 virtualSlotId 並新增 actor.uid，保持原子性。
       tx.update(scheduleRef, {
@@ -144,6 +165,16 @@ class HttpError extends Error {
     super(message);
     this.status = status;
   }
+}
+
+// 整月 pattern 是否含小夜(E)/大夜(N)。cell 可能是字串或 {type} 物件，兩者都處理。
+function patternHasNightShift(pattern) {
+  if (!pattern || typeof pattern !== 'object') return false;
+  for (const cell of Object.values(pattern)) {
+    const type = (cell && typeof cell === 'object') ? cell.type : cell;
+    if (type === 'E' || type === 'N') return true;
+  }
+  return false;
 }
 
 // 與 src/api/database.js 的 buildSchedulePublicProjection 行為一致：
