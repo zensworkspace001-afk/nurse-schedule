@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
 import { auth } from '../api/database';
 import { backupScheduleToArchive } from '../api/database';
-import { legalDailyFloor } from '../constants';
+import { legalDailyFloor, computeDailyRequirements } from '../constants';
 import './SchedulePanel.css';
 
 // ============================================================================
@@ -204,16 +204,23 @@ const SchedulePanel = ({
       .filter(({ s }) => isPregnant(s) || s.leave_status === 'Student')
       .map(({ i }) => i);
 
-    // 衛福部三班護病比法定下限（依床數 + 醫院等級）。當第 2 層硬規則傳給 SA，
-    // 確保即使 requirements 被誤設過低，排出來的班表每班人數也不會低於法定護病比。
+    // 衛福部三班護病比法定下限（依床數 + 醫院等級）。
     const floor = legalDailyFloor(bedConfig?.bedCount, bedConfig?.hospitalLevel || 'MedicalCenter');
+    // SA 的「每日擺人目標」必須本身就 ≥ 法定下限，否則 SA 會把人數卡在 requirements 的
+    // 低值（內部 req_max = req+1 會壓上限），平均人力不足 → 護病比監控不會 comply。
+    // 取 computeDailyRequirements（= max(admin 自填, 法定下限)）與 requirements 的較大者，
+    // 避免 requirements 因 RequirementsPanel 未掛載而過時。min_daily_reqs 仍傳純法定下限當第 2 層硬底線。
+    const clamped = computeDailyRequirements(bedConfig || {});
+    const reqD = Math.max(requirements.D || 0, clamped.D);
+    const reqE = Math.max(requirements.E || 0, clamped.E);
+    const reqN = Math.max(requirements.N || 0, clamped.N);
 
     const payload = {
       year: selectedYear,
       month: selectedMonth,
       nurses: eligibleStaff.map(s => s.staff_id),
       protected_indices: protectedIndices,
-      daily_reqs: { 1: requirements.D || 0, 2: requirements.E || 0, 3: requirements.N || 0 },
+      daily_reqs: { 1: reqD, 2: reqE, 3: reqN },
       min_daily_reqs: { 1: floor.D || 0, 2: floor.E || 0, 3: floor.N || 0 },
       // custom_rules 留空白；之後若要把 customAiInstruction 接入，需要先用 LLM 解析成結構化規則
       custom_rules: [],

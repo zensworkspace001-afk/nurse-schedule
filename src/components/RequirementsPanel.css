@@ -156,45 +156,61 @@
 
 /* ==========================================================================
    醫院等級（護病比法定下限）選擇器 + 法定下限標示
+   — 與床數列同層級，融入 settings 區的 glassmorphism，不另開深色盒
    ========================================================================== */
 .requirements-panel__level-group {
-  margin: 1rem 0;
-  padding: 0.85rem 1rem;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
+  margin-bottom: 1.5rem;
 }
 
 .requirements-panel__level-label {
   display: block;
-  font-weight: 600;
+  font-weight: bold;
   margin-bottom: 0.5rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.1rem;
 }
 
+/* select 比照 ratio-input 的視覺語言（深底白字、白框、focus 發光） */
 .requirements-panel__level-select {
   width: 100%;
-  padding: 0.5rem 0.75rem;
+  padding: 0.55rem 0.75rem;
   border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(0, 0, 0, 0.25);
-  color: inherit;
-  font-size: 0.95rem;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.requirements-panel__level-select:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
+}
+
+/* 深色主題下，部分瀏覽器的原生 option 仍套系統淺色，補深底白字 */
+.requirements-panel__level-select option {
+  background: #2a2a3a;
+  color: #ffffff;
 }
 
 .requirements-panel__level-hint {
   margin: 0.5rem 0 0;
-  font-size: 0.8rem;
-  opacity: 0.75;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.7);
   line-height: 1.5;
 }
 
+/* 法定下限標示：在彩色班別卡上用半透明深底白字 pill，不搶卡片本色 */
 .requirements-panel__floor-badge {
-  margin-top: 0.5rem;
+  margin-top: 0.6rem;
   padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.72rem;
+  font-weight: bold;
   text-align: center;
-  color: #fff;
-  background: rgba(231, 76, 60, 0.85);
-  border-radius: 6px;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
 }
