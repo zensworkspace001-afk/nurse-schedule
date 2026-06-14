@@ -92,7 +92,7 @@ const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
   const [historyData] = useState([]);
 const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   // ★ 新增這行：把病床與護病比的狀態提升到最高層
-  const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 });
+  const [bedConfig, setBedConfig] = useState({ bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15, hospitalLevel: 'MedicalCenter' });
   // baseSalary：null = 已加密尚未解鎖；數字 = 已解鎖明文
   // baseSalaryEnc：來自雲端的密文 blob {ct, iv, tag, v}（遷移後格式）
   const [baseSalary, setBaseSalary] = useState(null);
@@ -445,7 +445,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
           shiftOptions: shiftOptions || [],
           priorityConfig: priorityConfig || {},
           requirements: requirements || { D: 15, E: 12, N: 8 },
-          bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
+          bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15, hospitalLevel: 'MedicalCenter' },
           levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
         });
 
@@ -719,7 +719,7 @@ const handleSaveAndPublish = async () => {
             shiftOptions: shiftOptions || [],
             priorityConfig: priorityConfig || {},
             requirements: requirements || { D: 15, E: 12, N: 8 },
-            bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15 },
+            bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15, hospitalLevel: 'MedicalCenter' },
             levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 },
             publishedDate: newPubDate
         });

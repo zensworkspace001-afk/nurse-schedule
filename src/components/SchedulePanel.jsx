@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
 import { auth } from '../api/database';
 import { backupScheduleToArchive } from '../api/database';
+import { legalDailyFloor } from '../constants';
 import './SchedulePanel.css';
 
 // ============================================================================
 // 總班表顯示面板 (精簡版：移除認領清單，專注於 AI 排班工作桌)
 // ============================================================================
 const SchedulePanel = ({
-    onSaveSchedule, schedule, setSchedule, staffData, requirements,
+    onSaveSchedule, schedule, setSchedule, staffData, requirements, bedConfig,
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions, setFinalizedSchedule, // ★ 接收參數
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
@@ -203,12 +204,17 @@ const SchedulePanel = ({
       .filter(({ s }) => isPregnant(s) || s.leave_status === 'Student')
       .map(({ i }) => i);
 
+    // 衛福部三班護病比法定下限（依床數 + 醫院等級）。當第 2 層硬規則傳給 SA，
+    // 確保即使 requirements 被誤設過低，排出來的班表每班人數也不會低於法定護病比。
+    const floor = legalDailyFloor(bedConfig?.bedCount, bedConfig?.hospitalLevel || 'MedicalCenter');
+
     const payload = {
       year: selectedYear,
       month: selectedMonth,
       nurses: eligibleStaff.map(s => s.staff_id),
       protected_indices: protectedIndices,
       daily_reqs: { 1: requirements.D || 0, 2: requirements.E || 0, 3: requirements.N || 0 },
+      min_daily_reqs: { 1: floor.D || 0, 2: floor.E || 0, 3: floor.N || 0 },
       // custom_rules 留空白；之後若要把 customAiInstruction 接入，需要先用 LLM 解析成結構化規則
       custom_rules: [],
       max_iterations: 20000,

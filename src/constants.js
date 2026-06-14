@@ -14,6 +14,46 @@ export const SHIFT_TYPES = {
   '支援': { name: '支援', time: '依需求', color: '#D4AC0D', icon: Users, hours: 9 }
 };
 
+// ============================================================================
+// 衛福部三班護病比（nurse-to-patient ratio）法定上限
+// ============================================================================
+// 數字代表「1 名護理師最多照護的床數」(1:N)。床數越大代表越寬鬆。
+// 要合規 → 每班護理師數 ≥ ceil(床數 / 該班比值)。醫學中心最嚴。
+// StatisticsPanel（法遵監控）與 RequirementsPanel（人力需求）共用此單一來源，
+// 避免「監控用 6/9/11、排班卻吃 admin 自填 10/12/15」這種數字不一致的漏洞。
+export const RATIO_STANDARDS = {
+  MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
+  Regional:      { name: '區域醫院', D: 7, E: 11, N: 13 },
+  District:      { name: '地區醫院', D: 10, E: 13, N: 15 },
+};
+
+// 依床數 + 醫院等級算出每班「法定最少護理師數」（護病比硬底線）。
+export function legalDailyFloor(bedCount, hospitalLevel = 'MedicalCenter') {
+  const std = RATIO_STANDARDS[hospitalLevel] || RATIO_STANDARDS.MedicalCenter;
+  const beds = Number(bedCount) || 0;
+  return {
+    D: Math.ceil(beds / std.D),
+    E: Math.ceil(beds / std.E),
+    N: Math.ceil(beds / std.N),
+  };
+}
+
+// 把 admin 自訂 ratio 與法定下限取「較嚴者（人較多）」算出最終每日人力需求。
+// admin 可調得比衛福部更嚴（ratio 設更小 → 人更多），但絕不可低於法定下限。
+export function computeDailyRequirements(bedConfig) {
+  const {
+    bedCount = 50, ratioD = 10, ratioE = 12, ratioN = 15,
+    hospitalLevel = 'MedicalCenter',
+  } = bedConfig || {};
+  const floor = legalDailyFloor(bedCount, hospitalLevel);
+  const beds = Number(bedCount) || 0;
+  return {
+    D: Math.max(Math.ceil(beds / ratioD), floor.D),
+    E: Math.max(Math.ceil(beds / ratioE), floor.E),
+    N: Math.max(Math.ceil(beds / ratioN), floor.N),
+  };
+}
+
 // 工時制度差異（程式碼依 special_status 套用）：
 //   Standard  — §30(1)  每日 8h、每週 40h、每 7 日 1 例假
 //   BiWeekly  — §30(2)  每日可達 10h、每週可達 48h（2 週 80h 重新分配）、例假規定同標準

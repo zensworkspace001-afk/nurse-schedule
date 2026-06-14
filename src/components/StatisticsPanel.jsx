@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { FileText } from 'lucide-react';
 import { doc, collection, query, orderBy, limit, getDocs, onSnapshot, setDoc, arrayUnion } from 'firebase/firestore';
 import { auth, db, clearArchiveReports } from '../api/database';
+import { RATIO_STANDARDS } from '../constants';
 import './StatisticsPanel.css';
 
 const StatisticsPanel = ({
@@ -11,17 +12,14 @@ const StatisticsPanel = ({
 }) => {
   // =========================================================
   // ★★★ 新增：衛福部三班護病比大數據監控引擎 ★★★
-  const [hospitalLevel, setHospitalLevel] = useState('MedicalCenter');
+  // 預設帶入 RequirementsPanel 設定的醫院等級（存於 bedConfig），兩個版面數字一致。
+  // RATIO_STANDARDS 改 import 自 src/constants.js（單一來源，避免兩處數字漂移）。
+  const [hospitalLevel, setHospitalLevel] = useState(bedConfig?.hospitalLevel || 'MedicalCenter');
   const unitBedCount = bedConfig?.bedCount || 50;
 
   // ★★★ 新增：下拉選單狀態 (預設看即時草稿) ★★★
   const [selectedReportMonth, setSelectedReportMonth] = useState('current_draft');
 const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, ratioE: false, ratioN: false });
-  const RATIO_STANDARDS = {
-      MedicalCenter: { name: '醫學中心', D: 6, E: 9, N: 11 },
-      Regional: { name: '區域醫院', D: 7, E: 11, N: 13 },
-      District: { name: '地區醫院', D: 10, E: 13, N: 15 }
-  };
 
   const calculateSelectedRatio = () => {
       // --- 模式 A：看即時工作桌草稿 ---

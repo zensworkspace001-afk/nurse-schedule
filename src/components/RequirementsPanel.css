@@ -153,3 +153,48 @@
     gap: 1rem;
   }
 }
+
+/* ==========================================================================
+   醫院等級（護病比法定下限）選擇器 + 法定下限標示
+   ========================================================================== */
+.requirements-panel__level-group {
+  margin: 1rem 0;
+  padding: 0.85rem 1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.requirements-panel__level-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.requirements-panel__level-select {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.25);
+  color: inherit;
+  font-size: 0.95rem;
+}
+
+.requirements-panel__level-hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  opacity: 0.75;
+  line-height: 1.5;
+}
+
+.requirements-panel__floor-badge {
+  margin-top: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-align: center;
+  color: #fff;
+  background: rgba(231, 76, 60, 0.85);
+  border-radius: 6px;
+}

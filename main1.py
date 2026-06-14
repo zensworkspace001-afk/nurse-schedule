@@ -109,6 +109,10 @@ class ScheduleRequest(BaseModel):
     nurses: List[str] = Field(..., min_items=1, max_items=200)
     protected_indices: List[int] = Field(default_factory=list)
     daily_reqs: Dict[int, int] = Field(..., description="班別代碼 → 人數，例 {1:5, 2:4, 3:3}")
+    min_daily_reqs: Optional[Dict[int, int]] = Field(
+        default=None,
+        description="衛福部護病比法定下限（每班最少護理師數），例 {1:9, 2:6, 3:5}；不給就不啟用第 2 層硬檢查",
+    )
     custom_rules: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
     max_iterations: Optional[int] = Field(default=None, ge=100, le=100000,
                                           description="SA 最大迭代次數；不給就吃環境變數 SA_MAX_ITERATIONS（預設 20000）")
@@ -296,6 +300,11 @@ PENALTY = {
     # —— 每日各班別人數需在 [req_min, req_max] ——
     "daily_demand_unmet":   3000,
     "daily_demand_exceeded":1500,
+
+    # —— 衛福部三班護病比法定下限（硬底線，防禦深度第 2 層）——
+    # min_daily_reqs 由前端依床數 + 醫院等級算出（src/constants.js legalDailyFloor）。
+    # 即使 daily_reqs 被誤設成低於法定護病比，這條也會把不合規班表罰到極高。
+    "ratio_below_legal":  200000,
 }
 
 
@@ -306,6 +315,7 @@ def run_sa(
     protected_indices: List[int] = None,
     daily_reqs: Dict[int, int] = None,
     daily_reqs_max: Dict[int, int] = None,
+    min_daily_reqs: Dict[int, int] = None,
     custom_rules: List[Dict] = None,
     max_iterations: int = 20000,
     seed: int = None,
@@ -347,6 +357,15 @@ def run_sa(
     req_D_max = _req_max(1, req_D)
     req_E_max = _req_max(2, req_E)
     req_N_max = _req_max(3, req_N)
+
+    # —— 護病比法定下限（每班最少護理師數）；None 表示呼叫端沒傳就不啟用第 2 層檢查 ——
+    min_daily_reqs = min_daily_reqs or {}
+    if min_daily_reqs:
+        def _minreq(code: int) -> int:
+            return int(min_daily_reqs.get(code, min_daily_reqs.get(str(code), 0)))
+        min_daily_floor = {"D": _minreq(1), "E": _minreq(2), "N": _minreq(3)}
+    else:
+        min_daily_floor = None
 
     _, num_days = calendar.monthrange(year, month)
     num_nurses = len(nurses)
@@ -652,6 +671,17 @@ def run_sa(
                     excess = cnt - trm[sh_letter]
                     total += W["daily_demand_exceeded"] * excess
                     breakdown["daily_demand_exceeded"] += excess
+
+        # —— 護病比法定下限（防禦深度第 2 層）：每班 count < 衛福部下限 = 重罰 ——
+        if min_daily_floor:
+            for d in range(1, num_days + 1):
+                for sh_letter, mem in (("D", mm), ("E", em), ("N", nm)):
+                    floor_v = min_daily_floor.get(sh_letter, 0)
+                    cnt = len(mem[d])
+                    if cnt < floor_v:
+                        short = floor_v - cnt
+                        total += W["ratio_below_legal"] * short
+                        breakdown["ratio_below_legal"] += short
 
         # FORCE_OFF / FORCE_WORK
         sched_cache = {nid: get_sched(nid, mm, em, nm, rgm, rcm) for nid in nurses}
@@ -1169,6 +1199,7 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
     max_iter = req.max_iterations or int(os.getenv("SA_MAX_ITERATIONS", "20000"))
     # daily_reqs key 在 pydantic v1 進來已是 int；保險再轉一次
     daily_reqs = {int(k): int(v) for k, v in req.daily_reqs.items()}
+    min_daily_reqs = {int(k): int(v) for k, v in (req.min_daily_reqs or {}).items()} or None
 
     log.info(
         f"求解 {req.year}/{req.month} | {len(req.nurses)} 名 | 保護 {len(req.protected_indices)} | "
@@ -1183,6 +1214,7 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
             nurses=req.nurses,
             protected_indices=req.protected_indices,
             daily_reqs=daily_reqs,
+            min_daily_reqs=min_daily_reqs,
             custom_rules=req.custom_rules or [],
             max_iterations=max_iter,
         )

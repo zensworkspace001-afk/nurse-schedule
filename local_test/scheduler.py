@@ -205,6 +205,12 @@ PENALTY = {
     # 未來若加入非對稱 mutation（從 rest 拉人到 work 但不立即補位），這條才會觸發。
     "daily_demand_unmet":   3000,   # 某日某 type count < req_min
     "daily_demand_exceeded":1500,   # 某日某 type count > req_max
+
+    # —— 衛福部三班護病比法定下限（硬底線，防禦深度第 2 層）——
+    # min_daily_reqs 由前端依床數 + 醫院等級算出（src/constants.js legalDailyFloor）。
+    # 即使 daily_reqs 被誤設成低於法定護病比，這條也會把不合規班表罰到極高，
+    # 確保 SA 永遠不會交出「某班人數低於法定護病比」的解。權重高於一般 unmet。
+    "ratio_below_legal":  200000,
 }
 
 # JS 違規類型 → SA penalty key 的對照表，給 run_sa_with_feedback() 用
@@ -232,6 +238,7 @@ def run_sa(
     protected_indices: List[int] = None,
     daily_reqs: Dict[int, int] = None,
     daily_reqs_max: Dict[int, int] = None,
+    min_daily_reqs: Dict[int, int] = None,
     custom_rules: List[Dict] = None,
     max_iterations: int = 20000,
     seed: int = None,
@@ -296,6 +303,15 @@ def run_sa(
     req_D_max = _req_max(1, req_D)
     req_E_max = _req_max(2, req_E)
     req_N_max = _req_max(3, req_N)
+
+    # —— 護病比法定下限（每班最少護理師數）；None 表示呼叫端沒傳就不啟用第 2 層檢查 ——
+    min_daily_reqs = min_daily_reqs or {}
+    if min_daily_reqs:
+        def _minreq(code: int) -> int:
+            return int(min_daily_reqs.get(code, min_daily_reqs.get(str(code), 0)))
+        min_daily_floor = {"D": _minreq(1), "E": _minreq(2), "N": _minreq(3)}
+    else:
+        min_daily_floor = None
 
     _, num_days = calendar.monthrange(year, month)
     num_nurses = len(nurses)
@@ -666,6 +682,17 @@ def run_sa(
                     excess = cnt - trm[sh_letter]
                     total += W["daily_demand_exceeded"] * excess
                     breakdown["daily_demand_exceeded"] += excess
+
+        # —— 護病比法定下限（防禦深度第 2 層）：每班 count < 衛福部下限 = 重罰 ——
+        if min_daily_floor:
+            for d in range(1, num_days + 1):
+                for sh_letter, mem in (("D", mm), ("E", em), ("N", nm)):
+                    floor_v = min_daily_floor.get(sh_letter, 0)
+                    cnt = len(mem[d])
+                    if cnt < floor_v:
+                        short = floor_v - cnt
+                        total += W["ratio_below_legal"] * short
+                        breakdown["ratio_below_legal"] += short
 
         # FORCE_OFF / FORCE_WORK — 歸屬到指定 nurse
         sched_cache = {nid: get_sched(nid, mm, em, nm, rgm, rcm) for nid in nurses}

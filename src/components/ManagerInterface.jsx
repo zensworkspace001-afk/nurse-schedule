@@ -224,7 +224,7 @@ const ManagerInterface = ({
               <Route path="/schedule" element={
                 <SchedulePanel
                   schedule={schedule} staffData={staffData} violations={violations}
-                  requirements={requirements} onGenerateSchedule={onGenerateSchedule}
+                  requirements={requirements} bedConfig={bedConfig} onGenerateSchedule={onGenerateSchedule}
                   onSaveSchedule={onSaveSchedule} setSchedule={setSchedule}
                   selectedYear={selectedYear} selectedMonth={selectedMonth}
                   setSelectedMonth={setSelectedMonth} setSelectedYear={setSelectedYear}
