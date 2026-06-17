@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Calendar, Settings, LogOut, X, Hand, Zap, ZapOff } from 'lucide-react';
 import { usePerformanceMode } from './hooks/usePerformanceMode';
 import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { signOut } from "firebase/auth";
+import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive, subscribeToAnnouncement } from './api/database';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
@@ -18,6 +18,31 @@ import './App.refactored.css';
 
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
+
+  // 開機時還原 Firebase 持久化的登入狀態（這才是「記住我」真正生效的地方）。
+  // 「記住我」勾選 → token 存 localStorage（跨瀏覽器存活）；不勾 → sessionStorage（關閉即逝）。
+  // 但光有 token 不夠：React 的 currentUser 仍是 null，畫面照樣停在登入頁。
+  // 所以這裡掛一次性的 onAuthStateChanged，把持久化的 session 還原成 currentUser。
+  // 只處理「開機首次」那一發：之後的登入仍由 LoginPanel 驅動（含轉場動畫），登出由 handleLogout 驅動，
+  // 避免 onAuthStateChanged 在表單登入時搶先設值、打斷 LoginPanel 的 750ms 蓋板動畫。
+  const [authChecked, setAuthChecked] = useState(false);
+  const initialAuthHandled = useRef(false);
+  useEffect(() => {
+    const buildUserPayload = (user) => {
+      const localPart = (user.email || '').split('@')[0].toLowerCase();
+      // 與 LoginPanel.handleLogin 的 userPayload 維持完全一致的形狀
+      return localPart === 'admin'
+        ? { id: 'ADMIN', name: '管理人員', role: 'admin' }
+        : { id: localPart.toUpperCase(), name: '載入中...', role: 'staff', rule: 'Standard' };
+    };
+    const unsub = onAuthStateChanged(auth, (user) => {
+      if (initialAuthHandled.current) return; // 只認開機第一發
+      initialAuthHandled.current = true;
+      if (user) setCurrentUser(buildUserPayload(user));
+      setAuthChecked(true);
+    });
+    return () => unsub();
+  }, []);
 
   // 省電模式：關閉 ParticleBackground (Three.js + aurora shader) 與所有 backdrop-filter，
   // 讓低階顯卡 / 內顯筆電也能順跑。可由使用者手動切換，或跟隨 prefers-reduced-motion。
@@ -795,6 +820,11 @@ const handleSaveAndPublish = async () => {
   };
 
   if (!currentUser) {
+    // 還在還原持久化 session（onAuthStateChanged 尚未回報）→ 先只畫背景，
+    // 避免「已記住」的使用者開機時閃一下登入畫面再跳進系統。
+    if (!authChecked) {
+      return <>{!perfMode && <ParticleBackground />}</>;
+    }
     // 登入轉場由 LoginPanel 內部負責建立 .app__transition-cover 蓋板
     // 跟 handleLogout 是對稱的（同一個 glassFadeIn 動畫，只差 background 色相）
     return (
