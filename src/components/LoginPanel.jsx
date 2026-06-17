@@ -1,5 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  signInWithEmailAndPassword,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence,
+} from 'firebase/auth';
 import { AlertCircle, LogIn, Shield } from 'lucide-react';
 import { auth, subscribeToAnnouncement } from '../api/database';
 import WeatherClockWidget from './WeatherClockWidget';
@@ -31,6 +36,11 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  // 「記住我」偏好。預設勾選 → 沿用 Firebase 原本的 browserLocalPersistence
+  // 行為（關瀏覽器仍登入），不破壞既有使用者體驗。只記偏好旗標，絕不存帳密。
+  const [rememberMe, setRememberMe] = useState(
+    () => localStorage.getItem('remember_me') !== 'false',
+  );
   const isMobile = useIsMobile(640);
 
   // 系統公告（Firestore rule 允許未登入讀取此 doc — 登入頁也能拿到）
@@ -51,6 +61,15 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
     const emailToLogin = `${inputId}@hospital.com`;
 
 try {
+        // 0. 設定 token 持久層 — 這就是「記住我」的本質：
+        //    勾選 → browserLocalPersistence（存 IndexedDB，關瀏覽器仍登入）
+        //    不勾 → browserSessionPersistence（存 sessionStorage，關閉即登出，適合公用電腦）
+        //    必須在 signIn 之前設定，整條鏈路不碰 cookie。
+        await setPersistence(
+          auth,
+          rememberMe ? browserLocalPersistence : browserSessionPersistence,
+        );
+
         // 1. 呼叫 Firebase 伺服器進行真實密碼比對！
         const loginStart = Date.now();
         await signInWithEmailAndPassword(auth, emailToLogin, password);
@@ -170,6 +189,19 @@ try {
             name="password"
             className="login-panel__input login-panel__input--password"
           />
+
+          <label className="login-panel__remember">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => {
+                setRememberMe(e.target.checked);
+                localStorage.setItem('remember_me', String(e.target.checked));
+              }}
+              className="login-panel__remember-checkbox"
+            />
+            <span>記住我（公用電腦請勿勾選）</span>
+          </label>
 
           {error && <div className="login-panel__error"><AlertCircle size={14} /> {error}</div>}
 

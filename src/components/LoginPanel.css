@@ -231,7 +231,31 @@
 }
 
 .login-panel__input--password {
+  margin-bottom: 1rem;
+}
+
+/* --- Remember Me (毛玻璃風格 checkbox) --- */
+.login-panel__remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 1.5rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.login-panel__remember-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: #00d2ff;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.login-panel__remember:hover {
+  color: rgba(255, 255, 255, 0.95);
 }
 
 /* --- Error Message (半透明紅色毛玻璃) --- */
