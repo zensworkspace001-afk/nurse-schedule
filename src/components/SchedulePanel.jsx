@@ -293,20 +293,31 @@ const SchedulePanel = ({
       // FEASIBLE 表示仍有殘留違規。SA 內部罰分含「比勞基法更嚴」的客製規則，
       // 即使法遵已過，penalty 仍可能 > 0，所以用 solver_status 判定而非 ===0。
       const compliant = data.solver_status === 'OPTIMAL';
+      // 兩階段 TLPS：hard_penalty===0 表示已無「禁止模式」（= JS 法遵硬底線過關），
+      // 比 solver_status==='OPTIMAL'（還要求軟罰分低於門檻）更貼近真正的合規判定。
+      const feasible = stats.hard_penalty === 0;
       const slotCount = Object.keys(virtualSchedule).length;
       const breakdownLines = Object.entries(stats.violation_breakdown || {})
         .map(([k, v]) => `  • ${k}: ${v} 處`).join('\n') || '  • 無';
+      const dpLine = (stats.desirable_pattern_count != null)
+        ? `🧩 TLPS 模式：理想 DP ${stats.desirable_pattern_count} / 不理想 ${stats.undesirable_pattern_count} / 禁止 ${stats.prohibited_pattern_count}（共 ${stats.num_nurses} 人）\n`
+        : '';
+      const phaseLine = stats.feasibility_reached
+        ? `🎯 可行性階段第 ${stats.feasibility_iteration} 次迭代達成（硬約束歸零）→ 進入優化階段\n`
+        : `⛔ 未達可行性：仍有禁止模式（硬罰分 ${stats.hard_penalty}），全程停在可行性階段\n`;
 
       setGeminiMessages(prev => [...prev, {
         role: 'assistant',
         content:
           `${compliant ? '✅' : '⚠️'} SA 收斂 (${data.solver_status})\n` +
           `⏱️ 伺服器運算 ${data.elapsed_seconds}s / 含網路 ${elapsedClient}s\n` +
-          `📊 最終罰分：${stats.final_penalty}（含比勞基法更嚴的客製規則）\n` +
+          `📊 最終罰分：${stats.final_penalty}（硬約束 ${stats.hard_penalty ?? '?'} + 軟約束 ${stats.soft_penalty ?? '?'}）\n` +
+          phaseLine +
+          dpLine +
           `🔄 最佳解出現在第 ${stats.best_iteration}/${stats.max_iterations} 次迭代\n` +
           `🌡️ 退火接受 ${stats.accepted_worse_swaps} 次次優 / 拒絕 ${stats.rejected_swaps} 次\n` +
           `📋 殘留違規類別：\n${breakdownLines}\n\n` +
-          `已生成 ${slotCount} 份匿名待選班表，員工可自行選班認領（與 AI 排班相同流程）。${compliant ? '' : '\n⚠️ 有殘留違規，建議人工檢視後再開放選班。'}`
+          `已生成 ${slotCount} 份匿名待選班表，員工可自行選班認領（與 AI 排班相同流程）。${feasible ? (compliant ? '' : '\n💡 已無禁止模式（法規硬底線過關），僅剩比勞基法更嚴的軟性偏好殘留，可直接開放選班。') : '\n⛔ 仍有禁止模式（違反法規硬底線），務必人工檢視後再開放選班。'}`
       }]);
     } catch (err) {
       console.error('SA 排班失敗:', err);

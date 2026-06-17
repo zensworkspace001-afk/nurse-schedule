@@ -213,6 +213,41 @@ PENALTY = {
     "ratio_below_legal":  200000,
 }
 
+
+# ============================================================
+# 兩階段 TLPS（Sharif et al. 2026）：硬約束 vs 軟約束的分界
+# ============================================================
+# 論文把每位護理師的整月排班模式分三類：
+#   禁止模式 (Prohibited)   — 違反「硬約束」(法規 / 醫院安全底線)，絕不允許
+#   不理想模式 (Undesirable) — 合法但未滿足「軟約束」，會累積較高罰分
+#   理想模式 (Desirable, DP) — 硬、軟約束皆滿足，TLPS 竭力最大化其數量
+#
+# SA 因此分兩階段跑：
+#   1) 可行性階段 (Feasibility) — 只追硬約束罰分歸零，先消滅所有禁止模式
+#   2) 優化階段 (Optimization)  — 鎖死硬約束=0，再壓低軟約束，把不理想升級為理想
+#
+# HARD_PENALTY_KEYS 精準對齊 JS 端 checkLaborLawCompliance 會抓的法定違規
+# （見 compliance.py / JS_TO_SA_MAP）+ 三項營運硬底線（覆蓋、護病比、admin 強制）。
+# 不在此集合者一律視為軟約束（比勞基法更嚴的客製規則 + 個人偏好）。
+HARD_PENALTY_KEYS = frozenset({
+    # —— 對齊 JS checkLaborLawCompliance 的法定違規（禁止模式）——
+    "weekly_hours_over_40",     # WEEKLY_HOURS  §30 每週工時
+    "monthly_hours_over_222",   # MONTHLY_OT    §32 月加班上限
+    "insufficient_rg",          # INSUFFICIENT_RG §36 月例假 < 4
+    "total_rest_below_8",       # INSUFFICIENT_OFF §36 RG+RC < 8
+    "rg_interval_over_6",       # RG_INTERVAL   §36 兩 RG 之間 > 6 工作日
+    "consecutive_work_7",       # CONSECUTIVE_DAYS §36 七休一
+    "forbidden_n_d",            # SHIFT_INTERVAL §34 11h 輪班間隔
+    "forbidden_n_e",
+    "forbidden_e_d",
+    "protected_on_en",          # MATERNITY/STUDENT §49 孕哺 / 實習禁夜
+    # —— 營運硬底線（非 JS per-staff 檢查，但同屬「禁止」）——
+    "daily_demand_unmet",       # 某班沒排滿 → 醫療覆蓋破口
+    "ratio_below_legal",        # 衛福部三班護病比法定下限
+    "custom_rule_violation",    # FORCE_OFF / FORCE_WORK（admin 硬指令）
+})
+
+
 # JS 違規類型 → SA penalty key 的對照表，給 run_sa_with_feedback() 用
 JS_TO_SA_MAP = {
     "WEEKLY_HOURS":            "weekly_hours_over_40",
@@ -1052,8 +1087,15 @@ def run_sa(
             return True
         return antiport_focused(red_set, mm, em, nm, rgm, rcm)
 
+    # —— 兩階段 TLPS：把整月罰分拆成「硬約束（禁止模式）」與「軟約束（不理想模式）」——
+    # _hard_of 從 breakdown 抽出落在 HARD_PENALTY_KEYS 的罰分小計；soft = total - hard。
+    def _hard_of(breakdown):
+        return sum(W[k] * c for k, c in breakdown.items() if k in HARD_PENALTY_KEYS)
+
     current_p, current_breakdown, current_per_nurse = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+    current_hard = _hard_of(current_breakdown)
     best_p = current_p
+    best_hard = current_hard
     # 初始 breakdown 必須直接帶進 best_breakdown — 若 SA 連一次嚴格改善都沒發生
     # （`current_p < best_p` 才更新），best_breakdown 會永遠是 `{}`，UI 顯示 penalty
     # 16680 但「前 3 大違規」卻空 → 「無違規」假象。
@@ -1065,6 +1107,22 @@ def run_sa(
     best_rg = copy.deepcopy(rg_mem)
     best_rc = copy.deepcopy(rc_mem)
     best_iter = 0
+
+    # 兩階段狀態：current_hard 已 0 就直接進優化階段（init 就可行的罕見情形）
+    phase = "optimization" if current_hard == 0 else "feasibility"
+    feasibility_iter = 0 if current_hard == 0 else None
+
+    def _save_best(p, hard, breakdown, per_nurse, it):
+        """把目前膜狀態快照成 best（best 以 (hard, total) 字典序最小為準）。"""
+        nonlocal best_p, best_hard, best_breakdown, best_per_nurse
+        nonlocal best_m, best_e, best_n, best_rg, best_rc, best_iter
+        best_p, best_hard, best_breakdown, best_per_nurse = p, hard, breakdown, per_nurse
+        best_m  = copy.deepcopy(m_mem)
+        best_e  = copy.deepcopy(e_mem)
+        best_n  = copy.deepcopy(n_mem)
+        best_rg = copy.deepcopy(rg_mem)
+        best_rc = copy.deepcopy(rc_mem)
+        best_iter = it
 
     accepted_worse = 0
     rejected = 0
@@ -1149,29 +1207,49 @@ def run_sa(
                 week_rotation(m_mem, e_mem, n_mem, rg_mem, rc_mem)
 
         new_p, new_breakdown, new_per_nurse = evaluate(m_mem, e_mem, n_mem, rg_mem, rc_mem)
+        new_hard = _hard_of(new_breakdown)
         T = max(0.1, 1000 * (1 - i / max_iterations))
 
-        if new_p <= current_p:
-            current_p = new_p
-            current_per_nurse = new_per_nurse
-            if current_p < best_p:
-                best_p = current_p
-                best_breakdown = new_breakdown
-                best_per_nurse = new_per_nurse
-                best_m  = copy.deepcopy(m_mem)
-                best_e  = copy.deepcopy(e_mem)
-                best_n  = copy.deepcopy(n_mem)
-                best_rg = copy.deepcopy(rg_mem)
-                best_rc = copy.deepcopy(rc_mem)
-                best_iter = i
-                stagnation_counter = 0
+        if phase == "feasibility":
+            # —— 可行性階段：只比硬約束罰分，目標是把所有「禁止模式」清成 0 ——
+            # 軟約束此階段不參與接受判定（任它先漂移），先把法規違規逼到零。
+            if new_hard <= current_hard:
+                accept = True
             else:
+                accept = random.random() < math.exp(-(new_hard - current_hard) / T)
+                if accept:
+                    accepted_worse += 1
+            if accept:
+                current_p, current_hard, current_per_nurse = new_p, new_hard, new_per_nurse
+                if (new_hard, new_p) < (best_hard, best_p):
+                    _save_best(new_p, new_hard, new_breakdown, new_per_nurse, i)
+                    stagnation_counter = 0
+                else:
+                    stagnation_counter += 1
+                if new_hard == 0:
+                    # 100% 滿足硬約束 → 切換到優化階段，開始消除不理想模式
+                    phase = "optimization"
+                    feasibility_iter = i
+            else:
+                _restore_from_snap(snap_m, snap_e, snap_n, snap_rg, snap_rc)
+                rejected += 1
                 stagnation_counter += 1
         else:
-            delta = new_p - current_p
-            if random.random() < math.exp(-delta / T):
-                current_p = new_p
-                current_per_nurse = new_per_nurse
+            # —— 優化階段：硬約束已 0，任何重新引入「禁止模式」的 move 一律拒絕 ——
+            # 在此前提下用標準退火最小化 total（此時 total == soft，hard 恆 0）。
+            if new_hard > 0:
+                _restore_from_snap(snap_m, snap_e, snap_n, snap_rg, snap_rc)
+                rejected += 1
+                stagnation_counter += 1
+            elif new_p <= current_p:
+                current_p, current_hard, current_per_nurse = new_p, new_hard, new_per_nurse
+                if (new_hard, new_p) < (best_hard, best_p):
+                    _save_best(new_p, new_hard, new_breakdown, new_per_nurse, i)
+                    stagnation_counter = 0
+                else:
+                    stagnation_counter += 1
+            elif random.random() < math.exp(-(new_p - current_p) / T):
+                current_p, current_hard, current_per_nurse = new_p, new_hard, new_per_nurse
                 accepted_worse += 1
                 stagnation_counter += 1
             else:
@@ -1179,7 +1257,8 @@ def run_sa(
                 rejected += 1
                 stagnation_counter += 1
 
-        if current_p < OPTIMAL_THRESHOLD:
+        # 早停：已可行（hard=0）且軟罰分低於門檻
+        if phase == "optimization" and current_p < OPTIMAL_THRESHOLD:
             break
 
     elapsed = time() - t_start
@@ -1197,9 +1276,37 @@ def run_sa(
     # 算最終分類（給 UI 顯示哪些 nurse 收斂在綠燈）
     final_red, final_green, final_dominant, final_totals = _classify_nurses(best_per_nurse)
 
+    # —— TLPS 三類模式分類（per-nurse pattern）——
+    # Prohibited  ：含任一硬約束違規（禁止模式；優化階段若收斂應為 0）
+    # Undesirable ：硬約束 0 但仍有軟約束違規（合法但折騰）
+    # Desirable(DP)：硬、軟約束皆 0 — 論文竭力最大化的理想模式
+    # 註：daily_demand_unmet / ratio_below_legal 是 schedule 層級、不歸屬單一 nurse，
+    #     故 per-nurse 分類不含；那兩項由 best_hard（全域硬罰分）獨立反映。
+    prohibited_nurses, undesirable_nurses, desirable_nurses = [], [], []
+    for nid in nurses:
+        contribs = best_per_nurse.get(nid, {})
+        has_hard = any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS)
+        has_soft = any(c > 0 for k, c in contribs.items() if k not in HARD_PENALTY_KEYS)
+        if has_hard:
+            prohibited_nurses.append(nid)
+        elif has_soft:
+            undesirable_nurses.append(nid)
+        else:
+            desirable_nurses.append(nid)
+    best_soft = best_p - best_hard
+
+    # solver_status：硬約束未清零 = INFEASIBLE（仍有禁止模式）；
+    # 清零後依軟罰分是否低於門檻分 OPTIMAL / FEASIBLE。
+    if best_hard > 0:
+        solver_status = "INFEASIBLE"
+    elif best_p < OPTIMAL_THRESHOLD:
+        solver_status = "OPTIMAL"
+    else:
+        solver_status = "FEASIBLE"
+
     return {
         "status": "success",
-        "solver_status": "OPTIMAL" if best_p < OPTIMAL_THRESHOLD else "FEASIBLE",
+        "solver_status": solver_status,
         "elapsed_seconds": round(elapsed, 2),
         "schedule": result,
         "stats": {
@@ -1212,6 +1319,19 @@ def run_sa(
             "num_days": num_days,
             "num_nurses": num_nurses,
             "weight_overrides": weight_overrides,
+            # —— 兩階段 TLPS 統計 ——
+            "hard_penalty": best_hard,
+            "soft_penalty": best_soft,
+            "feasibility_reached": feasibility_iter is not None,
+            "feasibility_iteration": feasibility_iter,
+            "final_phase": phase,
+            # —— 三類模式計數（論文核心指標：DP 數量）——
+            "desirable_pattern_count": len(desirable_nurses),
+            "undesirable_pattern_count": len(undesirable_nurses),
+            "prohibited_pattern_count": len(prohibited_nurses),
+            "desirable_nurses": desirable_nurses,
+            "undesirable_nurses": undesirable_nurses,
+            "prohibited_nurses": prohibited_nurses,
             # —— L3 Focused SA 統計 ——
             "focused_mode": focused_mode,
             "focused_iterations": focused_iters,
