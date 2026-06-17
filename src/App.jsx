@@ -11,6 +11,7 @@ import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
 import ProfileWizard from './components/ProfileWizard';
+import ForcedPasswordChange from './components/ForcedPasswordChange';
 import ParticleBackground from './components/ParticleBackground';
 import WeatherClockWidget from './components/WeatherClockWidget';
 import ConnectionStatusBanner from './components/ConnectionStatusBanner';
@@ -833,6 +834,13 @@ const handleSaveAndPublish = async () => {
         <LoginPanel onLogin={setCurrentUser} onApiStatus={() => {}} staffData={staffData} />
       </>
     );
+  }
+
+  // 員工用「忘記密碼」拿到的暫時密碼登入 → 強制改密，擋下主畫面。
+  // 後端在發暫時密碼時設了 must_change_password；改密成功後旗標清除，myStaffRow
+  // 訂閱更新 → 此 gate 自動放行。放在 profile gate 之前（安全優先）。
+  if (currentUser.role === 'staff' && myStaffRow && myStaffRow.must_change_password === true) {
+    return <ForcedPasswordChange currentUser={currentUser} />;
   }
 
   // 員工首次登入若尚未完善個人資料 → 顯示精靈，擋下主畫面。

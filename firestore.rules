@@ -163,6 +163,25 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // 8a. password_reset_otp/{staffIdLower} — 自助忘記密碼 OTP
+    //    僅後端 Admin SDK 可存取（前端永遠不可讀寫）。
+    //    Firestore 只存驗證碼 sha256 雜湊；明文驗證碼只走 Email + 使用者輸入。
+    //    見 api/_lib/resetOtp.js 與 api/activate-account.js 的 request-reset / verify-reset-otp。
+    // ============================================================
+    match /password_reset_otp/{staffIdLower} {
+      allow read, write: if false;
+    }
+
+    // ============================================================
+    // 8b. password_history/{staffIdLower} — 密碼重用防護歷史
+    //    僅後端 Admin SDK 可存取（連本人都不可讀）。存的是加鹽 scrypt 雜湊，
+    //    用來擋「改回先前用過的密碼」。見 api/_lib/passwordHistory.js。
+    // ============================================================
+    match /password_history/{staffIdLower} {
+      allow read, write: if false;
+    }
+
+    // ============================================================
     // 9. access_logs/{logId} — 敏感欄位存取稽核日誌
     //    讀取：僅管理員（AccessLogPanel 用 onSnapshot 即時訂閱）
     //    寫入：永遠拒絕 — 只允許後端 Admin SDK 寫入（透過 api/_lib/accessLog.js）

@@ -284,6 +284,10 @@ def run_sa(
     reclassify_every: int = 200,      # 每 N iter 重新分類綠/紅燈
     tabu_size: int = 50,              # tabu list 長度（記住最近 K 次 swap 反向）
     stagnation_thaw: int = 800,       # 連續 N iter 沒進步 → 強制亂數攪局
+    # —— DP-aware polish 參數（最大化理想模式數量）——
+    dp_aware: bool = True,            # 優化階段啟用「把近理想護理師推成 DP」的對症 mutation
+    dp_polish_prob: float = 0.35,     # focused 分支內、優化階段嘗試 dp_polish 的機率
+    dp_polish_pool: int = 5,          # 從軟罰分最低的前 N 位近理想護理師隨機挑一位
 ) -> Dict:
     """
     執行 TLPS 模擬退火排班。
@@ -1058,6 +1062,35 @@ def run_sa(
         partner = random.choice(partners)
         return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
 
+    def fix_consecutive_rest(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        """主角有「工-休-休」連續休假叢集 → 把第 2 個休假日換成工作（與工作中 partner swap），打散叢集。
+        consecutive_rest_after_work 是優化階段最頑固的殘留軟違規之一，先前沒有對症 fix，
+        紅燈 / DP-polish 都只能退回隨機 antiport — 補上這條讓它能被定向消除。"""
+        cands = [n for n in red_set if dominant.get(n) == "consecutive_rest_after_work"]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        sched = get_sched(actor, mm, em, nm, rgm, rcm)
+        WORK = {"D", "E", "N"}
+        REST = {"RG", "RC"}
+        triples = [d for d in range(num_days - 2)
+                   if sched[d] in WORK and sched[d + 1] in REST and sched[d + 2] in REST]
+        if not triples:
+            return False
+        base = random.choice(triples)
+        day = base + 3  # 第 2 個休假日 (0-indexed base+2) → 1-indexed
+        if day > num_days:
+            return False
+        rest_mem = rgm if sched[base + 2] == "RG" else rcm
+        # actor 此日在 rest_mem，找同 type 在 work_mem 的 partner 對調 → 叢集第 2 天變工作
+        partners = [n for n in nurses_by_type[home] if n != actor and n in work_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
     # 對症 mutation 路由表：dominant_key → fix function
     TARGETED_FIX = {
         "excess_rg":             fix_excess_rg,
@@ -1074,6 +1107,7 @@ def run_sa(
         "overtime_6th_day_pay":  fix_consecutive_work,
         "isolated_off_n":        fix_isolated_off,
         "isolated_off_de":       fix_isolated_off,
+        "consecutive_rest_after_work": fix_consecutive_rest,
     }
 
     def targeted_mutation(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
@@ -1087,6 +1121,53 @@ def run_sa(
             return True
         return antiport_focused(red_set, mm, em, nm, rgm, rcm)
 
+    # ==========================================
+    # DP-aware polish — 把「最接近理想」的護理師推成理想模式 (Desirable Pattern)
+    # ==========================================
+    # 為何需要：紅/綠燈以個人總罰分 freeze_threshold(預設 500) 分界，軟罰分低的「近理想」
+    # 護理師被歸成綠燈凍結，紅燈對症 mutation 永遠碰不到他們 → 不理想模式卡住升不了理想。
+    # dp_polish 反向操作：專挑無硬違規、軟罰分『最低』的護理師（最容易清零者），對其主要
+    # 殘留軟違規施以同一套對症 fix，目標直接拉高 desirable_pattern_count。
+    def _dp_count(per_nurse) -> int:
+        """完全乾淨（硬、軟皆 0）的護理師數 = 理想模式 (DP) 數量。"""
+        return sum(1 for nid in nurses
+                   if not any(c > 0 for c in per_nurse.get(nid, {}).values()))
+
+    def _dp_candidates(per_nurse):
+        """近理想護理師：無硬違規但仍有軟違規，依軟罰分升冪（最接近 DP 在前）。"""
+        cands = []
+        for nid in nurses:
+            contribs = per_nurse.get(nid, {})
+            if any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS):
+                continue  # 還有硬違規 → 不是 DP candidate（紅燈的事）
+            soft = sum(W[k] * c for k, c in contribs.items() if k not in HARD_PENALTY_KEYS)
+            if soft > 0:
+                cands.append((soft, nid))
+        cands.sort(key=lambda x: x[0])
+        return cands
+
+    def dp_polish_mutation(per_nurse, dominant, mm, em, nm, rgm, rcm) -> bool:
+        """挑最接近 DP 的護理師（軟罰分最低的前 dp_polish_pool 個內隨機），對其主要殘留軟違規
+        路由到 TARGETED_FIX；找不到對症 fix 就退回 focused antiport。"""
+        cands = _dp_candidates(per_nurse)
+        if not cands:
+            return False
+        pool = cands[:max(1, min(len(cands), dp_polish_pool))]
+        _, actor = random.choice(pool)
+        contribs = per_nurse.get(actor, {})
+        soft_contribs = {k: c for k, c in contribs.items()
+                         if k not in HARD_PENALTY_KEYS and c > 0}
+        if not soft_contribs:
+            return False
+        dom = max(soft_contribs.items(), key=lambda kv: W.get(kv[0], 0) * kv[1])[0]
+        # 用單一 actor 的臨時 set + dominant override，重用既有 fix 函式的候選過濾
+        single = {actor}
+        dom_override = {actor: dom}
+        fix = TARGETED_FIX.get(dom)
+        if fix is not None and fix(single, dom_override, mm, em, nm, rgm, rcm):
+            return True
+        return antiport_focused(single, mm, em, nm, rgm, rcm)
+
     # —— 兩階段 TLPS：把整月罰分拆成「硬約束（禁止模式）」與「軟約束（不理想模式）」——
     # _hard_of 從 breakdown 抽出落在 HARD_PENALTY_KEYS 的罰分小計；soft = total - hard。
     def _hard_of(breakdown):
@@ -1096,6 +1177,7 @@ def run_sa(
     current_hard = _hard_of(current_breakdown)
     best_p = current_p
     best_hard = current_hard
+    best_dp = _dp_count(current_per_nurse)
     # 初始 breakdown 必須直接帶進 best_breakdown — 若 SA 連一次嚴格改善都沒發生
     # （`current_p < best_p` 才更新），best_breakdown 會永遠是 `{}`，UI 顯示 penalty
     # 16680 但「前 3 大違規」卻空 → 「無違規」假象。
@@ -1113,10 +1195,11 @@ def run_sa(
     feasibility_iter = 0 if current_hard == 0 else None
 
     def _save_best(p, hard, breakdown, per_nurse, it):
-        """把目前膜狀態快照成 best（best 以 (hard, total) 字典序最小為準）。"""
-        nonlocal best_p, best_hard, best_breakdown, best_per_nurse
+        """把目前膜狀態快照成 best。best_dp 同步重算，供優化階段 DP tiebreaker 用。"""
+        nonlocal best_p, best_hard, best_dp, best_breakdown, best_per_nurse
         nonlocal best_m, best_e, best_n, best_rg, best_rc, best_iter
         best_p, best_hard, best_breakdown, best_per_nurse = p, hard, breakdown, per_nurse
+        best_dp = _dp_count(per_nurse)
         best_m  = copy.deepcopy(m_mem)
         best_e  = copy.deepcopy(e_mem)
         best_n  = copy.deepcopy(n_mem)
@@ -1129,6 +1212,7 @@ def run_sa(
     # L3 stats
     focused_iters = 0
     targeted_iters = 0
+    dp_polish_iters = 0
     thaw_iters = 0
     tabu_hits = 0
     stagnation_counter = 0
@@ -1175,19 +1259,26 @@ def run_sa(
                 block_antiport(m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
             else:
                 month_swap(m_mem, e_mem, n_mem, rg_mem, rc_mem)
-        elif focused_mode and red_set:
-            # Focused 模式：60% 對症 mutation、25% focused antiport、15% block_focused
+        elif focused_mode and (red_set or (dp_aware and phase == "optimization")):
+            # Focused 模式：先給 DP-polish 一次機會（優化階段、機率 dp_polish_prob），
+            # 再走原本的紅燈對症 mutation（60% targeted / 25% focused antiport / 15% block）。
+            # 改 guard 為「red_set 或（優化階段+dp_aware）」：紅燈清空後仍能持續 polish 近理想者。
             focused_iters += 1
-            roll = random.random()
             mutated = False
-            if roll < 0.60:
-                mutated = targeted_mutation(red_set, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem)
-                if mutated:
-                    targeted_iters += 1
-            if not mutated and roll < 0.85:
-                mutated = antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem)
-            if not mutated:
-                mutated = block_antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
+            if dp_aware and phase == "optimization" and random.random() < dp_polish_prob:
+                if dp_polish_mutation(current_per_nurse, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem):
+                    dp_polish_iters += 1
+                    mutated = True
+            if not mutated and red_set:
+                roll = random.random()
+                if roll < 0.60:
+                    mutated = targeted_mutation(red_set, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem)
+                    if mutated:
+                        targeted_iters += 1
+                if not mutated and roll < 0.85:
+                    mutated = antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem)
+                if not mutated:
+                    mutated = block_antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
             if not mutated:
                 # focused 全部失敗 → 退回原始 mutation 才不會空轉
                 antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, rg_mem, rc_mem)
@@ -1243,7 +1334,10 @@ def run_sa(
                 stagnation_counter += 1
             elif new_p <= current_p:
                 current_p, current_hard, current_per_nurse = new_p, new_hard, new_per_nurse
-                if (new_hard, new_p) < (best_hard, best_p):
+                # best 以 (hard, total, -DP) 字典序：總罰分相同時，理想模式較多者勝出 —
+                # 這是讓 dp_polish 真正生效的關鍵（總罰分中性的 DP-creating move 才會被保存）。
+                new_dp = _dp_count(new_per_nurse)
+                if (new_hard, new_p, -new_dp) < (best_hard, best_p, -best_dp):
                     _save_best(new_p, new_hard, new_breakdown, new_per_nurse, i)
                     stagnation_counter = 0
                 else:
@@ -1336,6 +1430,7 @@ def run_sa(
             "focused_mode": focused_mode,
             "focused_iterations": focused_iters,
             "targeted_iterations": targeted_iters,
+            "dp_polish_iterations": dp_polish_iters,
             "thaw_iterations": thaw_iters,
             "tabu_hits": tabu_hits,
             "classify_log": classify_log,

@@ -22,6 +22,8 @@ import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
 import { encryptField } from './_lib/crypto.js';
 import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
+import { validatePasswordStrength } from './_lib/activationToken.js';
+import { assertPasswordNotReused, recordPassword } from './_lib/passwordHistory.js';
 
 if (!admin.apps.length) {
   let pk = process.env.FIREBASE_PRIVATE_KEY;
@@ -202,6 +204,61 @@ export default async function handler(req, res) {
   // admin 不應透過此端點寫入（admin 自己沒有 staffData 列）
   if (actor.email === 'admin@hospital.com') {
     return res.status(403).json({ error: '管理員請使用員工管理頁面' });
+  }
+
+  // —— mode:'change-password' — 強制改密（暫時密碼登入後）/ 一般自助改密 ——
+  // 由伺服器端 Admin SDK 直接設密碼，免去 client 端 reauth（暫時密碼登入者剛 auth 過）。
+  // 同時清掉 must_change_password 旗標，讓 App.jsx 的強制改密 gate 放行。
+  if (req.body?.mode === 'change-password') {
+    const rlPw = checkRateLimit(`change-password:${actor.uid}`, 5);
+    if (!rlPw.allowed) return res.status(429).json({ error: '請求過於頻繁，請稍候再試' });
+
+    const pw = validatePasswordStrength(req.body?.newPassword);
+    if (!pw.ok) return res.status(400).json({ error: pw.reason });
+
+    // 禁止改回先前使用過的密碼
+    try {
+      await assertPasswordNotReused(actor.uid, req.body.newPassword);
+    } catch (e) {
+      if (e.code === 'password-reused') return res.status(400).json({ error: e.message });
+      throw e;
+    }
+
+    const meta2 = extractClientMeta(req);
+    const staffRef2 = admin.firestore().doc('NurseApp/Staff');
+    try {
+      await admin.auth().updateUser(actor.firebaseUid, { password: req.body.newPassword });
+      await recordPassword(actor.uid, req.body.newPassword);
+      // 清旗標：transaction 寫 NurseApp/Staff 陣列 + StaffPrivate/{id}
+      await admin.firestore().runTransaction(async (tx) => {
+        const snap = await tx.get(staffRef2);
+        if (!snap.exists) return;
+        const data = snap.data();
+        const list = Array.isArray(data.staffData) ? data.staffData : [];
+        const idx = list.findIndex(
+          (s) => String(s.staff_id).toLowerCase() === String(actor.uid).toLowerCase(),
+        );
+        if (idx === -1) return;
+        const row = { ...list[idx] };
+        delete row.must_change_password;
+        const next = [...list];
+        next[idx] = row;
+        tx.update(staffRef2, { staffData: next });
+        tx.set(admin.firestore().doc(`StaffPrivate/${row.staff_id}`), row);
+      });
+      await writeAccessLog({
+        actor,
+        action: 'update-profile',
+        target: { kind: 'staff', id: actor.uid },
+        fields: ['password'], // 只記欄位名，絕不記密碼明文
+        ip: meta2.ip, ua: meta2.ua,
+        extra: { source: 'complete-profile', mode: 'change-password' },
+      });
+      return res.status(200).json({ ok: true, message: '密碼已更新' });
+    } catch (err) {
+      console.error('change-password 失敗:', err);
+      return res.status(500).json({ error: '伺服器處理失敗，請稍後再試' });
+    }
   }
 
   const mode = req.body?.mode === 'update' ? 'update' : 'first';

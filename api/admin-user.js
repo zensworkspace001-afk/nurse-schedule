@@ -18,6 +18,7 @@ import crypto from 'node:crypto';
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
+import { clearPasswordHistory } from './_lib/passwordHistory.js';
 import { writeAccessLog, readAccessLogs, extractClientMeta } from './_lib/accessLog.js';
 
 if (!admin.apps.length) {
@@ -312,6 +313,9 @@ export default async function handler(req, res) {
           console.warn(`delete-staff: 停用 Auth 帳號失敗 (${staffId}):`, authErr.message);
         }
       }
+
+      // 5b. 清除密碼歷史（PDPA：人走了就別留雜湊；best-effort，失敗不擋）
+      await clearPasswordHistory(staffId);
 
       // 6. 稽核
       await writeAccessLog({

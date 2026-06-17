@@ -9,6 +9,7 @@ import { AlertCircle, LogIn, Shield } from 'lucide-react';
 import { auth, subscribeToAnnouncement } from '../api/database';
 import WeatherClockWidget from './WeatherClockWidget';
 import AnnouncementBanner from './AnnouncementBanner';
+import ForgotPasswordModal from './ForgotPasswordModal';
 import './LoginPanel.css';
 
 // Hook：偵測是否為行動版尺寸（≤640px）
@@ -36,6 +37,7 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
   // 「記住我」偏好。預設勾選 → 沿用 Firebase 原本的 browserLocalPersistence
   // 行為（關瀏覽器仍登入），不破壞既有使用者體驗。只記偏好旗標，絕不存帳密。
   const [rememberMe, setRememberMe] = useState(
@@ -208,10 +210,24 @@ try {
           <button type="submit" disabled={isLoggingIn} className={`login-panel__button ${isLoggingIn ? 'login-panel__button--loading' : 'login-panel__button--active'}`}>
               {isLoggingIn ? <><span className="login-panel__spinner" /> 驗證中...</> : <><LogIn size={16} /> 登入系統</>}
           </button>
+
+          <button type="button" className="login-panel__forgot" onClick={() => setShowForgot(true)}>
+            忘記密碼？
+          </button>
         </form>
       </div>
 
-
+      {showForgot && (
+        <ForgotPasswordModal
+          onClose={() => setShowForgot(false)}
+          onFilled={(filledId, tempPw) => {
+            // 帶回登入表單：填好工號與暫時密碼，使用者直接按登入即可
+            setEmployeeId(filledId);
+            setPassword(tempPw);
+            setError('');
+          }}
+        />
+      )}
     </div>
   );
 };
