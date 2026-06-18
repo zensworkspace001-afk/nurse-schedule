@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { KeyRound, AlertCircle, ShieldCheck, LogOut } from 'lucide-react';
-import { signOut } from 'firebase/auth';
 import { auth } from '../api/database';
 import './ForcedPasswordChange.css';
 
@@ -10,7 +9,7 @@ import './ForcedPasswordChange.css';
 // 旗標一清，App.jsx 訂閱的 myStaffRow 更新 → gate 自動放行進入系統。
 const strongPasswordRegex = /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d!@#$%^&*()_+\-=]{6,}$/;
 
-const ForcedPasswordChange = ({ currentUser }) => {
+const ForcedPasswordChange = ({ currentUser, onLogout }) => {
   const [pw1, setPw1] = useState('');
   const [pw2, setPw2] = useState('');
   const [busy, setBusy] = useState(false);
@@ -73,8 +72,8 @@ const ForcedPasswordChange = ({ currentUser }) => {
             <button type="submit" className="forced-pw__btn" disabled={busy}>
               {busy ? '更新中…' : '設定新密碼並進入系統'}
             </button>
-            <button type="button" className="forced-pw__logout" onClick={() => signOut(auth)}>
-              <LogOut size={13} /> 先登出
+            <button type="button" className="forced-pw__logout" onClick={onLogout}>
+              <LogOut size={13} /> 先登出，稍後再改
             </button>
           </form>
         )}

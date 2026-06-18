@@ -840,7 +840,7 @@ const handleSaveAndPublish = async () => {
   // 後端在發暫時密碼時設了 must_change_password；改密成功後旗標清除，myStaffRow
   // 訂閱更新 → 此 gate 自動放行。放在 profile gate 之前（安全優先）。
   if (currentUser.role === 'staff' && myStaffRow && myStaffRow.must_change_password === true) {
-    return <ForcedPasswordChange currentUser={currentUser} />;
+    return <ForcedPasswordChange currentUser={currentUser} onLogout={handleLogout} />;
   }
 
   // 員工首次登入若尚未完善個人資料 → 顯示精靈，擋下主畫面。
