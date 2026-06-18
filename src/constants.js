@@ -54,6 +54,72 @@ export function computeDailyRequirements(bedConfig) {
   };
 }
 
+// SA 可行性上限的邊際常數。對齊 SA 端 work_days 規則（main1.py / local_test/scheduler.py
+// 的 work_days_below_22：work < num_days - 11）。實測（local_test 掃描）發現：硬性過勞
+// 規則（七休一 §36、每週工時 §30）會在「每人月工作天數 ≈ num_days - 11」處就先咬住，
+// 再往上排就會冒出硬違規 → INFEASIBLE。所以 num_days - 11 同時是「軟性工時下限」也是
+// 「硬性可行上限」，每日總需求一旦逼近 staffCount × (num_days-11)/num_days 就到頂。
+export const SA_FEASIBLE_WORKDAY_MARGIN = 11;
+
+// 依「實際參與排班人數」把每日總需求夾進 SA 可行帶：
+//   上限（可行天條）= floor(staffCount × (numDays - 11) / numDays) —— 超過必觸發過勞硬違規
+//   下限           = 護病比法定下限總和 —— 永遠優先（寧可過勞 INFEASIBLE 也不能低於護病比）
+// 只「往下夾」：admin/床數推導的需求若高於可行上限，從白班(D)優先扣減（仍各自 ≥ 法定下限），
+// 避免人力不足以分散休假而把 SA 推進 INFEASIBLE 區。往上補人沒有意義（實測：拉高每日需求
+// 反而過勞爆，低需求才合法且 DP 最多），故不自動加碼。
+//   reqs   : { D, E, N } 夾鉗前的每日需求（通常已是 max(admin, 法定下限)）
+//   floor  : { D, E, N } 護病比法定下限
+//   staffCount / numDays
+// 回傳 { reqs, feasibleMax, cap, baseTotal, adjustedTotal, trimmed, underStaffed, note }
+export function clampDailyRequirementsToFeasibleBand({ reqs, floor, staffCount, numDays }) {
+  const f = { D: floor?.D || 0, E: floor?.E || 0, N: floor?.N || 0 };
+  const adjusted = { D: reqs?.D || 0, E: reqs?.E || 0, N: reqs?.N || 0 };
+  const baseTotal = adjusted.D + adjusted.E + adjusted.N;
+  const floorTotal = f.D + f.E + f.N;
+
+  const n = Number(staffCount) || 0;
+  const days = Number(numDays) || 30;
+  const feasibleMax = Math.floor((n * (days - SA_FEASIBLE_WORKDAY_MARGIN)) / days);
+  // 護病比下限永遠優先：cap 不可低於法定下限總和（否則寧可過勞也得 comply 護病比）。
+  const cap = Math.max(feasibleMax, floorTotal);
+
+  const underStaffed = feasibleMax < floorTotal;
+  let note = null;
+  if (baseTotal > cap) {
+    // 按比例把 cap 重新分配到 D/E/N（各班 ≥ 法定下限），保留 admin 的「D 重」班型。
+    // 不能只砍 D：實測砍光 D 會讓 D pool 過小（SA 依需求比例切人），D 專責者被排到
+    // 過勞硬違規。比例縮放才會把 D8E3N3 收成可行的 D5E2N2，而非無解的 D3E3N3。
+    const order = ['D', 'E', 'N'];
+    const surplus = cap - floorTotal;        // 待分配到法定下限之上的人數（≥ 0）
+    const wTotal = baseTotal || 1;
+    const raw = order.map((k) => (surplus * (adjusted[k])) / wTotal);
+    const add = raw.map(Math.floor);
+    let leftover = surplus - add.reduce((a, b) => a + b, 0);
+    // 餘數用「最大小數優先」分給各班，總和精確等於 surplus
+    const byFrac = raw.map((v, i) => [v - Math.floor(v), i]).sort((a, b) => b[0] - a[0]);
+    for (let j = 0; j < leftover; j++) add[byFrac[j % order.length][1]]++;
+    order.forEach((k, i) => { adjusted[k] = f[k] + add[i]; });
+    note = `每日總需求由 ${baseTotal} 自動下修至 ${cap}（按 D/E/N 比例縮放、各班仍 ≥ 護病比下限），` +
+      `避免人力不足以分散休假而觸發過勞硬違規。`;
+  }
+  // 人力偏緊：護病比下限本身就高於「不過勞」可行上限 → 無論有沒有下修都會過勞，必須示警。
+  if (underStaffed) {
+    note = `⚠️ 人力偏緊：護病比下限需每日 ${floorTotal} 人，已超過 ${n} 名護理師「不過勞」的可行上限 ${feasibleMax}，` +
+      `班表恐有過勞硬違規（INFEASIBLE），建議增補人力。`;
+  }
+  const adjustedTotal = adjusted.D + adjusted.E + adjusted.N;
+  return {
+    reqs: adjusted,
+    feasibleMax,
+    cap,
+    baseTotal,
+    adjustedTotal,
+    trimmed: adjustedTotal !== baseTotal,
+    underStaffed,
+    note,
+  };
+}
+
 // 工時制度差異（程式碼依 special_status 套用）：
 //   Standard  — §30(1)  每日 8h、每週 40h、每 7 日 1 例假
 //   BiWeekly  — §30(2)  每日可達 10h、每週可達 48h（2 週 80h 重新分配）、例假規定同標準

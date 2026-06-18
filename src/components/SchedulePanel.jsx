@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
 import { auth } from '../api/database';
 import { backupScheduleToArchive } from '../api/database';
-import { legalDailyFloor, computeDailyRequirements } from '../constants';
+import { legalDailyFloor, computeDailyRequirements, clampDailyRequirementsToFeasibleBand } from '../constants';
 import './SchedulePanel.css';
 
 // ============================================================================
@@ -211,9 +211,21 @@ const SchedulePanel = ({
     // 取 computeDailyRequirements（= max(admin 自填, 法定下限)）與 requirements 的較大者，
     // 避免 requirements 因 RequirementsPanel 未掛載而過時。min_daily_reqs 仍傳純法定下限當第 2 層硬底線。
     const clamped = computeDailyRequirements(bedConfig || {});
-    const reqD = Math.max(requirements.D || 0, clamped.D);
-    const reqE = Math.max(requirements.E || 0, clamped.E);
-    const reqN = Math.max(requirements.N || 0, clamped.N);
+    const baseReqs = {
+      D: Math.max(requirements.D || 0, clamped.D),
+      E: Math.max(requirements.E || 0, clamped.E),
+      N: Math.max(requirements.N || 0, clamped.N),
+    };
+
+    // ★ 依「實際參與排班人數」把每日總需求夾進 SA 可行帶（上限=不過勞天條、下限=護病比）。
+    // 人力相對需求過剩時不動（低需求反而合法且 DP 多）；需求高於可行上限時自動下修，
+    // 白班優先扣減、各班仍 ≥ 護病比下限，避免把 SA 推進 INFEASIBLE 過勞區。
+    const band = clampDailyRequirementsToFeasibleBand({
+      reqs: baseReqs, floor, staffCount: eligibleStaff.length, numDays: daysInMonth,
+    });
+    const reqD = band.reqs.D;
+    const reqE = band.reqs.E;
+    const reqN = band.reqs.N;
 
     const payload = {
       year: selectedYear,
@@ -232,6 +244,8 @@ const SchedulePanel = ({
       `🧮 SA 模擬退火排班\n\n` +
       `將為 ${selectedYear}/${selectedMonth} 生成 ${eligibleStaff.length} 份匿名班表\n` +
       `（${protectedIndices.length} 人列為保護名單，SA 會盡量讓部分班表不含 E/N 供其認領）\n\n` +
+      `每日人力需求：D=${reqD} / E=${reqE} / N=${reqN}（每日總計 ${reqD + reqE + reqN} 人）\n` +
+      (band.note ? `🔧 ${band.note}\n\n` : '\n') +
       `✅ 跟 AI 排班相同流程：產出「虛擬 pattern → 員工自己選班認領」的待選班表，\n` +
       `不會直接定案。預估運算 10-30 秒；若仍有違規會在訊息列列出，要繼續嗎？`
     );
@@ -242,6 +256,7 @@ const SchedulePanel = ({
     setGeminiMessages([{
       role: 'assistant',
       content: `🧮 SA 模擬退火進行中... (員工 ${eligibleStaff.length}、保護 ${protectedIndices.length}、班別需求 D=${payload.daily_reqs[1]}/E=${payload.daily_reqs[2]}/N=${payload.daily_reqs[3]})`
+        + (band.note ? `\n🔧 ${band.note}` : '')
     }]);
     setLoadingStatus('🧮 SA 退火運算中（最多 20000 次迭代）...');
 
