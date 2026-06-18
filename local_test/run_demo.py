@@ -142,9 +142,10 @@ def main():
         print(f"   可行性階段在第 {stats.get('feasibility_iteration')} 次迭代達成（硬約束歸零）→ 進入優化階段")
     else:
         print(f"   ⚠️ 未達可行性（仍有禁止模式）— 全程停留在可行性階段")
-    print(f"   TLPS 模式分類：理想 DP {stats.get('desirable_pattern_count', '?')} / "
+    print(f"   TLPS 模式分類（理想=法遵+健康）：理想 DP {stats.get('desirable_pattern_count', '?')} / "
           f"不理想 {stats.get('undesirable_pattern_count', '?')} / "
-          f"禁止 {stats.get('prohibited_pattern_count', '?')}（共 {stats['num_nurses']} 人）")
+          f"禁止 {stats.get('prohibited_pattern_count', '?')}（共 {stats['num_nurses']} 人）"
+          f"｜DP-polish {stats.get('dp_polish_iterations', 0)} 次")
     print(f"   最佳解出現在第 {stats['best_iteration']} / {stats['max_iterations']} 次迭代")
     print(f"   接受次優交換 {stats['accepted_worse_swaps']} 次 / 拒絕 {stats['rejected_swaps']} 次")
     if stats["violation_breakdown"]:

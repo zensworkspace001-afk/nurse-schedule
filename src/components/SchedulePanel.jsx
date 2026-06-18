@@ -300,7 +300,7 @@ const SchedulePanel = ({
       const breakdownLines = Object.entries(stats.violation_breakdown || {})
         .map(([k, v]) => `  • ${k}: ${v} 處`).join('\n') || '  • 無';
       const dpLine = (stats.desirable_pattern_count != null)
-        ? `🧩 TLPS 模式：理想 DP ${stats.desirable_pattern_count} / 不理想 ${stats.undesirable_pattern_count} / 禁止 ${stats.prohibited_pattern_count}（共 ${stats.num_nurses} 人）\n`
+        ? `🧩 TLPS 模式（理想=法遵+健康）：理想 DP ${stats.desirable_pattern_count} / 不理想 ${stats.undesirable_pattern_count} / 禁止 ${stats.prohibited_pattern_count}（共 ${stats.num_nurses} 人）\n`
         : '';
       const phaseLine = stats.feasibility_reached
         ? `🎯 可行性階段第 ${stats.feasibility_iteration} 次迭代達成（硬約束歸零）→ 進入優化階段\n`

@@ -248,6 +248,29 @@ HARD_PENALTY_KEYS = frozenset({
 })
 
 
+# ============================================================
+# 「理想模式」(Desirable Pattern) 的判定：法遵 + 健康 = 理想
+# ============================================================
+# 實測發現「完全零違規」在現行 15 條軟規則下幾乎不可能達成（人多→軟性配額爆、
+# 人少→硬性過勞爆），所以採分級定義（最貼近論文「desirable=好班，不是完美班」）：
+#   理想 (DP)    = 0 硬違規（法遵）+ 0 下列「健康/疲勞關鍵」軟違規
+#   不理想       = 0 硬違規，但仍有健康/疲勞關鍵軟違規
+#   禁止         = 有任一硬違規
+# 其餘比勞基法更嚴的客製配額 / 節律 / 美觀偏好（work_days·RG·RC 範圍、週節律、
+# 孤立 D/E 休假、休假叢集、OT 成本…）視為可容忍，不影響分級也不擋 DP。
+# 注意：SA 的最佳化目標仍是「完整軟罰分 total」；HEALTH_CRITICAL 只用於 DP 分級
+# 與 dp_polish 的定向修復，兩者互補（高權重的健康關鍵本來就會被 total 優先壓低）。
+HEALTH_CRITICAL_SOFT_KEYS = frozenset({
+    "consecutive_night_4",       # 連續大夜 > 3：晝夜節律疲勞
+    "post_night_not_off_2",      # 大夜後未連休 2 天：生理時鐘恢復不足
+    "consecutive_work_pair",     # 連續工作 ≥ 4 天：累積疲勞
+    "overtime_6th_day_pay",      # 連 6 天起算 OT：過勞風險
+    "isolated_off_n",            # 大夜相鄰的孤立休假：恢復不足
+    "health_floor_breach",       # 個人健康分數 < 70（接近天譴）
+    "health_deficit_per_point",  # 健康分數任何扣分（短間隔 / 連大夜 / 連六）
+})
+
+
 # JS 違規類型 → SA penalty key 的對照表，給 run_sa_with_feedback() 用
 JS_TO_SA_MAP = {
     "WEEKLY_HOURS":            "weekly_hours_over_40",
@@ -1129,37 +1152,47 @@ def run_sa(
     # dp_polish 反向操作：專挑無硬違規、軟罰分『最低』的護理師（最容易清零者），對其主要
     # 殘留軟違規施以同一套對症 fix，目標直接拉高 desirable_pattern_count。
     def _dp_count(per_nurse) -> int:
-        """完全乾淨（硬、軟皆 0）的護理師數 = 理想模式 (DP) 數量。"""
-        return sum(1 for nid in nurses
-                   if not any(c > 0 for c in per_nurse.get(nid, {}).values()))
+        """理想模式 (DP) 數量 = 法遵 + 健康：無硬違規且無健康/疲勞關鍵軟違規的護理師數。
+        （客製配額 / 節律 / 美觀偏好可容忍，不影響是否為 DP。）"""
+        n = 0
+        for nid in nurses:
+            contribs = per_nurse.get(nid, {})
+            if any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS):
+                continue
+            if any(c > 0 for k, c in contribs.items() if k in HEALTH_CRITICAL_SOFT_KEYS):
+                continue
+            n += 1
+        return n
 
     def _dp_candidates(per_nurse):
-        """近理想護理師：無硬違規但仍有軟違規，依軟罰分升冪（最接近 DP 在前）。"""
+        """近理想護理師：無硬違規，但仍有『健康/疲勞關鍵』軟違規（=差一步成 DP）。
+        依健康關鍵罰分升冪（最接近 DP 在前）。配額/美觀偏好不算數，免得分散火力。"""
         cands = []
         for nid in nurses:
             contribs = per_nurse.get(nid, {})
             if any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS):
                 continue  # 還有硬違規 → 不是 DP candidate（紅燈的事）
-            soft = sum(W[k] * c for k, c in contribs.items() if k not in HARD_PENALTY_KEYS)
-            if soft > 0:
-                cands.append((soft, nid))
+            hc = sum(W[k] * c for k, c in contribs.items() if k in HEALTH_CRITICAL_SOFT_KEYS)
+            if hc > 0:
+                cands.append((hc, nid))
         cands.sort(key=lambda x: x[0])
         return cands
 
     def dp_polish_mutation(per_nurse, dominant, mm, em, nm, rgm, rcm) -> bool:
-        """挑最接近 DP 的護理師（軟罰分最低的前 dp_polish_pool 個內隨機），對其主要殘留軟違規
-        路由到 TARGETED_FIX；找不到對症 fix 就退回 focused antiport。"""
+        """挑最接近 DP 的護理師（健康關鍵罰分最低的前 dp_polish_pool 個內隨機），針對其主要
+        殘留『健康/疲勞關鍵』軟違規路由到 TARGETED_FIX；找不到對症 fix 就退回 focused antiport。
+        目標：把不理想模式升級成理想模式 (DP)，直接拉高 desirable_pattern_count。"""
         cands = _dp_candidates(per_nurse)
         if not cands:
             return False
         pool = cands[:max(1, min(len(cands), dp_polish_pool))]
         _, actor = random.choice(pool)
         contribs = per_nurse.get(actor, {})
-        soft_contribs = {k: c for k, c in contribs.items()
-                         if k not in HARD_PENALTY_KEYS and c > 0}
-        if not soft_contribs:
+        hc_contribs = {k: c for k, c in contribs.items()
+                       if k in HEALTH_CRITICAL_SOFT_KEYS and c > 0}
+        if not hc_contribs:
             return False
-        dom = max(soft_contribs.items(), key=lambda kv: W.get(kv[0], 0) * kv[1])[0]
+        dom = max(hc_contribs.items(), key=lambda kv: W.get(kv[0], 0) * kv[1])[0]
         # 用單一 actor 的臨時 set + dominant override，重用既有 fix 函式的候選過濾
         single = {actor}
         dom_override = {actor: dom}
@@ -1370,20 +1403,21 @@ def run_sa(
     # 算最終分類（給 UI 顯示哪些 nurse 收斂在綠燈）
     final_red, final_green, final_dominant, final_totals = _classify_nurses(best_per_nurse)
 
-    # —— TLPS 三類模式分類（per-nurse pattern）——
+    # —— TLPS 三類模式分類（per-nurse pattern）：法遵 + 健康 = 理想 ——
     # Prohibited  ：含任一硬約束違規（禁止模式；優化階段若收斂應為 0）
-    # Undesirable ：硬約束 0 但仍有軟約束違規（合法但折騰）
-    # Desirable(DP)：硬、軟約束皆 0 — 論文竭力最大化的理想模式
+    # Undesirable ：硬約束 0，但仍有健康/疲勞關鍵軟違規（合法但傷身）
+    # Desirable(DP)：硬約束 0 且健康/疲勞關鍵軟違規 0 — 論文竭力最大化的理想模式
+    #               （客製配額 / 節律 / 美觀偏好可殘留，不影響此分級）
     # 註：daily_demand_unmet / ratio_below_legal 是 schedule 層級、不歸屬單一 nurse，
     #     故 per-nurse 分類不含；那兩項由 best_hard（全域硬罰分）獨立反映。
     prohibited_nurses, undesirable_nurses, desirable_nurses = [], [], []
     for nid in nurses:
         contribs = best_per_nurse.get(nid, {})
         has_hard = any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS)
-        has_soft = any(c > 0 for k, c in contribs.items() if k not in HARD_PENALTY_KEYS)
+        has_health_critical = any(c > 0 for k, c in contribs.items() if k in HEALTH_CRITICAL_SOFT_KEYS)
         if has_hard:
             prohibited_nurses.append(nid)
-        elif has_soft:
+        elif has_health_critical:
             undesirable_nurses.append(nid)
         else:
             desirable_nurses.append(nid)

@@ -342,6 +342,29 @@ HARD_PENALTY_KEYS = frozenset({
 })
 
 
+# ============================================================
+# 「理想模式」(Desirable Pattern) 的判定：法遵 + 健康 = 理想
+# ============================================================
+# 實測「完全零違規」在現行 15 條軟規則下幾乎不可能達成（人多→軟性配額爆、人少→
+# 硬性過勞爆），故採分級定義（最貼近論文「desirable=好班，不是完美班」）：
+#   理想 (DP)    = 0 硬違規（法遵）+ 0 下列「健康/疲勞關鍵」軟違規
+#   不理想       = 0 硬違規，但仍有健康/疲勞關鍵軟違規
+#   禁止         = 有任一硬違規
+# 其餘比勞基法更嚴的客製配額 / 節律 / 美觀偏好（work_days·RG·RC 範圍、週節律、
+# 孤立 D/E 休假、休假叢集、OT 成本…）視為可容忍，不影響分級也不擋 DP。
+# 注意：SA 的最佳化目標仍是「完整軟罰分 total」；HEALTH_CRITICAL 只用於 DP 分級
+# 與 dp_polish 的定向修復，兩者互補（高權重的健康關鍵本來就會被 total 優先壓低）。
+HEALTH_CRITICAL_SOFT_KEYS = frozenset({
+    "consecutive_night_4",       # 連續大夜 > 3：晝夜節律疲勞
+    "post_night_not_off_2",      # 大夜後未連休 2 天：生理時鐘恢復不足
+    "consecutive_work_pair",     # 連續工作 ≥ 4 天：累積疲勞
+    "overtime_6th_day_pay",      # 連 6 天起算 OT：過勞風險
+    "isolated_off_n",            # 大夜相鄰的孤立休假：恢復不足
+    "health_floor_breach",       # 個人健康分數 < 70（接近天譴）
+    "health_deficit_per_point",  # 健康分數任何扣分（短間隔 / 連大夜 / 連六）
+})
+
+
 def run_sa(
     year: int,
     month: int,
@@ -360,6 +383,10 @@ def run_sa(
     reclassify_every: int = 200,      # 每 N iter 重新分類綠/紅燈
     tabu_size: int = 50,              # tabu list 長度
     stagnation_thaw: int = 800,       # 連續 N iter 沒進步 → 強制亂數攪局
+    # —— DP-aware polish 參數（最大化理想模式數量）——
+    dp_aware: bool = True,            # 優化階段啟用「把近理想護理師推成 DP」的對症 mutation
+    dp_polish_prob: float = 0.35,     # focused 分支內、優化階段嘗試 dp_polish 的機率
+    dp_polish_pool: int = 5,          # 從健康關鍵罰分最低的前 N 位近理想護理師隨機挑一位
 ) -> Dict:
     """執行 TLPS 模擬退火排班（L3 Focused SA）。回傳格式見檔頭。
 
@@ -1007,6 +1034,32 @@ def run_sa(
         partner = random.choice(partners)
         return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
 
+    def fix_consecutive_rest(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
+        """主角有「工-休-休」連續休假叢集 → 把第 2 個休假日換成工作（與工作中 partner swap），打散叢集。"""
+        cands = [n for n in red_set if dominant.get(n) == "consecutive_rest_after_work"]
+        if not cands:
+            return False
+        actor = random.choice(cands)
+        home = nurse_home_type[actor]
+        work_mem = work_mem_of[home]
+        sched = get_sched(actor, mm, em, nm, rgm, rcm)
+        WORK = {"D", "E", "N"}
+        REST = {"RG", "RC"}
+        triples = [d for d in range(num_days - 2)
+                   if sched[d] in WORK and sched[d + 1] in REST and sched[d + 2] in REST]
+        if not triples:
+            return False
+        base = random.choice(triples)
+        day = base + 3
+        if day > num_days:
+            return False
+        rest_mem = rgm if sched[base + 2] == "RG" else rcm
+        partners = [n for n in nurses_by_type[home] if n != actor and n in work_mem[day]]
+        if not partners:
+            return False
+        partner = random.choice(partners)
+        return _swap_two(actor, partner, day, mm, em, nm, rgm, rcm)
+
     TARGETED_FIX = {
         "excess_rg":             fix_excess_rg,
         "excess_rc":             fix_excess_rc,
@@ -1022,6 +1075,7 @@ def run_sa(
         "overtime_6th_day_pay":  fix_consecutive_work,
         "isolated_off_n":        fix_isolated_off,
         "isolated_off_de":       fix_isolated_off,
+        "consecutive_rest_after_work": fix_consecutive_rest,
     }
 
     def targeted_mutation(red_set, dominant, mm, em, nm, rgm, rcm) -> bool:
@@ -1034,6 +1088,58 @@ def run_sa(
             return True
         return antiport_focused(red_set, mm, em, nm, rgm, rcm)
 
+    # ==========================================
+    # DP-aware polish — 把「最接近理想」的護理師推成理想模式 (Desirable Pattern)
+    # ==========================================
+    # 紅/綠燈以個人總罰分分界，軟罰分低的「近理想」護理師被凍結成綠燈，紅燈對症 mutation
+    # 永遠碰不到。dp_polish 反向操作：專挑無硬違規、僅剩健康/疲勞關鍵軟違規的護理師，
+    # 對其主要健康關鍵違規施以對症修復，目標直接拉高 desirable_pattern_count。
+    def _dp_count(per_nurse) -> int:
+        """理想模式 (DP) 數量 = 法遵 + 健康：無硬違規且無健康/疲勞關鍵軟違規的護理師數。"""
+        n = 0
+        for nid in nurses:
+            contribs = per_nurse.get(nid, {})
+            if any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS):
+                continue
+            if any(c > 0 for k, c in contribs.items() if k in HEALTH_CRITICAL_SOFT_KEYS):
+                continue
+            n += 1
+        return n
+
+    def _dp_candidates(per_nurse):
+        """近理想護理師：無硬違規，但仍有『健康/疲勞關鍵』軟違規。依健康關鍵罰分升冪。"""
+        cands = []
+        for nid in nurses:
+            contribs = per_nurse.get(nid, {})
+            if any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS):
+                continue
+            hc = sum(W[k] * c for k, c in contribs.items() if k in HEALTH_CRITICAL_SOFT_KEYS)
+            if hc > 0:
+                cands.append((hc, nid))
+        cands.sort(key=lambda x: x[0])
+        return cands
+
+    def dp_polish_mutation(per_nurse, dominant, mm, em, nm, rgm, rcm) -> bool:
+        """挑最接近 DP 的護理師（健康關鍵罰分最低的前 dp_polish_pool 個內隨機），針對其主要
+        殘留『健康/疲勞關鍵』軟違規路由到 TARGETED_FIX；找不到對症 fix 就退回 focused antiport。"""
+        cands = _dp_candidates(per_nurse)
+        if not cands:
+            return False
+        pool = cands[:max(1, min(len(cands), dp_polish_pool))]
+        _, actor = random.choice(pool)
+        contribs = per_nurse.get(actor, {})
+        hc_contribs = {k: c for k, c in contribs.items()
+                       if k in HEALTH_CRITICAL_SOFT_KEYS and c > 0}
+        if not hc_contribs:
+            return False
+        dom = max(hc_contribs.items(), key=lambda kv: W.get(kv[0], 0) * kv[1])[0]
+        single = {actor}
+        dom_override = {actor: dom}
+        fix = TARGETED_FIX.get(dom)
+        if fix is not None and fix(single, dom_override, mm, em, nm, rgm, rcm):
+            return True
+        return antiport_focused(single, mm, em, nm, rgm, rcm)
+
     # —— 兩階段 TLPS：把整月罰分拆成「硬約束（禁止模式）」與「軟約束（不理想模式）」——
     # _hard_of 從 breakdown 抽出落在 HARD_PENALTY_KEYS 的罰分小計；soft = total - hard。
     def _hard_of(breakdown):
@@ -1043,6 +1149,7 @@ def run_sa(
     current_hard = _hard_of(current_breakdown)
     best_p = current_p
     best_hard = current_hard
+    best_dp = _dp_count(current_per_nurse)
     best_breakdown = dict(current_breakdown)
     best_per_nurse = current_per_nurse
     best_m  = copy.deepcopy(m_mem)
@@ -1057,10 +1164,11 @@ def run_sa(
     feasibility_iter = 0 if current_hard == 0 else None
 
     def _save_best(p, hard, breakdown, per_nurse, it):
-        """把目前膜狀態快照成 best（best 以 (hard, total) 字典序最小為準）。"""
-        nonlocal best_p, best_hard, best_breakdown, best_per_nurse
+        """把目前膜狀態快照成 best。best_dp 同步重算，供優化階段 DP tiebreaker 用。"""
+        nonlocal best_p, best_hard, best_dp, best_breakdown, best_per_nurse
         nonlocal best_m, best_e, best_n, best_rg, best_rc, best_iter
         best_p, best_hard, best_breakdown, best_per_nurse = p, hard, breakdown, per_nurse
+        best_dp = _dp_count(per_nurse)
         best_m  = copy.deepcopy(m_mem)
         best_e  = copy.deepcopy(e_mem)
         best_n  = copy.deepcopy(n_mem)
@@ -1072,6 +1180,7 @@ def run_sa(
     rejected = 0
     focused_iters = 0
     targeted_iters = 0
+    dp_polish_iters = 0
     thaw_iters = 0
     tabu_hits = 0
     stagnation_counter = 0
@@ -1110,18 +1219,25 @@ def run_sa(
                 block_antiport(m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
             else:
                 month_swap(m_mem, e_mem, n_mem, rg_mem, rc_mem)
-        elif focused_mode and red_set:
+        elif focused_mode and (red_set or (dp_aware and phase == "optimization")):
+            # 先給 DP-polish 一次機會（優化階段、機率 dp_polish_prob），再走原本紅燈對症 mutation。
+            # guard 改「red_set 或（優化階段+dp_aware）」：紅燈清空後仍能持續 polish 近理想者。
             focused_iters += 1
-            roll = random.random()
             mutated = False
-            if roll < 0.60:
-                mutated = targeted_mutation(red_set, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem)
-                if mutated:
-                    targeted_iters += 1
-            if not mutated and roll < 0.85:
-                mutated = antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem)
-            if not mutated:
-                mutated = block_antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
+            if dp_aware and phase == "optimization" and random.random() < dp_polish_prob:
+                if dp_polish_mutation(current_per_nurse, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem):
+                    dp_polish_iters += 1
+                    mutated = True
+            if not mutated and red_set:
+                roll = random.random()
+                if roll < 0.60:
+                    mutated = targeted_mutation(red_set, dominant, m_mem, e_mem, n_mem, rg_mem, rc_mem)
+                    if mutated:
+                        targeted_iters += 1
+                if not mutated and roll < 0.85:
+                    mutated = antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem)
+                if not mutated:
+                    mutated = block_antiport_focused(red_set, m_mem, e_mem, n_mem, rg_mem, rc_mem, block=3)
             if not mutated:
                 antiport(random.randint(1, num_days), m_mem, e_mem, n_mem, rg_mem, rc_mem)
                 tabu_hits += 1
@@ -1175,7 +1291,10 @@ def run_sa(
                 stagnation_counter += 1
             elif new_p <= current_p:
                 current_p, current_hard, current_per_nurse = new_p, new_hard, new_per_nurse
-                if (new_hard, new_p) < (best_hard, best_p):
+                # best 以 (hard, total, -DP) 字典序：總罰分相同時，理想模式較多者勝出 —
+                # 這是讓 dp_polish 真正生效的關鍵（總罰分中性的 DP-creating move 才會被保存）。
+                new_dp = _dp_count(new_per_nurse)
+                if (new_hard, new_p, -new_dp) < (best_hard, best_p, -best_dp):
                     _save_best(new_p, new_hard, new_breakdown, new_per_nurse, i)
                     stagnation_counter = 0
                 else:
@@ -1207,20 +1326,21 @@ def run_sa(
 
     final_red, final_green, final_dominant, final_totals = _classify_nurses(best_per_nurse)
 
-    # —— TLPS 三類模式分類（per-nurse pattern）——
+    # —— TLPS 三類模式分類（per-nurse pattern）：法遵 + 健康 = 理想 ——
     # Prohibited  ：含任一硬約束違規（禁止模式；優化階段若收斂應為 0）
-    # Undesirable ：硬約束 0 但仍有軟約束違規（合法但折騰）
-    # Desirable(DP)：硬、軟約束皆 0 — 論文竭力最大化的理想模式
+    # Undesirable ：硬約束 0，但仍有健康/疲勞關鍵軟違規（合法但傷身）
+    # Desirable(DP)：硬約束 0 且健康/疲勞關鍵軟違規 0 — 論文竭力最大化的理想模式
+    #               （客製配額 / 節律 / 美觀偏好可殘留，不影響此分級）
     # 註：daily_demand_unmet / ratio_below_legal 是 schedule 層級、不歸屬單一 nurse，
     #     故 per-nurse 分類不含；那兩項由 best_hard（全域硬罰分）獨立反映。
     prohibited_nurses, undesirable_nurses, desirable_nurses = [], [], []
     for nid in nurses:
         contribs = best_per_nurse.get(nid, {})
         has_hard = any(c > 0 for k, c in contribs.items() if k in HARD_PENALTY_KEYS)
-        has_soft = any(c > 0 for k, c in contribs.items() if k not in HARD_PENALTY_KEYS)
+        has_health_critical = any(c > 0 for k, c in contribs.items() if k in HEALTH_CRITICAL_SOFT_KEYS)
         if has_hard:
             prohibited_nurses.append(nid)
-        elif has_soft:
+        elif has_health_critical:
             undesirable_nurses.append(nid)
         else:
             desirable_nurses.append(nid)
@@ -1266,6 +1386,7 @@ def run_sa(
             "focused_mode": focused_mode,
             "focused_iterations": focused_iters,
             "targeted_iterations": targeted_iters,
+            "dp_polish_iterations": dp_polish_iters,
             "thaw_iterations": thaw_iters,
             "tabu_hits": tabu_hits,
             "classify_log": classify_log,
