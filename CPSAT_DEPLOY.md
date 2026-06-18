@@ -114,7 +114,7 @@ uvicorn main1:app --reload --port 8000
     {"date": "2026-05-20", "action": "FORCE_OFF", "nurse_id": "N02"},
     {"date": "2026-05-21", "action": "FORCE_WORK", "nurse_id": "N03", "shift": "D"}
   ],
-  "max_iterations": 20000
+  "max_iterations": 50000
 }
 ```
 
@@ -131,7 +131,7 @@ uvicorn main1:app --reload --port 8000
   "stats": {
     "final_penalty": 0,
     "best_iteration": 8423,
-    "max_iterations": 20000,
+    "max_iterations": 50000,
     "accepted_worse_swaps": 1245,
     "rejected_swaps": 6712,
     "violation_breakdown": {},
@@ -162,5 +162,5 @@ uvicorn main1:app --reload --port 8000
 - 求解失敗會印 `求解失敗 ...` 與 solver status
 
 如果常常 429 → 把 `RATE_LIMIT_PER_MIN` 環境變數調高（預設 5）。
-如果罰分老是降不到 0 → 把 `SA_MAX_ITERATIONS` 調高（預設 20000）讓退火跑更久。
+如果罰分老是降不到 0 → 把 `SA_MAX_ITERATIONS` 調高（預設 50000）讓退火跑更久。注意 5 萬次迭代單次約 1-3 分鐘，確認 SA host 的 request timeout 夠長（Render/Railway 免費方案可能會切斷）。
 如果連 0 都搆不到 → 檢查 `violation_breakdown` 哪條規則卡死，多半是人力不足或保護名單過多。

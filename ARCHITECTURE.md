@@ -273,7 +273,7 @@ Render 上的 FastAPI:
    - 驗 Firebase token
    - rate limit 5/min/uid
    - 初始化 5 個細胞膜(D/E/N/RG/RC 或本機 4 個 D/E/N/OFF)
-   - 迭代 20000 次 antiport / block_antiport mutation
+   - 迭代 50000 次 antiport / block_antiport mutation
      每次按 Boltzmann 機率接受 / 拒絕
    - 直到 penalty=0 或迭代用完
    → 回傳 schedule + stats(final_penalty / violation_breakdown)
@@ -364,7 +364,7 @@ Firestore 對 group-by 不友善;SQL 完勝。
 ### A6. SA 引擎獨立成 Python 微服務
 
 **Why:** Vercel Hobby plan 12 函式上限早被填滿。
-SA 又是 CPU-heavy(20000 次迭代,~10-30 秒),Vercel function 預設 10s timeout,
+SA 又是 CPU-heavy(50000 次迭代,~1-3 分鐘),Vercel function 預設 10s timeout,
 跑不完。獨立 FastAPI 部署在 Render 用 free tier,無 timeout 限制(但首次請求有 cold start 30-50s)。
 
 ### A7. PHP 本機跑透過 Laragon Apache(不是 `artisan serve`)

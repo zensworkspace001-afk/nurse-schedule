@@ -298,7 +298,7 @@ def run_sa(
     daily_reqs_max: Dict[int, int] = None,
     min_daily_reqs: Dict[int, int] = None,
     custom_rules: List[Dict] = None,
-    max_iterations: int = 20000,
+    max_iterations: int = 50000,
     seed: int = None,
     weight_overrides: Dict[str, int] = None,
     # —— L3 Focused SA 參數 ——

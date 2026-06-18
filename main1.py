@@ -41,7 +41,7 @@ API
                                    預設: http://localhost:5173,
                                          https://nurse-schedule-bachelor.vercel.app
   PORT                          — uvicorn 監聽埠（Render/Railway 會自動注入）
-  SA_MAX_ITERATIONS             — SA 最多迭代次數，預設 20000
+  SA_MAX_ITERATIONS             — SA 最多迭代次數，預設 50000
 """
 
 import os
@@ -115,7 +115,7 @@ class ScheduleRequest(BaseModel):
     )
     custom_rules: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
     max_iterations: Optional[int] = Field(default=None, ge=100, le=100000,
-                                          description="SA 最大迭代次數；不給就吃環境變數 SA_MAX_ITERATIONS（預設 20000）")
+                                          description="SA 最大迭代次數；不給就吃環境變數 SA_MAX_ITERATIONS（預設 50000）")
 
     @validator("protected_indices", each_item=True)
     def _check_index_range(cls, v, values):
@@ -374,7 +374,7 @@ def run_sa(
     daily_reqs_max: Dict[int, int] = None,
     min_daily_reqs: Dict[int, int] = None,
     custom_rules: List[Dict] = None,
-    max_iterations: int = 20000,
+    max_iterations: int = 50000,
     seed: int = None,
     weight_overrides: Dict[str, int] = None,
     # —— L3 Focused SA 參數 ——
@@ -1436,7 +1436,7 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
     """主要排班入口（TLPS L3 Focused 模擬退火）。"""
     _check_rate_limit(user.get("uid", "anonymous"))
 
-    max_iter = req.max_iterations or int(os.getenv("SA_MAX_ITERATIONS", "20000"))
+    max_iter = req.max_iterations or int(os.getenv("SA_MAX_ITERATIONS", "50000"))
     # daily_reqs key 在 pydantic v1 進來已是 int；保險再轉一次
     daily_reqs = {int(k): int(v) for k, v in req.daily_reqs.items()}
     min_daily_reqs = {int(k): int(v) for k, v in (req.min_daily_reqs or {}).items()} or None

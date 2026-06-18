@@ -236,7 +236,7 @@ const SchedulePanel = ({
       min_daily_reqs: { 1: floor.D || 0, 2: floor.E || 0, 3: floor.N || 0 },
       // custom_rules 留空白；之後若要把 customAiInstruction 接入，需要先用 LLM 解析成結構化規則
       custom_rules: [],
-      max_iterations: 20000,
+      max_iterations: 50000,
     };
 
     // 3. 跑前再次跟 admin 確認
@@ -247,7 +247,7 @@ const SchedulePanel = ({
       `每日人力需求：D=${reqD} / E=${reqE} / N=${reqN}（每日總計 ${reqD + reqE + reqN} 人）\n` +
       (band.note ? `🔧 ${band.note}\n\n` : '\n') +
       `✅ 跟 AI 排班相同流程：產出「虛擬 pattern → 員工自己選班認領」的待選班表，\n` +
-      `不會直接定案。預估運算 10-30 秒；若仍有違規會在訊息列列出，要繼續嗎？`
+      `不會直接定案。預估運算 1-3 分鐘（5 萬次迭代）；若仍有違規會在訊息列列出，要繼續嗎？`
     );
     if (!okGo) return;
 
@@ -258,7 +258,7 @@ const SchedulePanel = ({
       content: `🧮 SA 模擬退火進行中... (員工 ${eligibleStaff.length}、保護 ${protectedIndices.length}、班別需求 D=${payload.daily_reqs[1]}/E=${payload.daily_reqs[2]}/N=${payload.daily_reqs[3]})`
         + (band.note ? `\n🔧 ${band.note}` : '')
     }]);
-    setLoadingStatus('🧮 SA 退火運算中（最多 20000 次迭代）...');
+    setLoadingStatus('🧮 SA 退火運算中（最多 50000 次迭代）...');
 
     try {
       const token = await auth.currentUser.getIdToken();
