@@ -5,7 +5,7 @@ import {
   browserLocalPersistence,
   browserSessionPersistence,
 } from 'firebase/auth';
-import { AlertCircle, LogIn, Shield } from 'lucide-react';
+import { AlertCircle, LogIn, Shield, Eye, EyeOff } from 'lucide-react';
 import { auth, subscribeToAnnouncement } from '../api/database';
 import WeatherClockWidget from './WeatherClockWidget';
 import AnnouncementBanner from './AnnouncementBanner';
@@ -38,6 +38,7 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
   const [error, setError] = useState('');
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   // 「記住我」偏好。預設勾選 → 沿用 Firebase 原本的 browserLocalPersistence
   // 行為（關瀏覽器仍登入），不破壞既有使用者體驗。只記偏好旗標，絕不存帳密。
   const [rememberMe, setRememberMe] = useState(
@@ -183,14 +184,26 @@ try {
             name="username"
             className="login-panel__input"
           />
-          <input
-            type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            placeholder="請輸入密碼"
-            required
-            autoComplete="current-password"
-            name="password"
-            className="login-panel__input login-panel__input--password"
-          />
+          <div className="login-panel__pw-wrap">
+            <input
+              type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)}
+              placeholder="請輸入密碼"
+              required
+              autoComplete="current-password"
+              name="password"
+              className="login-panel__input login-panel__input--password"
+            />
+            <button
+              type="button"
+              className="login-panel__pw-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? '隱藏密碼' : '顯示密碼'}
+              title={showPassword ? '隱藏密碼' : '顯示密碼'}
+              tabIndex={-1}
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
 
           <label className="login-panel__remember">
             <input
