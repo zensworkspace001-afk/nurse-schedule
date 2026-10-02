@@ -114,6 +114,8 @@ const NurseSchedulingSystem = () => {
   const [finalizedSchedule, setFinalizedSchedule] = useState(null);
   // 修改後（從 localStorage 讀正確的發布月份）
 const [publishedDate, setPublishedDate] = useState({ year: 2026, month: 2 });
+  // 預假開關（Settings.leaveWish）：{ open, year, month, reqs, quota, days_per_person }
+  const [leaveWish, setLeaveWish] = useState(null);
   // --- 2. 本機暫存狀態 (不需上雲端) ---
   const [historyData] = useState([]);
 const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
@@ -343,6 +345,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
         }
       }
       if (data.levelBonus) setLevelBonus(data.levelBonus);
+      setLeaveWish(data.leaveWish || null);
       if (data.publishedDate) {
         publishedDateLoadedRef.current = true;
         setPublishedDate(prev => {
@@ -1002,6 +1005,7 @@ const handleSaveAndPublish = async () => {
             baseSalary={baseSalary} setBaseSalary={setBaseSalary}
             baseSalaryEnc={baseSalaryEnc} setBaseSalaryEnc={setBaseSalaryEnc}
             levelBonus={levelBonus} setLevelBonus={setLevelBonus}
+            leaveWish={leaveWish}
           />
         ) : (
           <StaffDashboard
@@ -1012,6 +1016,7 @@ const handleSaveAndPublish = async () => {
             currentSchedule={finalizedSchedule}
             onConfirmSchedule={handleStaffScheduleUpdate}
             staffData={staffData}
+            leaveWish={leaveWish}
           />
         )}
         </div>

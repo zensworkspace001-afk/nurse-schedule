@@ -4,6 +4,7 @@ import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 
 import { Loader, Ban, CalendarOff, Clock, Lock, ClipboardList, Lightbulb, PartyPopper, Eye, Bell, Settings, X, Hand, Info, AlertTriangle, CheckCircle, RefreshCw, Camera } from 'lucide-react';
 import { auth, db } from '../api/database';
 import AvatarEditModal from './AvatarEditModal';
+import LeaveWishPicker from './LeaveWishPicker';
 import './StaffDashboard.css';
 
 // ============================================================================
@@ -13,7 +14,7 @@ import './StaffDashboard.css';
 //             由 App.jsx 從 StaffPrivate/{id} 訂閱後傳入。
 //             staffData 現在只含同事的精簡公開投影（staff_id, name, level, is_leader, is_active），
 //             不再含上述敏感欄位 — 故所有「自己的」狀態檢查都改用 myStaffRow。
-const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [] }) => {
+const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [], leaveWish = null }) => {
 
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -257,6 +258,12 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
     </div>
   );
 
+  // 預假月曆：護理長開放期間顯示（離職 / 長假的防呆 2、3 在它之前 return，不會看到）。
+  // 預假通常在班表發布前開放，所以「尚未輪到您」「班表已認領完」等待畫面也要放。
+  const leaveWishElement = leaveWish?.open && currentUser?.id ? (
+    <LeaveWishPicker staffId={currentUser.id} leaveWish={leaveWish} />
+  ) : null;
+
   // 防呆 2: 離職或停權檢查
   // 離職員工仍允許登入並改密碼（避免帳號被前同事盜用），但不開放頭貼編輯
   // —— 已離職的個資不該再讓本人擅自修改。
@@ -306,6 +313,7 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
               {pwdModalElement}
               <div className="dashboard__guard">
                   {dashboardHeader}
+                  {leaveWishElement}
                   <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
                   <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
                   <div className="dashboard__guard-info">
@@ -333,6 +341,7 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
               {pwdModalElement}
               <div className="dashboard__guard">
                   {dashboardHeader}
+                  {leaveWishElement}
                   <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
                   <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
                   <div className="dashboard__guard-info">
@@ -468,6 +477,8 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
           <h3 className="dashboard__month-subtitle">
             目前開放認領月份：<span className="dashboard__month-highlight">{targetYear}年 {targetMonth}月</span>
           </h3>
+
+          {leaveWishElement}
 
           <div className="dashboard__streak-info">
               <Info size={14} /> 系統偵測：您上個月底已連續上班 <strong>{prevStreak}</strong> 天。

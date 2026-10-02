@@ -1,0 +1,200 @@
+/* ==========================================================================
+   LeaveWishPicker — 員工預假月曆（沿用 StaffDashboard 的玻璃擬態深色風格）
+   ========================================================================== */
+
+.leave-wish {
+  margin: 0 auto 2rem;
+  max-width: 640px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 14px;
+  padding: 18px 20px;
+  animation: dashFadeSlideIn 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.leave-wish__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+  color: #f9a8d4;
+}
+
+.leave-wish__desc {
+  margin: 0 0 14px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.leave-wish__desc strong {
+  color: #ffffff;
+}
+
+.leave-wish__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+
+.leave-wish__weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 2px 0 4px;
+}
+
+.leave-wish__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  min-height: 48px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  font: inherit;
+  cursor: default;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.leave-wish__day--editable:not(:disabled) {
+  cursor: pointer;
+}
+
+.leave-wish__day--editable:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.35);
+  transform: translateY(-1px);
+}
+
+.leave-wish__day--weekend .leave-wish__day-num {
+  color: #fca5a5;
+}
+
+.leave-wish__day--low .leave-wish__day-left {
+  color: #fcd34d;
+}
+
+.leave-wish__day--full {
+  opacity: 0.38;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.leave-wish__day--picked {
+  background: rgba(244, 114, 182, 0.32);
+  border-color: rgba(244, 114, 182, 0.75);
+}
+
+.leave-wish__day--picked .leave-wish__day-left {
+  color: #ffffff;
+}
+
+.leave-wish__day-num {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.leave-wish__day-left {
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.6);
+  white-space: nowrap;
+}
+
+.leave-wish__msg {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.leave-wish__msg--error {
+  background: rgba(248, 113, 113, 0.15);
+  border: 1px solid rgba(248, 113, 113, 0.4);
+  color: #fecaca;
+}
+
+.leave-wish__msg--success {
+  background: rgba(74, 222, 128, 0.14);
+  border: 1px solid rgba(74, 222, 128, 0.4);
+  color: #bbf7d0;
+}
+
+.leave-wish__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.leave-wish__count {
+  margin-right: auto;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.leave-wish__count--done {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #86efac;
+}
+
+.leave-wish__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9px;
+  border: 1px solid rgba(244, 114, 182, 0.7);
+  background: rgba(244, 114, 182, 0.28);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.leave-wish__btn:hover:not(:disabled) {
+  background: rgba(244, 114, 182, 0.45);
+}
+
+.leave-wish__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.leave-wish__btn--ghost {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: transparent;
+}
+
+.leave-wish__btn--ghost:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.leave-wish__spin {
+  animation: leaveWishSpin 1s linear infinite;
+}
+
+@keyframes leaveWishSpin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+  .leave-wish { padding: 14px 12px; }
+  .leave-wish__day { min-height: 42px; }
+  .leave-wish__day-left { font-size: 0.6rem; }
+}

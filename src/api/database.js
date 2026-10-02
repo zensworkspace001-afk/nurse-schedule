@@ -354,3 +354,43 @@ export const fetchScheduleBackups = async () => {
     return [];
   }
 };
+// ============================================================================
+// 預假（LeaveWishes）— 寫入一律走排班引擎（scheduleEngine.submitLeaveWish），
+// 前端只讀。firestore.rules：counts doc 登入者可讀；entries 僅本人與 admin 可讀。
+// ============================================================================
+
+// 預假開關（護理長）：存在 Settings.leaveWish = { open, year, month, reqs, quota, days_per_person }
+export const saveLeaveWishSettings = async (leaveWish) => {
+  await setDoc(doc(db, 'NurseApp', 'Settings'), { leaveWish }, { merge: true });
+};
+
+// 每日已登記人數 { counts: {"1": n, ...}, quota, version } — 只有人數、沒有名字
+export const subscribeToLeaveWishCounts = (year, month, callback) => {
+  return onSnapshot(
+    doc(db, 'LeaveWishes', `${year}_${month}`),
+    wrapDataCb('subscribeToLeaveWishCounts', (snap) => callback(snap.exists() ? snap.data() : null)),
+    wrapErrorCb('subscribeToLeaveWishCounts'),
+  );
+};
+
+// 本人的預假 { staff_id, days, submittedAt }
+export const subscribeToMyLeaveWish = (year, month, staffId, callback) => {
+  return onSnapshot(
+    doc(db, 'LeaveWishes', `${year}_${month}`, 'entries', staffId),
+    wrapDataCb('subscribeToMyLeaveWish', (snap) => callback(snap.exists() ? snap.data() : null)),
+    wrapErrorCb('subscribeToMyLeaveWish'),
+  );
+};
+
+// 全部人的預假（admin）{ [staffId]: { days, submittedAt } }
+export const subscribeToLeaveWishEntries = (year, month, callback) => {
+  return onSnapshot(
+    collection(db, 'LeaveWishes', `${year}_${month}`, 'entries'),
+    wrapDataCb('subscribeToLeaveWishEntries', (snap) => {
+      const out = {};
+      snap.forEach((d) => { out[d.id] = d.data(); });
+      callback(out);
+    }),
+    wrapErrorCb('subscribeToLeaveWishEntries'),
+  );
+};
