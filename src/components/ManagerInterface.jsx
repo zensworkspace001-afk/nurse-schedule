@@ -250,6 +250,7 @@ const ManagerInterface = ({
                   onManualRefresh={onManualRefresh}
                   publicHolidays={publicHolidays}
                   setFinalizedSchedule={setFinalizedSchedule}
+                  leaveWish={leaveWish}
                 />
               } />
 
