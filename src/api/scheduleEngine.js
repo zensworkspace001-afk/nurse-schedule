@@ -2,7 +2,7 @@
 // 排班引擎（Cloud Run：main1.py + cpsat_service.py）的 API 呼叫
 // ============================================================================
 // VITE_SCHEDULE_ENGINE_URL 指向 Cloud Run 上的 CP-SAT 引擎（人力試算 / 預假 / 直接指派排班）。
-// 舊的 SA 排班仍走 VITE_CPSAT_URL（Render），兩者分開，切換前互不影響。
+// 前端已不再呼叫舊的 SA 排班（VITE_CPSAT_URL → Render）；main1.py 的 /generate_schedule 仍保留給舊流程備用。
 // 新增外部網址時記得同步 vercel.json 的 CSP connect-src。
 import { auth } from './database';
 
