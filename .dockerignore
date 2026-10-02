@@ -1,0 +1,6 @@
+# Docker build context 白名單：只放排班微服務需要的檔案（避免把 node_modules 等整個 repo 打包上傳）
+*
+!main1.py
+!cpsat_service.py
+!requirements.txt
+!local_test/hybrid/model.py

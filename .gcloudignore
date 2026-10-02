@@ -1,0 +1,12 @@
+# gcloud builds / run deploy --source 的上傳白名單（語法同 .gitignore）
+/*
+!/Dockerfile
+!/.dockerignore
+!/main1.py
+!/cpsat_service.py
+!/requirements.txt
+!/local_test/
+/local_test/*
+!/local_test/hybrid/
+/local_test/hybrid/*
+!/local_test/hybrid/model.py

@@ -17,7 +17,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY main1.py .
+COPY main1.py cpsat_service.py ./
+# CP-SAT 引擎單一來源：local_test/hybrid/model.py → 映像內叫 cpsat_model.py
+COPY local_test/hybrid/model.py ./cpsat_model.py
 
 # 預設 healthcheck（Render/Fly.io 會自動接管，這條主要給 docker compose 用）
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
