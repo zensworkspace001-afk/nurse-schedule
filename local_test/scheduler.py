@@ -276,7 +276,7 @@ JS_TO_SA_MAP = {
     "WEEKLY_HOURS":            "weekly_hours_over_40",
     "MONTHLY_OT":              "monthly_hours_over_222",
     "INSUFFICIENT_RG":         "insufficient_rg",
-    "INSUFFICIENT_OFF":        "insufficient_off",
+    "INSUFFICIENT_OFF":        "total_rest_below_8",   # insufficient_off 已棄用（權重 0），加重它等於沒加
     "RG_INTERVAL":             "rg_interval_over_6",
     "CONSECUTIVE_DAYS":        "consecutive_work_7",
     "MATERNITY_PROTECTION":    "protected_on_en",

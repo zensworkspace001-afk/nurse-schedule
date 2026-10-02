@@ -1,0 +1,153 @@
+"""
+cpsat_service.py 端點測試（不連 Firebase：假 token + 假 Firestore store）
+
+  pip install -r requirements.txt httpx
+  python local_test/hybrid/test_cpsat_service.py
+"""
+import copy
+import os
+import sys
+
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+sys.path.insert(0, ROOT)
+sys.path.insert(0, os.path.join(ROOT, "local_test"))
+
+from fastapi import FastAPI, Header, HTTPException  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+import cpsat_service  # noqa: E402
+from run_demo import SAMPLE_STAFF  # noqa: E402
+
+
+class FakeStore:
+    def __init__(self):
+        self.settings = None
+        self.staff = [dict(s, is_active=True) for s in copy.deepcopy(SAMPLE_STAFF)]
+        self.version = 0
+        self.entries = {}
+        self.bump_once = False          # 模擬「別人同時送出」：第一次 commit 時版本已變
+
+    def leave_settings(self):
+        return self.settings
+
+    def staff_rows(self):
+        return self.staff
+
+    def wish_state(self, ym):
+        return self.version, dict(self.entries)
+
+    def commit_wish(self, ym, sid, days, expected_version, quota):
+        if self.bump_once:
+            self.bump_once = False
+            self.version += 1
+            return False
+        if expected_version != self.version:
+            return False
+        self.entries[sid] = list(days)
+        self.version += 1
+        return True
+
+
+store = FakeStore()
+
+
+def fake_verify(authorization: str = Header(None)):
+    # 測試用 token 格式："Bearer uid:email"
+    if not authorization:
+        raise HTTPException(401, "缺少登入憑證")
+    uid, email = authorization.split(" ", 1)[1].split(":", 1)
+    return {"uid": uid, "email": email}
+
+
+app = FastAPI()
+app.include_router(cpsat_service.build_router(fake_verify, lambda key: None, store_factory=lambda: store))
+client = TestClient(app)
+ADMIN = {"Authorization": "Bearer admin:admin@hospital.com"}
+
+
+def staff(sid):
+    return {"Authorization": f"Bearer {sid}:{sid.lower()}@hospital.com"}
+
+
+results = []
+
+
+def check(name, cond, detail=""):
+    results.append(cond)
+    print(f"{'✅' if cond else '❌'} {name}" + (f" — {detail}" if detail else ""))
+
+
+# —— 預假 ——
+r = client.post("/leave_wishes/submit", json={"days": [8, 9, 15, 16]}, headers=staff("N001"))
+check("未開放時送出 → 403", r.status_code == 403, r.json().get("detail"))
+
+store.settings = {"open": True, "year": 2026, "month": 8, "reqs": {"D": 3, "E": 3, "N": 2},
+                  "quota": 6, "days_per_person": 4}
+r = client.post("/leave_wishes/submit", json={"days": [8, 9, 15]}, headers=staff("N001"))
+check("只選 3 天 → 400", r.status_code == 400, r.json().get("detail"))
+r = client.post("/leave_wishes/submit", json={"days": [8, 8, 15, 16]}, headers=staff("N001"))
+check("重複日期 → 400", r.status_code == 400)
+r = client.post("/leave_wishes/submit", json={"days": [8, 9, 15, 16]}, headers=ADMIN)
+check("管理員送預假 → 403", r.status_code == 403)
+r = client.post("/leave_wishes/submit", json={"days": [8, 9, 15, 16]}, headers=staff("N999"))
+check("不在名單的人 → 403", r.status_code == 403)
+
+r = client.post("/leave_wishes/submit", json={"days": [8, 9, 15, 16]}, headers=staff("N001"))
+check("正常送出 → 200", r.status_code == 200 and r.json()["remaining"]["8"] == 5, str(r.json().get("days")))
+r = client.post("/leave_wishes/submit", json={"days": [1, 2, 3, 4]}, headers=staff("N001"))
+check("本人改選 → 舊的日期釋出", r.status_code == 200 and r.json()["remaining"]["8"] == 6)
+
+# 額滿：N002~N007 共 6 人先占 8/22
+store.entries.clear()
+for i, sid in enumerate(["N002", "N003", "N004", "N005", "N006", "N007"]):
+    r = client.post("/leave_wishes/submit", json={"days": [22, 23, 29, 30]}, headers=staff(sid))
+    assert r.status_code == 200, r.json()
+r = client.post("/leave_wishes/submit", json={"days": [22, 5, 6, 7]}, headers=staff("N008"))
+check("8/22 已滿 6 人 → 409 額滿", r.status_code == 409, r.json().get("detail"))
+
+# 可行性：6 位夜班人員同一週連休 8/10–8/13（每天都沒超過配額，但排不出來）
+store.entries.clear()
+night = ["N001", "N003", "N004", "N005", "N006", "N007"]
+codes = []
+for sid in night:
+    r = client.post("/leave_wishes/submit", json={"days": [10, 11, 12, 13]}, headers=staff(sid))
+    codes.append(r.status_code)
+check("第 6 位讓這週夜班人力不足 → 409（前 5 位成功）", codes[:5] == [200] * 5 and codes[5] == 409,
+      f"{codes}｜{r.json().get('detail')}")
+
+# 同時送出：第一次 commit 版本已變 → 自動重讀重試
+store.entries.clear()
+store.bump_once = True
+r = client.post("/leave_wishes/submit", json={"days": [3, 4, 5, 6]}, headers=staff("N010"))
+check("同時送出 → 自動重試成功", r.status_code == 200 and store.entries.get("N010") == [3, 4, 5, 6])
+
+# —— 人力試算 ——
+r = client.post("/cpsat/staffing_estimate", json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}},
+                headers=staff("N001"))
+check("員工呼叫人力試算 → 403", r.status_code == 403)
+r = client.post("/cpsat/staffing_estimate", json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}},
+                headers=ADMIN)
+j = r.json()
+check("人力試算 D3/E2/N2 → 最少 12、全員參與", r.status_code == 200 and j["min"] == 12 and j["ok"]
+      and len(j["participants"]) == 14, j.get("note"))
+r = client.post("/cpsat/staffing_estimate", json={"year": 2026, "month": 8, "reqs": {"D": 5, "E": 4, "N": 3}},
+                headers=ADMIN)
+check("人力試算 D5/E4/N3 → 人力不足", r.status_code == 200 and not r.json()["ok"], r.json().get("note"))
+
+# —— 排班（直接指派，預假硬約束）——
+store.entries = {"N001": [8, 9, 15, 16], "N002": [8, 16, 18, 24], "N007": [2, 8, 9, 16], "N013": [1, 3, 8, 15]}
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 3, "N": 2}, "time_limit": 30},
+                headers=ADMIN)
+j = r.json()
+st = j.get("stats", {})
+check("排班：0 硬違規、預假全滿足、直接指派到真實工號",
+      r.status_code == 200 and st.get("hard_penalty") == 0 and st.get("wishes_met") == st.get("wishes_total") == 16
+      and {c["nurse_id"] for c in j["schedule"]} == {s["staff_id"] for s in SAMPLE_STAFF},
+      f"{j.get('solver_status')}，預假 {st.get('wishes_met')}/{st.get('wishes_total')}，班別種類 {st.get('shift_types')}")
+r = client.post("/cpsat/generate_schedule", json={"year": 2026, "month": 8, "reqs": {"D": 5, "E": 4, "N": 3}},
+                headers=ADMIN)
+check("排班人力不足 → 400 並說明", r.status_code == 400, r.json().get("detail"))
+
+print(f"\n{sum(results)}/{len(results)} 通過")
+sys.exit(0 if all(results) else 1)

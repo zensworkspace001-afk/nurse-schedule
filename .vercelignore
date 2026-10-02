@@ -2,6 +2,9 @@
 # 若不排除，Vercel 看到 requirements.txt + main1.py 會嘗試 uv pip install ortools，
 # 但 ortools 在 Vercel Python runtime 撞 250MB lambda 限制，build 直接掛掉。
 main1.py
+cpsat_service.py
+.dockerignore
+.gcloudignore
 requirements.txt
 Dockerfile
 CPSAT_DEPLOY.md
