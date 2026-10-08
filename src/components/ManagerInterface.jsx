@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { motion, useMotionValue, animate } from 'framer-motion';
-import { Settings, Users, CalendarCog, CalendarHeart, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Scale, Menu, X } from 'lucide-react';
+import { Users, CalendarCog, CalendarHeart, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Scale, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
-import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
 import SchedulePanel from './SchedulePanel';
 import PublishPanel from './PublishPanel';
@@ -31,9 +30,8 @@ const ManagerInterface = ({
   publishedDate,
 }) => {
   const tabs = [
-    { id: 'requirements', path: '/requirements', label: '護病比', icon: Settings },
     { id: 'staff', path: '/staff', label: '員工管理', icon: Users },
-    { id: 'leave-wishes', path: '/leave-wishes', label: '預假管理', icon: CalendarHeart },
+    { id: 'leave-wishes', path: '/leave-wishes', label: '人力與預假', icon: CalendarHeart },
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
     { id: 'publish', path: '/publish', label: '發布與認領', icon: Megaphone },
     { id: 'review', path: '/review', label: '結算與歷史', icon: ClipboardCheck },
@@ -185,7 +183,7 @@ const ManagerInterface = ({
               to={tab.path}
               ref={(el) => (tabRefs.current[index] = el)}
               onClick={() => setIsMobileMenuOpen(false)}
-              className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'requirements') ? ' manager__tab--active' : ''}`}
+              className={({ isActive }) => `manager__tab${isActive || (currentPath === '/' && tab.id === 'leave-wishes') ? ' manager__tab--active' : ''}`}
               style={{ textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
             >
               <tab.icon size={16} /> {tab.label}
@@ -207,27 +205,20 @@ const ManagerInterface = ({
 
       <div className="manager__content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <Routes>
-              <Route path="/" element={<Navigate to="/requirements" replace />} />
+              <Route path="/" element={<Navigate to="/leave-wishes" replace />} />
+              {/* 舊的「護病比 / 人力需求」分頁已併入「人力與預假」 */}
+              <Route path="/requirements" element={<Navigate to="/leave-wishes" replace />} />
 
-              <Route path="/requirements" element={
-                <RequirementsPanel
-                  requirements={requirements} setRequirements={setRequirements}
-                  bedConfig={bedConfig} setBedConfig={setBedConfig}
-                  onGenerateSchedule={onGenerateSchedule}
-                  onSaveSchedule={onSaveSchedule} selectedYear={selectedYear} setSelectedYear={setSelectedYear}
-                  selectedMonth={selectedMonth} setSelectedMonth={setSelectedMonth}
-                  currentUser={currentUser}
-                  announcement={announcement}
-                />
-              } />
 
               <Route path="/staff" element={
-                <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
+                <StaffManagementPanel staffData={staffData} setStaffData={setStaffData}
+                                      currentUser={currentUser} announcement={announcement} />
               } />
 
               <Route path="/leave-wishes" element={
                 <LeaveWishPanel
-                  staffData={staffData} requirements={requirements} bedConfig={bedConfig}
+                  staffData={staffData} requirements={requirements} setRequirements={setRequirements}
+                  bedConfig={bedConfig} setBedConfig={setBedConfig}
                   selectedYear={selectedYear} selectedMonth={selectedMonth}
                   leaveWish={leaveWish}
                   publishedDate={publishedDate}

@@ -1,15 +1,15 @@
 import React, { useEffect } from 'react';
-import AnnouncementEditor from './AnnouncementEditor';
 import { RATIO_STANDARDS, legalDailyFloor, computeDailyRequirements } from '../constants';
 import './RequirementsPanel.css';
 
 // ============================================================================
-// 3. NurseSchedulingSystem (主元件)
+// 病房設定（病床數 / 醫院等級 / 各班護病比）— 嵌在「人力與預假」分頁最上方
+// ----------------------------------------------------------------------------
+// 決定衛福部護病比法定下限與預設每日人力（requirements）：排班工作桌、預假、統計報表都用它。
 // ============================================================================
 const RequirementsPanel = ({
   setRequirements,
   bedConfig, setBedConfig, // ★ 接收從雲端與最高層傳來的狀態
-  currentUser, announcement,
 }) => {
 
   // ★ 解構目前的設定值 (若無則給預設值防呆)
@@ -39,10 +39,6 @@ const RequirementsPanel = ({
 
   return (
     <div className="requirements-panel">
-      <h2 className="requirements-panel__title">病床與護病比</h2>
-      <p className="requirements-panel__subtitle">
-        這裡的病床數與醫院等級決定衛福部護病比法定下限：排班工作桌與預假管理的每日人力都不得低於它，統計報表也用它監控護病比。
-      </p>
 
       <div className="requirements-panel__settings">
         <div className="requirements-panel__bed-group">
@@ -107,7 +103,6 @@ const RequirementsPanel = ({
         </div>
       </div>
 
-      <AnnouncementEditor announcement={announcement} currentUser={currentUser} />
     </div>
   );
 };

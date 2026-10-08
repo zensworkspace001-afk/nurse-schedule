@@ -1,13 +1,15 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarHeart, Calculator, Lock, Unlock, Loader, AlertTriangle, CheckCircle, Users } from 'lucide-react';
 import { saveLeaveWishSettings, subscribeToLeaveWishCounts, subscribeToLeaveWishEntries } from '../api/database';
 import { estimateStaffing } from '../api/scheduleEngine';
 import { isDirectAssigned, legalDailyFloor, RATIO_STANDARDS } from '../constants';
+import RequirementsPanel from './RequirementsPanel';
 import './LeaveWishPanel.css';
 
 // ============================================================================
-// 預假管理（護理長）
+// 人力與預假（護理長）
 // ----------------------------------------------------------------------------
+// 0. 病房設定（病床數 / 醫院等級 / 護病比）→ 法定下限與預設每日人力；很少改，預設收合
 // 1. 選月份 + 每日最低人力 → 人力試算（排班引擎 CP-SAT：最少 / 建議 / 最多人數）
 // 2. 依試算結果設定每日預假名額（預設 = 參與人數 − 每日最低需求）→ 開放預假
 // 3. 開放期間即時看每天登記人數、誰登記了哪幾天、誰還沒登記 → 截止
@@ -20,7 +22,7 @@ const isEligible = (s) =>
   s && s.is_active !== false && s.is_active !== 'false'
   && s.leave_status !== 'Maternal' && s.leave_status !== 'OnLeave';
 
-const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear, selectedMonth, leaveWish, publishedDate }) => {
+const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConfig, setBedConfig, selectedYear, selectedMonth, leaveWish, publishedDate }) => {
   const [year, setYear] = useState(Number(leaveWish?.year) || selectedYear);
   const [month, setMonth] = useState(Number(leaveWish?.month) || selectedMonth);
   const [reqs, setReqs] = useState(() => ({
@@ -35,6 +37,20 @@ const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear,
   const [msg, setMsg] = useState({ type: '', text: '' });
   const [countsDoc, setCountsDoc] = useState(null);
   const [entries, setEntries] = useState({});
+
+  // 這個分頁是登入後的預設頁，常在 Settings 從雲端載入前就掛上 → 上面的初始值會是 App 的預設值。
+  // 護理長動手改之前，雲端的預假設定 / 每日人力一到就跟著更新；改過就不再覆蓋。
+  const touched = useRef(false);
+  useEffect(() => {
+    if (touched.current) return;
+    if (leaveWish?.year && leaveWish?.month) {
+      setYear(Number(leaveWish.year));
+      setMonth(Number(leaveWish.month));
+    }
+    const src = leaveWish?.reqs || requirements;
+    if (src) setReqs({ D: Number(src.D ?? 3), E: Number(src.E ?? 3), N: Number(src.N ?? 2) });
+    if (leaveWish?.quota) setQuota(Number(leaveWish.quota));
+  }, [leaveWish, requirements]);
 
   useEffect(() => {
     const u1 = subscribeToLeaveWishCounts(year, month, setCountsDoc);
@@ -107,13 +123,13 @@ const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear,
   const belowFloor = ['D', 'E', 'N'].filter(k => Number(reqs[k]) < floor[k]);
   const levelName = (RATIO_STANDARDS[bedConfig?.hospitalLevel] || RATIO_STANDARDS.MedicalCenter).name;
 
-  const setReq = (k, v) => { setReqs({ ...reqs, [k]: Math.max(0, Number(v) || 0) }); setEstimate(null); };
-  const setYm = (y, m) => { setYear(y); setMonth(m); setEstimate(null); };
+  const setReq = (k, v) => { touched.current = true; setReqs({ ...reqs, [k]: Math.max(0, Number(v) || 0) }); setEstimate(null); };
+  const setYm = (y, m) => { touched.current = true; setYear(y); setMonth(m); setEstimate(null); };
 
   return (
     <div className="lw-panel">
       <div className="lw-panel__header">
-        <h2 className="lw-panel__title"><CalendarHeart size={22} /> 預假管理</h2>
+        <h2 className="lw-panel__title"><CalendarHeart size={22} /> 人力與預假</h2>
         <span className={`lw-panel__status ${isOpenHere ? 'lw-panel__status--open' : ''}`}>
           {isOpenHere ? <><Unlock size={14} /> {year}/{month} 開放中</> : <><Lock size={14} /> {year}/{month} 未開放</>}
         </span>
@@ -124,6 +140,17 @@ const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear,
           <AlertTriangle size={14} /> 目前開放中的是 {leaveWish.year}/{leaveWish.month}，不是畫面上的月份。
         </div>
       )}
+
+      {/* ⓪ 病房設定：很少改 → 預設收合，摘要直接顯示法定下限 */}
+      <details className="lw-panel__card lw-panel__ward">
+        <summary className="lw-panel__card-title lw-panel__ward-summary">
+          ⓪ 病房設定（病床與護病比）
+          <span className="lw-panel__muted">
+            {bedConfig?.bedCount ?? 0} 床・{levelName}・法定下限 白班 {floor.D} / 小夜 {floor.E} / 大夜 {floor.N}
+          </span>
+        </summary>
+        <RequirementsPanel setRequirements={setRequirements} bedConfig={bedConfig} setBedConfig={setBedConfig} />
+      </details>
 
       {/* ① 月份與人力 → 試算 */}
       <section className="lw-panel__card">
@@ -140,7 +167,8 @@ const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear,
           </label>
           {['D', 'E', 'N'].map(k => (
             <label key={k} className="lw-panel__field">{{ D: '白班 D', E: '小夜 E', N: '大夜 N' }[k]}
-              <input type="number" className="lw-panel__input" min="0" max="50" value={reqs[k]}
+              <input type="number" className="lw-panel__input" min="0" max="50"
+                     value={isOpenHere ? Number(leaveWish.reqs?.[k] ?? reqs[k]) : reqs[k]}
                      onChange={e => setReq(k, e.target.value)} disabled={isOpenHere} />
             </label>
           ))}
@@ -155,7 +183,7 @@ const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear,
         {belowFloor.length > 0 && !isOpenHere && (
           <div className="lw-panel__msg lw-panel__msg--warn">
             <AlertTriangle size={14} /> {belowFloor.map(k => ({ D: '白班', E: '小夜', N: '大夜' }[k])).join('、')}
-            低於衛福部護病比法定下限，不能開放預假。請調高每日人力（或到「護病比」分頁確認病床數與醫院等級）。
+            低於衛福部護病比法定下限，不能開放預假。請調高每日人力（或展開上方「病房設定」確認病床數與醫院等級）。
           </div>
         )}
 
@@ -181,7 +209,7 @@ const LeaveWishPanel = ({ staffData = [], requirements, bedConfig, selectedYear,
         <div className="lw-panel__form">
           <label className="lw-panel__field">每日名額（人）
             <input type="number" className="lw-panel__input" min="1" max="50" value={isOpenHere ? leaveWish.quota : quota}
-                   onChange={e => setQuota(Math.max(0, Number(e.target.value) || 0))} disabled={isOpenHere || !estimate?.ok} />
+                   onChange={e => { touched.current = true; setQuota(Math.max(0, Number(e.target.value) || 0)); }} disabled={isOpenHere || !estimate?.ok} />
           </label>
           <span className="lw-panel__muted">每人 {DAYS_PER_PERSON} 天，先搶先贏；預設名額 = 參與人數 − 每日最低需求</span>
           {isOpenHere ? (

@@ -286,7 +286,7 @@ def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Opti
     # 預假還開放就排班 → 之後才登記的人會被告知「保證休假」，但班表已經排好、沒有反映。必須先截止。
     st = store.leave_settings()
     if use_wishes and st and st.get("open") and int(st.get("year", 0)) == year and int(st.get("month", 0)) == month:
-        raise HTTPException(409, f"{year}/{month} 的預假尚未截止，請先到「預假管理」截止後再排班"
+        raise HTTPException(409, f"{year}/{month} 的預假尚未截止，請先到「人力與預假」截止後再排班"
                                  "（截止前排出的班表不會包含之後才登記的預假）")
     t_start = time()
     deadline = t_start + REQUEST_BUDGET
@@ -377,7 +377,7 @@ def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Opti
         elif f["status"] == "UNKNOWN":
             raise timeout_503()
         else:
-            raise HTTPException(400, f"目前 {len(ids)} 人排不出合法班表，請到「預假管理」做人力試算，增補人力或降低每日需求")
+            raise HTTPException(400, f"目前 {len(ids)} 人排不出合法班表，請到「人力與預假」做人力試算，增補人力或降低每日需求")
     time_limit = max(5.0, min(time_limit, deadline - time() - SOLVE_MARGIN))
     r = cps.solve_cpsat(prob, GEN_WEIGHTS, {i: 1.0 for i in ids}, 1.0, time_limit=time_limit,
                         workers=WORKERS, extra=pin if wishes_hard else None, hint=hint, hint_trusted=hint_trusted)
