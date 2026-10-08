@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import { isDirectAssignedMonth } from '../_lib/assignMode.js';
 
 // 1. 初始化 Firebase Admin (讓後端有最高權限讀寫資料庫)
 if (!admin.apps.length) {
@@ -53,6 +54,14 @@ export default async function handler(req, res) {
 
         const turnData = turnSnap.data();
         const activeStaffId = turnData.active_staff_id;
+
+        // ★ 直接指派（CP-SAT）的月份不開放認領：殘留的輪次直接清掉，不判逾時、不跳過、不寄信。
+        if (await isDirectAssignedMonth(db, currentYear, currentMonth)) {
+            const clearTurn = { active_staff_id: null, year: currentYear, month: currentMonth, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+            await turnRef.set(clearTurn);
+            await db.collection('SelectionTurn').doc('latest').set(clearTurn);
+            return res.status(200).json({ message: `${currentYear}/${currentMonth} 為直接指派班表，已清除殘留輪次。` });
+        }
 
         // ★ 防呆：若 active_staff_id 早已出現在 SelectionProgress.submitted_staff，
         //   代表這位員工其實已經選完了，turn 沒被清是上游 bug 殘留。

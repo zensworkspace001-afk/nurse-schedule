@@ -6,7 +6,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive, subscribeToAnnouncement } from './api/database';
-import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
+import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks, hasVirtualSlots } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
@@ -349,7 +349,8 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       if (data.publishedDate) {
         publishedDateLoadedRef.current = true;
         setPublishedDate(prev => {
-          if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
+          if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month
+              && prev.assignMode === data.publishedDate.assignMode) return prev;
           return data.publishedDate;
         });
       }
@@ -736,8 +737,10 @@ const handleSaveAndPublish = async () => {
     
     const newFinalized = JSON.parse(JSON.stringify(schedule));
 
-    
-    const newPubDate = { year: selectedYear, month: selectedMonth };
+    // 沒有 D 開頭虛擬空缺 = CP-SAT 直接指派（全部是真實工號）→ 不開放認領、不啟動接力。
+    // assignMode 每次都明確寫入，避免 merge 留下上一次發布的舊值。
+    const assignMode = hasVirtualSlots(newFinalized) ? 'claim' : 'direct';
+    const newPubDate = { year: selectedYear, month: selectedMonth, assignMode };
     setPublishedDate(newPubDate);
     localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
 
@@ -760,9 +763,15 @@ const handleSaveAndPublish = async () => {
         console.error("發布至雲端失敗:", e);
     }
     
-    alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。\n\n🚀 系統正在背景啟動 AI 接力選班...`);
+    if (assignMode === 'direct') {
+        alert(`✅ 班表已發布（直接指派）！\n員工登入後可檢視自己 [${selectedYear}年${selectedMonth}月] 的班表，不需認領。`);
+    } else {
+        alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。\n\n🚀 系統正在背景啟動 AI 接力選班...`);
+    }
 
     // ★★★ 發布後自動啟動第一棒 AI 接力選班 ★★★
+    // 直接指派也照樣呼叫：resetRelay 會清掉本月舊的輪次 / 進度，
+    // auto-relay 讀到 Settings.publishedDate.assignMode === 'direct' 後就停在那裡，不挑人、不寄信。
     try {
         await calculateAndNotifyNextStaff(newFinalized, healthStats, selectedYear, selectedMonth, null, true);
     } catch (e) {
@@ -1006,6 +1015,7 @@ const handleSaveAndPublish = async () => {
             baseSalaryEnc={baseSalaryEnc} setBaseSalaryEnc={setBaseSalaryEnc}
             levelBonus={levelBonus} setLevelBonus={setLevelBonus}
             leaveWish={leaveWish}
+            publishedDate={publishedDate}
           />
         ) : (
           <StaffDashboard
@@ -1013,6 +1023,7 @@ const handleSaveAndPublish = async () => {
             myStaffRow={myStaffRow}
             targetYear={publishedDate.year}
             targetMonth={publishedDate.month}
+            assignMode={publishedDate.assignMode}
             currentSchedule={finalizedSchedule}
             onConfirmSchedule={handleStaffScheduleUpdate}
             staffData={staffData}

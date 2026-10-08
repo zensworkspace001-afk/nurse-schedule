@@ -22,6 +22,7 @@
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
+import { isDirectAssignedMonth } from './_lib/assignMode.js';
 
 if (!admin.apps.length) {
   let pk = process.env.FIREBASE_PRIVATE_KEY;
@@ -84,6 +85,16 @@ export default async function handler(req, res) {
   // 防呆：virtualSlotId 必須是 D 開頭虛擬鍵（避免員工誤把同事 N00X 鍵當作 virtualSlotId）
   if (!String(virtualSlotId).startsWith('D')) {
     return res.status(400).json({ error: 'virtualSlotId 必須是虛擬空缺鍵（D 開頭）' });
+  }
+
+  // 直接指派（CP-SAT）的月份不開放認領 — 前端已改成只能檢視，這裡擋掉直接打 API 的請求。
+  try {
+    if (await isDirectAssignedMonth(admin.firestore(), year, month)) {
+      return res.status(403).json({ error: '本月班表由護理長直接指派，不開放認領' });
+    }
+  } catch (err) {
+    console.error('[claim-schedule] 讀取 assignMode 失敗:', err);
+    return res.status(500).json({ error: '伺服器處理失敗，請稍後再試' });
   }
 
   const docId = `${year}_${month}`;

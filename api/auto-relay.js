@@ -1,6 +1,7 @@
 import admin from 'firebase-admin';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
+import { isDirectAssignedMonth } from './_lib/assignMode.js';
 
 // 1. 初始化 Firebase Admin
 if (!admin.apps.length) {
@@ -79,6 +80,21 @@ export default async function handler(req, res) {
                 db.collection('SelectionTurn').doc(`${year}_${month}`).delete().catch(() => {}),
                 db.collection('SelectionTurn').doc('latest').delete().catch(() => {})
             ]);
+        }
+
+        // 0-a2. 直接指派（CP-SAT）的月份不跑接力：清空輪次後直接結束，不挑人、不寄信。
+        //       發布時前端照樣呼叫（resetRelay），由這裡把舊輪次清掉後停下。
+        if (await isDirectAssignedMonth(db, year, month)) {
+            const clearTurn = {
+                active_staff_id: null, year, month,
+                updatedAt: admin.firestore.FieldValue.serverTimestamp()
+            };
+            await Promise.all([
+                db.collection('SelectionTurn').doc(`${year}_${month}`).set(clearTurn),
+                db.collection('SelectionTurn').doc('latest').set(clearTurn)
+            ]);
+            console.log(`⏭️ ${year}/${month} 為直接指派班表，不啟動接力。`);
+            return res.status(200).json({ message: '直接指派班表，不啟動接力。', direct_assigned: true });
         }
 
         // 統一正規化 helper — 所有比對都用大寫，避免 'N003' / 'n003' 不匹配導致重派

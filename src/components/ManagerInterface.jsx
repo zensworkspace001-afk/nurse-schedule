@@ -28,6 +28,7 @@ const ManagerInterface = ({
   baseSalaryEnc, setBaseSalaryEnc,
   levelBonus, setLevelBonus,
   leaveWish,
+  publishedDate,
 }) => {
   const tabs = [
     { id: 'requirements', path: '/requirements', label: '人力需求', icon: Settings },
@@ -266,6 +267,7 @@ const ManagerInterface = ({
                    onPushToHistory={onPushToHistory}
                    calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
                    healthStats={healthStats}
+                   publishedDate={publishedDate}
                 />
               } />
 
