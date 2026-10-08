@@ -30,7 +30,14 @@
 .requirements-panel__title {
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.requirements-panel__subtitle {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0 0 1.5rem;
 }
 
 /* --- Settings Section --- */

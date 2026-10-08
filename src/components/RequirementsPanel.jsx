@@ -39,7 +39,10 @@ const RequirementsPanel = ({
 
   return (
     <div className="requirements-panel">
-      <h2 className="requirements-panel__title">人力需求與排班設定</h2>
+      <h2 className="requirements-panel__title">病床與護病比</h2>
+      <p className="requirements-panel__subtitle">
+        這裡的病床數與醫院等級決定衛福部護病比法定下限：排班工作桌與預假管理的每日人力都不得低於它，統計報表也用它監控護病比。
+      </p>
 
       <div className="requirements-panel__settings">
         <div className="requirements-panel__bed-group">

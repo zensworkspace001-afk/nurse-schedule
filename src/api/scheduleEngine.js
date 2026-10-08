@@ -11,18 +11,31 @@ const DEFAULT_ENGINE_URL = 'https://nurse-schedule-engine-273758593077.asia-east
 export const engineUrl = () =>
   (import.meta.env.VITE_SCHEDULE_ENGINE_URL || DEFAULT_ENGINE_URL).replace(/\/+$/, '');
 
+// 引擎每個請求最多算約 2 分鐘（cpsat_service.REQUEST_BUDGET）；多留冷啟動與網路時間，超過就放棄等待
+const CLIENT_TIMEOUT_MS = 150_000;
+
 const post = async (path, body) => {
   const token = await auth.currentUser?.getIdToken();
   if (!token) throw new Error('登入逾期，請重新登入');
   let res;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
   try {
     res = await fetch(`${engineUrl()}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
+      signal: controller.signal,
     });
-  } catch {
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      const e = new Error('排班引擎超過 2 分鐘沒有回應，已中止。請稍後再試一次');
+      e.status = 504;
+      throw e;
+    }
     throw new Error('無法連線到排班引擎，請稍後再試');
+  } finally {
+    clearTimeout(timer);
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {

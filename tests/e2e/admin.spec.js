@@ -10,7 +10,7 @@ test.describe('admin smoke', () => {
     await login(page, 'admin');
 
     // ManagerInterface renders six tabs via react-router NavLinks.
-    for (const label of ['人力需求', '員工管理', '排班工作桌', '發布與認領', '結算與歷史', '統計報表']) {
+    for (const label of ['護病比', '員工管理', '排班工作桌', '發布與認領', '結算與歷史', '統計報表']) {
       await expect(page.getByRole('link', { name: new RegExp(label) })).toBeVisible();
     }
   });

@@ -20,11 +20,12 @@ CP-SAT × SA 混合排班（概念驗證）
 """
 
 import calendar
+import logging
 import math
 import random
 from dataclasses import dataclass, field
 from time import time
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from ortools.sat.python import cp_model
 
@@ -219,7 +220,8 @@ def monthly_workday_shortfall(prob: Problem) -> List[str]:
 
 
 def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List[Dict],
-                   max_extra: int = 15, check_time: float = 30.0, wish_slack: int = 4) -> Dict:
+                   max_extra: int = 15, check_time: float = 30.0, wish_slack: int = 4,
+                   deadline: Optional[float] = None, workers: int = 8, resume: Optional[Dict] = None) -> Dict:
     """
     人力試算：在目前團隊組成（base_staff 的保護名單、雙週人員）下，每日需求 reqs 需要幾人。
 
@@ -229,7 +231,9 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
                  人太多會「班不夠分」→ floor(Σ(需求+超編上限) × 天數 / 最少上班天數)
       comfort  — 建議人數：≥ min 且每天預假配額（人數 − 每日最低需求）≥ wish_slack
       gray     — 時限內既沒證明有解、也沒證明無解（UNKNOWN）的人數：可能排得出來但很難，不建議
-      checks   — 每個試過的人數與結果（預檢無解 / INFEASIBLE / FEASIBLE / UNKNOWN）
+      checks   — 每個試過的人數與結果（預檢無解 / INFEASIBLE / FEASIBLE / UNKNOWN / TIMEOUT）
+      timed_out — 到了 deadline（time() 絕對時間）還沒找到 min 就停止；這種結果不該被快取
+    resume: 上一次 timed_out 的結果 → 沿用已檢查過的人數，從下一個人數接著試（每次重試都會往前推進）
     人數不足時以「一般護理師」補位（不改動既有人員的身分）；人數過多時從尾端移除一般護理師。
     """
     nd = calendar.monthrange(year, month)[1]
@@ -247,10 +251,15 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
                  for i in range(max(0, k - len(others)))]
         return prot + kept + extra
 
-    hi = (sum(r + MAX_OVERSTAFF for r in reqs.values()) * nd) // max(1, MIN_MONTH_WORK)
-    checks = []
+    hi = max_headcount(reqs, nd)
+    checks = [c for c in (resume or {}).get("checks", []) if c[1] != "TIMEOUT"]
+    done = {c[0] for c in checks}
     n_min = None
-    for n in range(max(demand, len(prot) + 1), len(base_staff) + max_extra + 1):
+    approx = False
+    timed_out = False
+
+    def run(n, cap=check_time):
+        """檢查 n 人排不排得出來 → 狀態字串；'STOP' = 時間不夠"""
         staff = team(n)
         ids = [s["staff_id"] for s in staff]
         prob = Problem(year, month, staff, reqs, {i: {"high": set(), "normal": set()} for i in ids},
@@ -258,19 +267,87 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
         why = monthly_workday_shortfall(prob) or weekly_staffing_shortfall(prob)
         if why:
             checks.append((n, "預檢無解", why[0]))
-            continue
-        r = solve_cpsat(prob, {k: 0.0 for k in FEATURES}, {i: 1.0 for i in ids}, 0.0, time_limit=check_time)
-        checks.append((n, r["status"], ""))
-        if r["schedule"] is not None:
-            n_min = n
+            return "預檢無解"
+        limit = cap
+        if deadline is not None:
+            limit = min(cap, deadline - time() - 2)
+            if limit < 3:
+                checks.append((n, "TIMEOUT", ""))
+                return "STOP"
+        r = solve_cpsat(prob, {k: 0.0 for k in FEATURES}, {i: 1.0 for i in ids}, 0.0, time_limit=limit,
+                        workers=workers)
+        st = "FEASIBLE" if r["schedule"] is not None else r["status"]
+        checks.append((n, st, ""))
+        return st
+
+    lo = max(demand, len(prot) + 1)
+    top = min(len(base_staff) + max_extra, hi)        # 超過 hi 必然「班不夠分」，不用試
+    n0 = min(max(len(base_staff), lo), top)
+    prior = {c[0]: c[1] for c in checks}
+    # 1) 先問「目前這組人排不排得出來」— 護理長真正要的答案；往上找只在排不出來時才做
+    st0 = prior.get(n0) or run(n0, cap=max(check_time, 45.0))   # 最重要的一題，給多一點時間
+    current_unknown = False
+    if st0 == "STOP":
+        timed_out = True
+    elif st0 == "UNKNOWN":
+        # 時限內無法判定 ≠ 排不出來：不往上加人、不說人力不足（排班時的零權重求解會再試一次）
+        current_unknown = True
+    elif st0 == "FEASIBLE":
+        # 2) 目前人數可行 → 剩餘時間往下找最少人數；遇到無法判定（UNKNOWN）就停，標為約略值
+        n_min = n0
+        for n in range(n0 - 1, lo - 1, -1):
+            st = prior.get(n) or run(n)
+            if st == "FEASIBLE":
+                n_min = n
+                continue
+            approx = st in ("UNKNOWN", "STOP")
             break
+    else:
+        # 3) 目前人數排不出來 → 往上加人找最少需要幾人（中止時保留進度，下次接著試）
+        for n in range(n0 + 1, top + 1):
+            if n in done:
+                if prior[n] == "FEASIBLE":
+                    n_min = n
+                    break
+                continue
+            st = run(n)
+            if st == "STOP":
+                timed_out = True
+                break
+            if st == "FEASIBLE":
+                n_min = n
+                break
+    checks.sort(key=lambda c: c[0])
     comfort = None if n_min is None else max(n_min, demand + wish_slack)
     gray = [n for n, st, _ in checks if st == "UNKNOWN"]
     return {"min": n_min, "max": hi, "comfort": comfort, "gray": gray, "demand": demand, "days": nd,
-            "protected": len(prot), "checks": checks}
+            "protected": len(prot), "checks": checks, "timed_out": timed_out, "approx": approx,
+            "current_unknown": current_unknown}
 
 
-def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
+def max_headcount(reqs: Dict[str, int], num_days: int) -> int:
+    """
+    最多人數：每人至少 MIN_MONTH_WORK 天，但每班最多超編 MAX_OVERSTAFF 人 → 人再多就「班不夠分」。
+    分母多 1 天留餘裕：剛好等於理論上限時每班都要滿編、每人剛好 20 天，零彈性 — 實測（D3/E3/N4、
+    2 worker）24 人連沒有預假的班表都 100 秒找不到，23 人預假檢查全部逾時；22 人約 11 秒可行。
+    """
+    return (sum(r + MAX_OVERSTAFF for r in reqs.values()) * num_days) // max(1, MIN_MONTH_WORK + 1)
+
+
+def _proven_lower_bound(rng: Dict) -> Optional[int]:
+    """從最小人數開始、連續被證明排不出來的那一段 + 1；中間夾著無法判定的就停（人太多造成的不可行不算）"""
+    lb = None
+    for n, st, _ in sorted(rng.get("checks") or [], key=lambda c: c[0]):
+        if st not in ("預檢無解", "INFEASIBLE"):
+            break
+        lb = n + 1
+    return lb
+
+
+log = logging.getLogger(__name__)
+
+
+def adjust_headcount(staff: List[Dict], rng: Dict, keep_ids=()) -> Dict:
     """
     依試算結果決定這次參與排班的人：
       人數 < min  → 不能排（回傳缺幾人；不自動虛構員工）
@@ -278,25 +355,46 @@ def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
       其餘        → 全員參與
     """
     n = len(staff)
+    if rng.get("current_unknown"):
+        if n > rng["max"]:   # 超過上限仍照優先順序截（孕哺 / 雙週 → 預假者 → 其他）
+            return adjust_headcount(staff, dict(rng, min=0, current_unknown=False), keep_ids)
+        return {"ok": True, "staff": staff,
+                "note": f"目前 {n} 人：時限內無法確認排得出來（不代表人力不足），排班時會再試；最多 {rng['max']} 人"}
+    if rng["min"] is None and rng.get("timed_out"):
+        lb = _proven_lower_bound(rng)
+        known = f"已確認 {lb - 1} 人以下排不出來；" if lb else ""
+        return {"ok": False, "staff": staff,
+                "note": f"人力試算超過時間上限而中止（{known}目前 {n} 人）。請稍後再試，或降低每日需求"}
     if rng["min"] is None:
         # 試算範圍內都沒找到合法解：下限取「已證明無解的最大人數 + 1」，不要把 None 印給使用者
         checks = rng.get("checks") or []
-        proven = [c[0] for c in checks if c[1] in ("預檢無解", "INFEASIBLE")]
         tried = max((c[0] for c in checks), default=n)
-        lb = max(proven) + 1 if proven else n + 1
+        lb = _proven_lower_bound(rng) or n + 1
         return {"ok": False, "staff": staff,
                 "note": f"人力不足：至少需要 {lb} 人以上（試算到 {tried} 人仍無法確認排得出來），目前 {n} 人，請增補人力或降低每日需求"}
     if n < rng["min"]:
         return {"ok": False, "staff": staff, "note": f"人力不足：至少需要 {rng['min']} 人，目前 {n} 人，請增補人力或降低每日需求"}
     if n > rng["max"]:
-        keep_first = [s for s in staff if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"
-                      or s.get("special_status") == "BiWeekly"]
-        rest = [s for s in staff if s not in keep_first]
-        kept = keep_first + rest[:rng["max"] - len(keep_first)]
+        # 保留順序：孕哺 / 實習 / 雙週 → 已登記預假（保證休假）→ 其他；每層都只取到上限為止
+        # （不可寫 rest[:max - len(keep)] — 要保留的人超過上限時會變負數切片，反而留下更多人）
+        core = [s for s in staff if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"
+                or s.get("special_status") == "BiWeekly"]
+        # keep_ids 若是有順序的清單（先登記的在前），名額不夠時先保留先登記的人
+        order = {sid: i for i, sid in enumerate(keep_ids)}
+        wishers = sorted((s for s in staff if s not in core and s["staff_id"] in order),
+                         key=lambda s: order[s["staff_id"]])
+        others = [s for s in staff if s not in core and s not in wishers]
+        kept: List[Dict] = []
+        for group in (core, wishers, others):
+            kept += group[:max(0, rng["max"] - len(kept))]
         dropped = [s["staff_id"] for s in staff if s not in kept]
-        return {"ok": True, "staff": kept,
-                "note": f"人力過剩：最多 {rng['max']} 人（每人至少 {MIN_MONTH_WORK} 天會班不夠分），本次不排 {dropped}"}
-    return {"ok": True, "staff": staff, "note": f"人力適中（最少 {rng['min']}、建議 ≥ {rng['comfort']}、最多 {rng['max']}）"}
+        lost = [s["staff_id"] for s in wishers if s not in kept]
+        note = f"人力過剩：最多 {rng['max']} 人（每人至少 {MIN_MONTH_WORK} 天會班不夠分），本次不排 {dropped}"
+        if lost:
+            note += f"；其中 {lost} 已登記預假，本月預假失效，請個別告知"
+        return {"ok": True, "staff": kept, "note": note}
+    least = f"不超過 {rng['min']}" if rng.get("approx") else f"{rng['min']}"   # 往下找時遇到無法判定就停
+    return {"ok": True, "staff": staff, "note": f"人力適中（最少 {least}、建議 ≥ {rng['comfort']}、最多 {rng['max']}）"}
 
 
 def check_wishes_feasible(prob: Problem, wishes: Dict[str, List[int]], time_limit: float = 20.0,
@@ -305,7 +403,7 @@ def check_wishes_feasible(prob: Problem, wishes: Dict[str, List[int]], time_limi
     預假可行性檢查：把 wishes（{sid: [day0, ...]}，0-indexed）全部當「必休」硬約束，問 CP-SAT 有沒有合法班表。
       feasible=True  → 這組預假全部保證能滿足
       feasible=False → 不可行（reason 說明）；時限內無法判定（UNKNOWN）也保守地當不可行
-    純可行性（目標為 0），通常 1~2 秒。
+    純可行性（目標為 0），通常 1~2 秒（人數接近 max_headcount 時會慢很多）。
     """
     reasons = monthly_workday_shortfall(prob) or (weekly_staffing_shortfall(prob) if prob.one_shift_per_week else [])
     if reasons:
@@ -332,7 +430,7 @@ def check_wishes_feasible(prob: Problem, wishes: Dict[str, List[int]], time_limi
         return {"feasible": False, "status": "INFEASIBLE",
                 "reason": "加上已登記的預假後，勞基法與人力需求無法同時滿足（例如同一週可上夜班的人不夠）"}
     return {"feasible": False, "status": r["status"],
-            "reason": "系統無法在時限內確認這組預假可行，請改選其他日期"}
+            "reason": "系統忙碌或人力接近上限，暫時無法確認這組預假，請稍後再試或聯絡護理長"}
 
 
 def weekly_staffing_shortfall(prob: Problem) -> List[str]:
@@ -409,12 +507,13 @@ def objective(schedule, prob, W, mult, fairness) -> float:
 # ============================================================
 def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
                 fairness: float, time_limit: float = 10.0, seed: int = 0, workers: int = 8,
-                extra=None, hint: Dict[str, List[str]] = None) -> Dict:
+                extra=None, hint: Dict[str, List[str]] = None, hint_trusted: bool = False) -> Dict:
     """
     extra(m, x, prob, week_y) → 額外目標項（可順便加約束）；給實驗腳本客製「完美班表」標準用
     hint: 起始班表 {sid: [31 個班別]}（例如 LLM 排的）。合法的話會成為第一個解，CP-SAT 只會往更好的方向找；
-          不合法的部分 CP-SAT 會自己修（repair_hint）。
-    """
+          不合法時只當 x 的一般提示（不保證有用；要修成合法請先交給零權重模型，見 cpsat_service.generate）。
+    hint_trusted: 起點是本模組自己的（零權重模型）解 → 被判不可行代表兩個模型硬約束不一致（bug）；
+                  外部起點（LLM / 人工）不合法則是正常情況。"""
     reasons = monthly_workday_shortfall(prob)
     if not reasons and prob.one_shift_per_week:
         reasons = weekly_staffing_shortfall(prob)
@@ -445,6 +544,10 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
     Wi = {k: int(round(W[k] * 10)) for k in FEATURES}
     d_exprs = {}
     obj_terms = []
+    # 純可行性（人力試算、預假可行性檢查）：所有偏好權重都是 0 → 不建偏好變數，找到第一個合法解即可。
+    # 這些變數乘上 0 仍會拖慢求解（Cloud Run 2 vCPU 上試算每個人數都跑滿時限仍 UNKNOWN）。
+    feas_only = (not any(Wi.values()) and not fairness and not prob.backward_weight
+                 and not prob.mix2_weight and not prob.mix3_weight and not prob.senior_weight)
 
     for s in prob.staff:
         sid = s["staff_id"]
@@ -498,6 +601,9 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
         m.add(sum(x[sid, d, r] for d in range(nd) for r in REST) >= MIN_REST)
         m.add(sum(work(sid, d) for d in range(nd)) <= MAX_MONTH_WORK)
         m.add(sum(work(sid, d) for d in range(nd)) >= prob.min_work_days)
+        if feas_only:
+            d_exprs[sid] = 0
+            continue
 
         # —— 軟特徵（線性化） ——
         w = prob.wishes.get(sid, {"high": set(), "normal": set()})
@@ -553,7 +659,12 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
                 m.add(u >= x[sid, d, sh])
             used.append(u)
         t2 = m.new_bool_var(""); t3 = m.new_bool_var("")
-        m.add(t2 >= sum(used) - 1); m.add(t3 >= sum(used) - 2)
+        # 混 2 種以上：任兩種都用到就成立（不能寫 t2 ≥ Σused − 1 — 三種都上時右邊是 2，
+        # 布林變數不可能成立，等於把「混 3 種」變成禁止，而不是設計上的扣分）
+        for i in range(len(used)):
+            for j in range(i + 1, len(used)):
+                m.add(t2 >= used[i] + used[j] - 1)
+        m.add(t3 >= sum(used) - 2)
         mix_expr = int(round(prob.mix2_weight * 10)) * t2 + int(round((prob.mix3_weight - prob.mix2_weight) * 10)) * t3
         d_exprs[sid] = sum(Wi[k] * f[k] for k in FEATURES) + bw * sum(back) + mix_expr
         obj_terms.append(int(round(mult[sid] * 10)) * d_exprs[sid])
@@ -586,18 +697,25 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
                 + int(round(prob.senior_weight * 10)) * sum(senior_gaps))
     # 資深坐鎮優先：先單獨求「最少資深缺口」並鎖住上限，再在此前提下最佳化其餘偏好。
     # 只放進加權目標時，平行搜尋在時限內常停在還有缺口的解（實測 14 人樣本有時剩 2 個）。
-    if senior_gaps and not hint:
+    # 有起始班表就從它出發；找到的解取代起始班表，下面的 hint 流程保證結果不比它差。
+    if senior_gaps:
+        if hint:
+            for (sid, d, sh), v in x.items():
+                m.add_hint(v, 1 if hint[sid][d] == sh else 0)
         m.minimize(sum(senior_gaps))
         s0 = cp_model.CpSolver()
         s0.parameters.max_time_in_seconds = max(3.0, time_limit / 5)
         s0.parameters.num_workers = workers
         s0.parameters.random_seed = seed
         st0 = s0.solve(m)
+        m.clear_hints()
+        if hint and st0 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            log.warning("資深坐鎮階段連起始班表都沒採用（%s）— 起始班表可能違反完整模型的硬約束", s0.status_name(st0))
         if st0 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             m.add(sum(senior_gaps) <= int(round(s0.objective_value)))
-            for key, v in x.items():
-                m.add_hint(v, s0.value(v))
-            time_limit = max(1.0, time_limit - s0.wall_time)
+            hint = {sid: [next(sh for sh in SHIFTS if s0.value(x[sid, d, sh])) for d in range(nd)]
+                    for sid in prob.ids}
+        time_limit = max(1.0, time_limit - s0.wall_time)
     m.minimize(obj_expr)
 
     # —— 起始班表（hint）：保證結果不比它差 ——
@@ -607,6 +725,7 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
     #       (3) 正式搜尋若沒找到更好的，直接回傳 hint。
     hint_value = None
     hint_used = False
+    hint_rejected = False
     if hint:
         pin = m.new_bool_var("pin_hint")
         for sid in prob.ids:
@@ -619,28 +738,44 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
         s1.parameters.num_workers = workers
         st1 = s1.solve(m)
         m.clear_assumptions()
+        if st1 == cp_model.INFEASIBLE:
+            hint_rejected = True
+            if hint_trusted:   # 自己的零權重解在完整模型不合法 = 兩個模型硬約束不一致（例如舊的混 3 種班 bug）
+                log.warning("內部起始班表固定後不可行 — 完整模型與零權重模型的硬約束不一致（bug）")
+            else:
+                log.info("外部起始班表不合法，改當提示讓 CP-SAT 從附近修")
         if st1 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             hint_value = int(round(s1.objective_value))
+            # 不能提示 pin 自己（值 = 1）：LNS 鄰域一把 pin 固定在 1，所有 x 都被釘死、永遠改善不了
             for i in range(len(m.proto.variables)):
                 v = m.get_int_var_from_proto_index(i)
+                if v.index == pin.index:
+                    continue
                 m.add_hint(v, s1.value(v))
+            m.add(pin == 0)   # 讓那批 only_enforce_if(pin) 約束失效
             m.add(obj_expr <= hint_value)
+            time_limit = max(1.0, time_limit - s1.wall_time)
+        else:
+            m.add(pin == 0)
+            for (sid, d, sh), v in x.items():   # 不合法起點只當一般提示
+                m.add_hint(v, 1 if hint[sid][d] == sh else 0)
             time_limit = max(1.0, time_limit - s1.wall_time)
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = time_limit
     solver.parameters.num_workers = workers
     solver.parameters.random_seed = seed
-    if hint:
-        solver.parameters.repair_hint = True
+    # 不要開 repair_hint：OR-Tools 9.15 的修復子求解器（MinimizeL1DistanceWithHint）偶發
+    # CHECK 失敗直接 SIGABRT 整個程序（Python 接不到），Cloud Run 的 worker 會整個死掉。
     t0 = time()
     status = solver.solve(m)
     status_name = solver.status_name(status)
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if hint_value is not None:   # 沒找到比起點更好的 → 起點本身就是答案
             return {"status": "HINT_KEPT", "schedule": {sid: list(hint[sid]) for sid in prob.ids},
-                    "elapsed": round(time() - t0, 2), "gap": 0.0, "hint_value": hint_value, "objective": hint_value}
-        return {"status": status_name, "schedule": None, "elapsed": round(time() - t0, 2)}
+                    "elapsed": round(time() - t0, 2), "gap": 0.0, "hint_value": hint_value, "objective": hint_value,
+                    "hint_rejected": hint_rejected}
+        return {"status": status_name, "schedule": None, "elapsed": round(time() - t0, 2), "hint_rejected": hint_rejected}
 
     schedule = {sid: [next(sh for sh in SHIFTS if solver.value(x[sid, d, sh])) for d in range(nd)]
                 for sid in prob.ids}
@@ -651,6 +786,7 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
         "gap": (solver.objective_value - solver.best_objective_bound) / max(1.0, solver.objective_value),
         "objective": int(round(solver.objective_value)),
         "hint_value": hint_value,
+        "hint_rejected": hint_rejected,
     }
 
 
