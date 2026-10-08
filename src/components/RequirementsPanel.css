@@ -1,193 +1,176 @@
 /* ==========================================================================
-   RequirementsPanel Styles — Glassmorphism UI
+   RequirementsPanel（病房設定）— 嵌在「人力與預假」的「⓪ 病房設定」卡片裡
+   外框由那張卡片提供；字級、輸入框高度比照 LeaveWishPanel 的 lw-panel__field / __input
    ========================================================================== */
 
-/* --- Container ---
-   嵌在「人力與預假」的「⓪ 病房設定」卡片裡，外框由那張卡片提供 */
 .requirements-panel {
-  display: flex;
-  flex-direction: column;
   margin-top: 12px;
 }
 
-/* --- Settings Section --- */
 .requirements-panel__settings {
-  background: rgba(255, 255, 255, 0.12);
-  padding: 1.5rem;
-  border-radius: 12px;
-  margin-bottom: 2rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px 20px;
 }
 
-/* --- Bed Count Slider Group --- */
-.requirements-panel__bed-group {
-  margin-bottom: 1.5rem;
+/* --- 病床數 / 醫院等級：同一列，標籤樣式同 lw-panel__field --- */
+.requirements-panel__bed-group,
+.requirements-panel__level-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
 }
 
-.requirements-panel__bed-label {
-  font-weight: bold;
-  display: block;
-  margin-bottom: 0.5rem;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 1.1rem;
+.requirements-panel__bed-label,
+.requirements-panel__level-label {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.65);
 }
 
 .requirements-panel__bed-count {
-  font-size: 1.3rem;
+  font-size: 0.95rem;
+  font-weight: 600;
   color: #ffffff;
 }
 
 .requirements-panel__slider {
   width: 100%;
+  height: 36px;
+  margin: 0;
   cursor: pointer;
 }
 
-/* --- Shift Cards Row --- */
-.requirements-panel__shifts {
-  display: flex;
-  gap: 1rem;
-  margin-top: 1rem;
-}
-
-/* --- Individual Shift Card (shared base) --- */
-.requirements-panel__shift-card {
-  flex: 1;
-  padding: 1rem;
+.requirements-panel__level-select {
+  width: 100%;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
   border-radius: 8px;
-  text-align: center;
-  color: white;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-}
-
-/* Shift card color variants */
-.requirements-panel__shift-card--day {
-  background: rgba(255, 217, 61, 0.75);
-  border: 1px solid rgba(255, 217, 61, 0.9);
-  box-shadow: 0 4px 20px rgba(255, 217, 61, 0.35);
-}
-
-.requirements-panel__shift-card--evening {
-  background: rgba(255, 107, 157, 0.75);
-  border: 1px solid rgba(255, 107, 157, 0.9);
-  box-shadow: 0 4px 20px rgba(255, 107, 157, 0.35);
-}
-
-.requirements-panel__shift-card--night {
-  background: rgba(77, 150, 255, 0.75);
-  border: 1px solid rgba(77, 150, 255, 0.9);
-  box-shadow: 0 4px 20px rgba(77, 150, 255, 0.35);
-}
-
-/* --- Shift Card Content --- */
-.requirements-panel__shift-count {
-  font-weight: bold;
-  font-size: 1.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.requirements-panel__shift-ratio {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  font-size: 1rem;
-  font-weight: bold;
-}
-
-/* --- Ratio Number Input --- */
-.requirements-panel__ratio-input {
-  width: 60px;
-  padding: 4px;
-  text-align: center;
-  border-radius: 6px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(0, 0, 0, 0.2);
-  font-weight: bold;
-  font-size: 1rem;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
 }
 
+.requirements-panel__level-select:focus,
 .requirements-panel__ratio-input:focus {
   outline: none;
   border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
-}
-
-/* ==========================================================================
-   Responsive Web Design (RWD)
-   ========================================================================== */
-@media screen and (max-width: 768px) {
-  .requirements-panel {
-    padding: 1rem;
-  }
-
-  .requirements-panel__settings {
-    padding: 1rem;
-  }
-
-  .requirements-panel__shifts {
-    flex-direction: column;
-    gap: 1rem;
-  }
-}
-
-/* ==========================================================================
-   醫院等級（護病比法定下限）選擇器 + 法定下限標示
-   — 與床數列同層級，融入 settings 區的 glassmorphism，不另開深色盒
-   ========================================================================== */
-.requirements-panel__level-group {
-  margin-bottom: 1.5rem;
-}
-
-.requirements-panel__level-label {
-  display: block;
-  font-weight: bold;
-  margin-bottom: 0.5rem;
-  color: rgba(255, 255, 255, 0.9);
-  font-size: 1.1rem;
-}
-
-/* select 比照 ratio-input 的視覺語言（深底白字、白框、focus 發光） */
-.requirements-panel__level-select {
-  width: 100%;
-  padding: 0.55rem 0.75rem;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  background: rgba(0, 0, 0, 0.2);
-  color: #ffffff;
-  font-size: 1rem;
-  font-weight: bold;
-  cursor: pointer;
-}
-
-.requirements-panel__level-select:focus {
-  outline: none;
-  border-color: rgba(255, 255, 255, 0.6);
-  box-shadow: 0 0 8px rgba(255, 255, 255, 0.1);
 }
 
 /* 深色主題下，部分瀏覽器的原生 option 仍套系統淺色，補深底白字 */
 .requirements-panel__level-select option {
-  background: #2a2a3a;
+  background: #2c3e50;
   color: #ffffff;
 }
 
 .requirements-panel__level-hint {
-  margin: 0.5rem 0 0;
-  font-size: 0.82rem;
-  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  font-size: 0.78rem;
   line-height: 1.5;
+  color: rgba(255, 255, 255, 0.6);
 }
 
-/* 法定下限標示：在彩色班別卡上用半透明深底白字 pill，不搶卡片本色 */
-.requirements-panel__floor-badge {
-  margin-top: 0.6rem;
-  padding: 0.25rem 0.5rem;
-  font-size: 0.72rem;
-  font-weight: bold;
+/* --- 三班卡片：淡色底 + 班別色邊框，不搶下面 ①②③ 的視覺 --- */
+.requirements-panel__shifts {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.requirements-panel__shift-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border-radius: 10px;
   text-align: center;
   color: #ffffff;
-  background: rgba(0, 0, 0, 0.28);
-  border: 1px solid rgba(255, 255, 255, 0.35);
+  min-width: 0;
+}
+
+.requirements-panel__shift-card--day {
+  background: rgba(255, 217, 61, 0.14);
+  border: 1px solid rgba(255, 217, 61, 0.55);
+}
+
+.requirements-panel__shift-card--evening {
+  background: rgba(255, 107, 157, 0.14);
+  border: 1px solid rgba(255, 107, 157, 0.55);
+}
+
+.requirements-panel__shift-card--night {
+  background: rgba(77, 150, 255, 0.14);
+  border: 1px solid rgba(77, 150, 255, 0.55);
+}
+
+.requirements-panel__shift-count {
+  font-size: 1.2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.requirements-panel__shift-ratio {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 6px;
+  font-size: 0.82rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.requirements-panel__ratio-input {
+  width: 52px;
+  height: 30px;
+  box-sizing: border-box;
+  padding: 0 4px;
+  text-align: center;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+/* 法定下限標示：小 pill，不搶卡片 */
+.requirements-panel__floor-badge {
+  padding: 2px 8px;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(0, 0, 0, 0.22);
   border-radius: 999px;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   RWD：手機上病床 / 等級改成上下排，三班卡片仍維持一列三格
+   ========================================================================== */
+@media screen and (max-width: 640px) {
+  .requirements-panel__settings {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .requirements-panel__shift-card {
+    padding: 8px 4px;
+  }
+
+  .requirements-panel__shift-count {
+    font-size: 1.05rem;
+  }
+
+  .requirements-panel__ratio-input {
+    width: 44px;
+  }
+
+  .requirements-panel__floor-badge {
+    font-size: 0.65rem;
+    padding: 2px 6px;
+  }
 }

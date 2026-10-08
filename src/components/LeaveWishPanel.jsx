@@ -172,7 +172,7 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
                      onChange={e => setReq(k, e.target.value)} disabled={isOpenHere} />
             </label>
           ))}
-          <span className="lw-panel__muted">
+          <span className="lw-panel__muted lw-panel__floor-note">
             法定下限（{bedConfig?.bedCount ?? 0} 床・{levelName}）：白班 {floor.D} / 小夜 {floor.E} / 大夜 {floor.N}
           </span>
           <button type="button" className="lw-panel__btn" onClick={handleEstimate} disabled={estimating || isOpenHere}>

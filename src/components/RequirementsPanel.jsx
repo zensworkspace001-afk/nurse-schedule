@@ -78,7 +78,7 @@ const RequirementsPanel = ({
                    <span>早班 1 :</span>
                    <input type="number" value={ratioD} onChange={e => updateBedConfig('ratioD', Number(e.target.value))} className="requirements-panel__ratio-input" />
                 </div>
-                {overriddenD && <div className="requirements-panel__floor-badge">⚖️ 已套用法定下限 {floor.D} 人</div>}
+                {overriddenD && <div className="requirements-panel__floor-badge">法定下限 {floor.D} 人</div>}
             </div>
 
             {/* 小夜 */}
@@ -88,7 +88,7 @@ const RequirementsPanel = ({
                    <span>小夜 1 :</span>
                    <input type="number" value={ratioE} onChange={e => updateBedConfig('ratioE', Number(e.target.value))} className="requirements-panel__ratio-input" />
                 </div>
-                {overriddenE && <div className="requirements-panel__floor-badge">⚖️ 已套用法定下限 {floor.E} 人</div>}
+                {overriddenE && <div className="requirements-panel__floor-badge">法定下限 {floor.E} 人</div>}
             </div>
 
             {/* 大夜 */}
@@ -98,7 +98,7 @@ const RequirementsPanel = ({
                    <span>大夜 1 :</span>
                    <input type="number" value={ratioN} onChange={e => updateBedConfig('ratioN', Number(e.target.value))} className="requirements-panel__ratio-input" />
                 </div>
-                {overriddenN && <div className="requirements-panel__floor-badge">⚖️ 已套用法定下限 {floor.N} 人</div>}
+                {overriddenN && <div className="requirements-panel__floor-badge">法定下限 {floor.N} 人</div>}
             </div>
         </div>
       </div>
