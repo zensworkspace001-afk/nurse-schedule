@@ -202,7 +202,8 @@ check("整月混 3 種班只扣分、不是禁止", mr["status"] != "INFEASIBLE"
 #  — 兩者硬約束必須一致；否則排班時的起點會被默默丟掉（就是混 3 種班 bug 的樣子）
 zp = _cps.Problem(2026, 8, mixp.staff, {"D": 3, "E": 2, "N": 2}, {i: {"high": set(), "normal": set()} for i in mixp.ids},
                   backward_weight=0, mix2_weight=0, mix3_weight=0)
-zs = _cps.solve_cpsat(zp, {k: 0.0 for k in _cps.FEATURES}, {i: 1.0 for i in zp.ids}, 0.0, time_limit=30, extra=_force_all3)
+zs = _cps.solve_cpsat(zp, {k: 0.0 for k in _cps.FEATURES}, {i: 1.0 for i in zp.ids}, 0.0, time_limit=60,
+                      workers=1, seed=0, extra=_force_all3)   # 固定 worker / seed：起點每次一樣，下面的測試才可重現
 def _pin_hint(m, x, pr, wy):
     for sid in pr.ids:
         for d in range(pr.num_days):
@@ -218,6 +219,23 @@ kept = _adj(many, {"min": 1, "max": 8, "comfort": 1}, keep_ids={"S09"})
 check("人數超過上限：已登記預假的人不會被排除", "S09" in {s["staff_id"] for s in kept["staff"]} and len(kept["staff"]) == 8,
       kept["note"])
 
+# B1：從合法起點出發，正式搜尋要能改善（pin 開關不可被提示成 1 — 那會把所有 x 釘死在起點）
+imp = _cps.solve_cpsat(mixp, cpsat_service.GEN_WEIGHTS, {i: 1.0 for i in mixp.ids}, 1.0, time_limit=30,
+                       hint=zs["schedule"], hint_trusted=True)
+check("從合法起點出發會往更好的方向找（不被釘死在起點）", imp.get("hint_value") is not None
+      and imp.get("objective", 10 ** 9) < imp["hint_value"], f"{imp['status']} {imp.get('hint_value')} → {imp.get('objective')}")
+
+# B3：要保留的人（預假者）超過上限 → 剛好留到上限，不可因負數切片留更多
+def _team(n, wish_n):
+    st = [{"staff_id": f"S{i:02d}", "special_status": "Standard"} for i in range(n)]
+    return st, {f"S{i:02d}" for i in range(wish_n)}
+for n, wn in ((26, 25), (30, 26)):
+    st_, keep_ = _team(n, wn)
+    k_ = _adj(st_, {"min": 1, "max": 24, "comfort": 1}, keep_ids=keep_)
+    ids_ = {s["staff_id"] for s in k_["staff"]}
+    check(f"{n} 人、{wn} 人登記預假、上限 24 → 剛好保留 24 人且優先預假者", len(ids_) == 24 and ids_ <= keep_
+          and "預假失效" in k_["note"], f"保留 {len(ids_)}")
+
 over = {"min": None, "max": 24, "timed_out": True,
         "checks": [(10, "預檢無解", ""), (15, "預檢無解", ""), (16, "UNKNOWN", ""), (25, "INFEASIBLE", ""), (28, "INFEASIBLE", "")]}
 note = _adj(base, over)["note"]
@@ -232,6 +250,95 @@ st = r.json().get("stats", {})
 check("預假彼此衝突 → 仍排出合法班表、wishes_hard=false", r.status_code == 200 and st.get("wishes_hard") is False
       and st.get("hard_penalty") == 0, f"{r.status_code} wishes_hard={st.get('wishes_hard')} {r.json().get('detail', '')}")
 store.entries = {}
+# B2 / B6：呼叫端給明顯不合法的起點（全員天天上白班）→ 要修成合法班表。
+# 跑在子程序裡：OR-Tools 原生程式 abort（例如舊的 repair_hint）Python 接不到，會讓整個測試程式消失
+import subprocess  # noqa: E402
+_code = f"""
+import sys, copy
+sys.path[:0] = [{ROOT!r}, {os.path.join(ROOT, "local_test")!r}, {os.path.dirname(os.path.abspath(__file__))!r}]
+import cpsat_service as svc
+from run_demo import SAMPLE_STAFF
+rows = [dict(s, is_active=True) for s in copy.deepcopy(SAMPLE_STAFF)]
+class St:
+    def leave_settings(self): return None
+    def staff_rows(self): return rows
+    def wish_state(self, ym): return 0, {{}}
+bad = {{s["staff_id"]: ["D"] * 31 for s in rows}}
+for _ in range(3):
+    r = svc.generate(St(), 2026, 8, {{"D": 3, "E": 2, "N": 2}}, None, 40, bad, True)
+    assert r["stats"]["hard_penalty"] == 0 and r["stats"]["start_repaired"] is True, r["stats"]
+print("OK")
+"""
+proc = subprocess.run([sys.executable, "-c", _code], capture_output=True, text=True, timeout=600)
+check("呼叫端起點不合法 → 修成合法班表（子程序 3 次，不可 abort）", proc.returncode == 0 and "OK" in proc.stdout,
+      f"returncode={proc.returncode} {proc.stderr.strip().splitlines()[-1] if proc.stderr.strip() else ''}")
+
+# B7：外部起點格式不齊（工號小寫、OFF、少一列）→ 不整份丟，合格的列照用，修成合法
+messy = {k.lower(): ["OFF" if c in ("RG", "RC") else c.lower() for c in v] for k, v in zs["schedule"].items()}
+messy.pop(next(iter(messy)))
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}, "time_limit": 40, "hint": messy},
+                headers=ADMIN)
+st = r.json().get("stats", {})
+check("外部起點格式不齊 → 合格的列照用、修成合法", r.status_code == 200 and st.get("hard_penalty") == 0
+      and st.get("hint_rows_used") == len(zs["schedule"]) - 1 and st.get("start_repaired") is True,
+      f"{r.status_code} rows_used={st.get('hint_rows_used')} repaired={st.get('start_repaired')}")
+
+# B5：試算「目前人數」時限內無法判定 ≠ 人力不足；快取的最少人數也不能拿來拒絕排班
+unk = _adj(base, {"min": None, "max": 30, "comfort": None, "current_unknown": True, "checks": [(14, "UNKNOWN", "")]})
+check("試算目前人數 UNKNOWN → 不當人力不足", unk["ok"] and "不代表人力不足" in unk["note"], unk["note"])
+_team_rows, _key = cpsat_service._team_and_key(store, 2026, 8, {"D": 3, "E": 2, "N": 2}, None)
+cpsat_service._staffing_cache[_key] = {"min": 99, "max": 30, "comfort": 99, "gray": [], "demand": 7, "checks": []}
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}, "time_limit": 30},
+                headers=ADMIN)
+cpsat_service._staffing_cache.pop(_key, None)
+check("快取說要 99 人 → 排班仍自己求解、不直接 400", r.status_code == 200, f"{r.status_code} {r.json().get('detail', '')}")
+
+# B4：人數超過上限時，送預假要用排班時的團隊；被截掉的人直接告知
+small = {"D": 1, "E": 1, "N": 1}            # 上限 = (3×3)×31 ÷ 20 = 13 < 14 人
+store.settings = {"open": True, "year": 2026, "month": 8, "reqs": small, "quota": 3, "days_per_person": 4}
+_el = cpsat_service.eligible_staff(store.staff)
+_core = {x["staff_id"] for x in _el if x["is_pregnant_or_nursing"] or x["leave_status"] == "Student"
+         or x["special_status"] == "BiWeekly"}
+_others = [x["staff_id"] for x in _el if x["staff_id"] not in _core]
+_room = _cps.max_headcount(small, 31) - len(_core)          # 一般人員還有幾個位子
+store.entries = {sid_: [1, 2, 3, 4] for sid_ in _others[:_room]}   # 位子已被先登記的人佔滿
+late = _others[_room]
+r = client.post("/leave_wishes/submit", json={"days": [5, 6, 7, 8]}, headers=staff(late))
+check("人數超過上限且位子已被先登記者佔滿 → 後送的人 403 說明超過上限",
+      r.status_code == 403 and "超過上限" in r.json().get("detail", ""), f"{late} {r.status_code} {r.json().get('detail', '')}")
+kept_ = _cps.adjust_headcount(_el, {"min": 0, "max": _cps.max_headcount(small, 31), "comfort": None},
+                              keep_ids=list(store.entries) + [late])["staff"]
+check("名額不夠時保留先登記的人、不是後送的人", late not in {x["staff_id"] for x in kept_}
+      and set(store.entries) <= {x["staff_id"] for x in kept_}, "")
+store.entries = {}
+store.settings = dict(store.settings, open=False)
+# B2 補充：逐人都合法、但某天白班少 1 人的外部起點（LLM 最常見的錯）→ 仍要修成合法班表
+short = {k: list(v) for k, v in zs["schedule"].items()}
+done_short = False
+_mreqs = {"D": 3, "E": 2, "N": 2}
+for d, sh_ in ((d, sh_) for d in range(31) for sh_ in _cps.WORK):
+    on_d = [s_ for s_ in mixp.ids if short[s_][d] == sh_]
+    if len(on_d) != _mreqs[sh_]:
+        continue
+    for s_ in on_d:
+        if sum(c in _cps.WORK for c in short[s_]) <= _cps.MIN_MONTH_WORK:
+            continue
+        trial = list(short[s_]); trial[d] = "RC"
+        if _cps.hard_violations(trial, next(x for x in mixp.staff if x["staff_id"] == s_), mixp) == 0:
+            short[s_] = trial; done_short = True
+            break
+    if done_short:
+        break
+assert done_short, "測試前置失敗：造不出「逐人合法但某天人力不足」的起點"
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}, "time_limit": 40, "hint": short},
+                headers=ADMIN)
+st = r.json().get("stats", {})
+check("外部起點逐人合法、但某天某班人力不足 → 走零權重修復並排出合法班表", done_short and r.status_code == 200
+      and st.get("hard_penalty") == 0 and st.get("start_repaired") is True,
+      f"造出不足起點={done_short} {r.status_code} {r.json().get('detail', '')}")
 saved_budget = cpsat_service.REQUEST_BUDGET
 cpsat_service.REQUEST_BUDGET = 30.0
 t = _time.time()
