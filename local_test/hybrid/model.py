@@ -254,10 +254,11 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
     checks = [c for c in (resume or {}).get("checks", []) if c[1] != "TIMEOUT"]
     done = {c[0] for c in checks}
     n_min = None
+    approx = False
     timed_out = False
-    for n in range(max(demand, len(prot) + 1), len(base_staff) + max_extra + 1):
-        if n in done:
-            continue
+
+    def run(n, cap=check_time):
+        """檢查 n 人排不排得出來 → 狀態字串；'STOP' = 時間不夠"""
         staff = team(n)
         ids = [s["staff_id"] for s in staff]
         prob = Problem(year, month, staff, reqs, {i: {"high": set(), "normal": set()} for i in ids},
@@ -265,24 +266,67 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
         why = monthly_workday_shortfall(prob) or weekly_staffing_shortfall(prob)
         if why:
             checks.append((n, "預檢無解", why[0]))
-            continue
-        limit = check_time
+            return "預檢無解"
+        limit = cap
         if deadline is not None:
-            limit = min(check_time, deadline - time() - 2)
+            limit = min(cap, deadline - time() - 2)
             if limit < 3:
                 checks.append((n, "TIMEOUT", ""))
-                timed_out = True
-                break
+                return "STOP"
         r = solve_cpsat(prob, {k: 0.0 for k in FEATURES}, {i: 1.0 for i in ids}, 0.0, time_limit=limit,
                         workers=workers)
-        checks.append((n, r["status"], ""))
-        if r["schedule"] is not None:
-            n_min = n
+        st = "FEASIBLE" if r["schedule"] is not None else r["status"]
+        checks.append((n, st, ""))
+        return st
+
+    lo = max(demand, len(prot) + 1)
+    top = min(len(base_staff) + max_extra, hi)        # 超過 hi 必然「班不夠分」，不用試
+    n0 = min(max(len(base_staff), lo), top)
+    prior = {c[0]: c[1] for c in checks}
+    # 1) 先問「目前這組人排不排得出來」— 護理長真正要的答案；往上找只在排不出來時才做
+    st0 = prior.get(n0) or run(n0, cap=max(check_time, 45.0))   # 最重要的一題，給多一點時間
+    if st0 == "STOP":
+        timed_out = True
+    elif st0 == "FEASIBLE":
+        # 2) 目前人數可行 → 剩餘時間往下找最少人數；遇到無法判定（UNKNOWN）就停，標為約略值
+        n_min = n0
+        for n in range(n0 - 1, lo - 1, -1):
+            st = prior.get(n) or run(n)
+            if st == "FEASIBLE":
+                n_min = n
+                continue
+            approx = st in ("UNKNOWN", "STOP")
             break
+    else:
+        # 3) 目前人數排不出來 → 往上加人找最少需要幾人（中止時保留進度，下次接著試）
+        for n in range(n0 + 1, top + 1):
+            if n in done:
+                if prior[n] == "FEASIBLE":
+                    n_min = n
+                    break
+                continue
+            st = run(n)
+            if st == "STOP":
+                timed_out = True
+                break
+            if st == "FEASIBLE":
+                n_min = n
+                break
+    checks.sort(key=lambda c: c[0])
     comfort = None if n_min is None else max(n_min, demand + wish_slack)
     gray = [n for n, st, _ in checks if st == "UNKNOWN"]
     return {"min": n_min, "max": hi, "comfort": comfort, "gray": gray, "demand": demand, "days": nd,
-            "protected": len(prot), "checks": checks, "timed_out": timed_out}
+            "protected": len(prot), "checks": checks, "timed_out": timed_out, "approx": approx}
+
+
+def _proven_lower_bound(rng: Dict) -> Optional[int]:
+    """從最小人數開始、連續被證明排不出來的那一段 + 1；中間夾著無法判定的就停（人太多造成的不可行不算）"""
+    lb = None
+    for n, st, _ in sorted(rng.get("checks") or [], key=lambda c: c[0]):
+        if st not in ("預檢無解", "INFEASIBLE"):
+            break
+        lb = n + 1
+    return lb
 
 
 def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
@@ -294,17 +338,15 @@ def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
     """
     n = len(staff)
     if rng["min"] is None and rng.get("timed_out"):
-        checks = rng.get("checks") or []
-        proven = [c[0] for c in checks if c[1] in ("預檢無解", "INFEASIBLE")]
-        known = f"已確認 {max(proven)} 人以下排不出來；" if proven else ""
+        lb = _proven_lower_bound(rng)
+        known = f"已確認 {lb - 1} 人以下排不出來；" if lb else ""
         return {"ok": False, "staff": staff,
                 "note": f"人力試算超過時間上限而中止（{known}目前 {n} 人）。請稍後再試，或降低每日需求"}
     if rng["min"] is None:
         # 試算範圍內都沒找到合法解：下限取「已證明無解的最大人數 + 1」，不要把 None 印給使用者
         checks = rng.get("checks") or []
-        proven = [c[0] for c in checks if c[1] in ("預檢無解", "INFEASIBLE")]
         tried = max((c[0] for c in checks), default=n)
-        lb = max(proven) + 1 if proven else n + 1
+        lb = _proven_lower_bound(rng) or n + 1
         return {"ok": False, "staff": staff,
                 "note": f"人力不足：至少需要 {lb} 人以上（試算到 {tried} 人仍無法確認排得出來），目前 {n} 人，請增補人力或降低每日需求"}
     if n < rng["min"]:
@@ -317,7 +359,8 @@ def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
         dropped = [s["staff_id"] for s in staff if s not in kept]
         return {"ok": True, "staff": kept,
                 "note": f"人力過剩：最多 {rng['max']} 人（每人至少 {MIN_MONTH_WORK} 天會班不夠分），本次不排 {dropped}"}
-    return {"ok": True, "staff": staff, "note": f"人力適中（最少 {rng['min']}、建議 ≥ {rng['comfort']}、最多 {rng['max']}）"}
+    least = f"不超過 {rng['min']}" if rng.get("approx") else f"{rng['min']}"   # 往下找時遇到無法判定就停
+    return {"ok": True, "staff": staff, "note": f"人力適中（最少 {least}、建議 ≥ {rng['comfort']}、最多 {rng['max']}）"}
 
 
 def check_wishes_feasible(prob: Problem, wishes: Dict[str, List[int]], time_limit: float = 20.0,
@@ -466,6 +509,10 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
     Wi = {k: int(round(W[k] * 10)) for k in FEATURES}
     d_exprs = {}
     obj_terms = []
+    # 純可行性（人力試算、預假可行性檢查）：所有偏好權重都是 0 → 不建偏好變數，找到第一個合法解即可。
+    # 這些變數乘上 0 仍會拖慢求解（Cloud Run 2 vCPU 上試算每個人數都跑滿時限仍 UNKNOWN）。
+    feas_only = (not any(Wi.values()) and not fairness and not prob.backward_weight
+                 and not prob.mix2_weight and not prob.mix3_weight and not prob.senior_weight)
 
     for s in prob.staff:
         sid = s["staff_id"]
@@ -519,6 +566,9 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
         m.add(sum(x[sid, d, r] for d in range(nd) for r in REST) >= MIN_REST)
         m.add(sum(work(sid, d) for d in range(nd)) <= MAX_MONTH_WORK)
         m.add(sum(work(sid, d) for d in range(nd)) >= prob.min_work_days)
+        if feas_only:
+            d_exprs[sid] = 0
+            continue
 
         # —— 軟特徵（線性化） ——
         w = prob.wishes.get(sid, {"high": set(), "normal": set()})

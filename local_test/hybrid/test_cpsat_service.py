@@ -187,6 +187,10 @@ ns = [c[0] for c in full["checks"]]
 check("接續試算：沿用進度、不重複檢查、找到最少人數",
       not full["timed_out"] and full["min"] is not None and len(ns) == len(set(ns))
       and all(c in full["checks"] for c in part["checks"] if c[1] != "TIMEOUT"), f"min={full['min']} checks={ns}")
+over = {"min": None, "max": 24, "timed_out": True,
+        "checks": [(10, "預檢無解", ""), (15, "預檢無解", ""), (16, "UNKNOWN", ""), (25, "INFEASIBLE", ""), (28, "INFEASIBLE", "")]}
+note = _adj(base, over)["note"]
+check("人太多造成的排不出來不算下限（只採連續被證明的那一段）", "15 人以下" in note and "28" not in note, note)
 store.settings = dict(store.settings or {}, open=False)
 store.entries = {}
 saved_budget = cpsat_service.REQUEST_BUDGET
