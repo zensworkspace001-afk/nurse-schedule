@@ -376,6 +376,7 @@
 .dashboard__step {
   font-weight: bold;
   color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;      /* 步驟名稱不換行；手機上改縮字級（見下方 RWD） */
   padding: 6px 12px;
   border-radius: 20px;
   transition: all 0.4s cubic-bezier(0.22, 1, 0.36, 1);
@@ -1143,5 +1144,14 @@
   }
   .dashboard__calendar-grid {
     grid-template-columns: repeat(7, minmax(40px, 1fr));
+  }
+}
+
+/* 步驟條在手機上一行放得下四步 */
+@media screen and (max-width: 480px) {
+  .dashboard__stepper { gap: 4px; }
+  .dashboard__step {
+    padding: 4px 6px;
+    font-size: 0.72rem;
   }
 }

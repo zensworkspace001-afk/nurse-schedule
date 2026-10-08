@@ -515,8 +515,8 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
                       return (
                           <g key={ratio}>
                               <line x1={padding} y1={y} x2={svgWidth - paddingRight} y2={y} stroke="#ecf0f1" strokeDasharray="5 5" strokeWidth="1.5" />
-                              <text x={padding - 10} y={y + 4} fontSize="12" fill="#3498db" textAnchor="end" className={trendToggles.health ? 'statistics__axis-label--visible' : 'statistics__axis-label--dimmed'}>{valHealth} 分</text>
-                              <text x={svgWidth - paddingRight + 10} y={y + 4} fontSize="12" fill="#7f8c8d" textAnchor="start" className={(trendToggles.ratioD || trendToggles.ratioE || trendToggles.ratioN) ? 'statistics__axis-label--visible' : 'statistics__axis-label--dimmed'}>1 : {valRatio}</text>
+                              <text x={padding - 10} y={y + 4} fontSize="12" fill="#8ccfff" textAnchor="end" className={trendToggles.health ? 'statistics__axis-label--visible' : 'statistics__axis-label--dimmed'}>{valHealth} 分</text>
+                              <text x={svgWidth - paddingRight + 10} y={y + 4} fontSize="12" fill="rgba(255,255,255,0.65)" textAnchor="start" className={(trendToggles.ratioD || trendToggles.ratioE || trendToggles.ratioN) ? 'statistics__axis-label--visible' : 'statistics__axis-label--dimmed'}>1 : {valRatio}</text>
                           </g>
                       );
                   })}
@@ -551,11 +551,11 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
                       return (
                           <g key={i}>
-                              <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="#34495e" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
+                              <text x={x} y={svgHeight - padding + 25} fontSize="13" fill="rgba(255,255,255,0.8)" textAnchor="middle" fontWeight="bold">{`${d.year}/${d.month}`}</text>
 
                               {yAvg !== null && <g className="statistics__chart-anim" style={{ opacity: trendToggles.health ? 1 : 0 }}>
                                   <circle cx={x} cy={yAvg} r="5" fill="#3498db" stroke="white" strokeWidth="2" />
-                                  <text x={x} y={yAvg - 12} fontSize="12" fill="#2980b9" textAnchor="middle" fontWeight="bold">{d.avg}</text>
+                                  <text x={x} y={yAvg - 12} fontSize="12" fill="#8ccfff" textAnchor="middle" fontWeight="bold">{d.avg}</text>
                               </g>}
 
                               <g className="statistics__chart-anim" style={{ opacity: trendToggles.ratioD ? 1 : 0 }}>
@@ -570,7 +570,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
                               <g className="statistics__chart-anim" style={{ opacity: trendToggles.ratioN ? 1 : 0 }}>
                                   <circle cx={x} cy={yRN} r="6" fill="#34495e" stroke="white" strokeWidth="2" />
-                                  <text x={x} y={yRN + 18} fontSize="11" fill="#2c3e50" textAnchor="middle" fontWeight="bold">{d.ratioN}</text>
+                                  <text x={x} y={yRN + 18} fontSize="11" fill="#a9c7ff" textAnchor="middle" fontWeight="bold">{d.ratioN}</text>
                               </g>
                           </g>
                       );

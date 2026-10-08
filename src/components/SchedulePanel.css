@@ -826,6 +826,8 @@
 /* --- Staff name cell (sticky first column) --- */
 .schedule-panel__staff-cell {
   padding: 8px;
+  min-width: 120px;          /* 班表一擠員工欄就被壓成一字一行，固定最小寬度 */
+  white-space: nowrap;
   border-right: 1px solid rgba(255, 255, 255, 0.12);
   position: sticky;
   left: 0;
