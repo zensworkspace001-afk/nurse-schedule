@@ -2,9 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Download, Plus, Save, KeyRound, Trash2, AlertTriangle } from 'lucide-react';
 import { auth } from '../api/database';
 import EncryptedField from './EncryptedField';
+import AnnouncementEditor from './AnnouncementEditor';
 import './StaffManagementPanel.css';
 
-const StaffManagementPanel = ({ staffData, setStaffData }) => {
+const StaffManagementPanel = ({ staffData, setStaffData, currentUser, announcement }) => {
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -285,6 +286,7 @@ const handleSave = async () => {
 
   return (
     <div className="staff-mgmt">
+      <AnnouncementEditor announcement={announcement} currentUser={currentUser} />
       <div className="staff-mgmt__header">
         <h2 className="staff-mgmt__title">員工資料管理 ({localStaff.length}人)</h2>
         <div className="staff-mgmt__actions">

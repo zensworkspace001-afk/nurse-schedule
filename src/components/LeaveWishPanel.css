@@ -1,5 +1,5 @@
 /* ==========================================================================
-   LeaveWishPanel — 預假管理（視覺沿用 AccessLogPanel / StaffManagementPanel 的玻璃擬態）
+   LeaveWishPanel — 人力與預假（視覺沿用 AccessLogPanel / StaffManagementPanel 的玻璃擬態）
    ========================================================================== */
 
 .lw-panel {
@@ -64,6 +64,29 @@
   margin: 0 0 10px;
   font-size: 0.95rem;
   color: rgba(255, 255, 255, 0.9);
+}
+
+.lw-panel__ward-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  margin: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.lw-panel__ward-summary::-webkit-details-marker {
+  display: none;
+}
+
+.lw-panel__ward-summary::before {
+  content: '▸';
+  transition: transform 0.2s ease;
+}
+
+.lw-panel__ward[open] .lw-panel__ward-summary::before {
+  transform: rotate(90deg);
 }
 
 .lw-panel__form {
