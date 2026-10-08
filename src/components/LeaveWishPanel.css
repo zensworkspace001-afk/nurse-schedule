@@ -89,6 +89,12 @@
   transform: rotate(90deg);
 }
 
+.lw-panel__floor-note {
+  flex-basis: 100%;
+  order: 10;          /* 法定下限說明排在輸入列與按鈕之後，自成一行 */
+  font-size: 0.78rem;
+}
+
 .lw-panel__form {
   display: flex;
   flex-wrap: wrap;
@@ -106,7 +112,9 @@
 
 .lw-panel__input {
   width: 92px;
-  padding: 7px 10px;
+  height: 36px;
+  box-sizing: border-box;
+  padding: 0 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.25);
   background: rgba(0, 0, 0, 0.2);
