@@ -198,3 +198,9 @@
   .leave-wish__day { min-height: 42px; }
   .leave-wish__day-left { font-size: 0.6rem; }
 }
+
+/* 窄手機（iPhone SE / Galaxy S9+）：日期格原本只有 31px 寬，縮間距與內距讓每格 ≥ 32px 好點 */
+@media (max-width: 400px) {
+  .leave-wish { padding: 12px 6px; }
+  .leave-wish__grid { gap: 3px; }
+}
