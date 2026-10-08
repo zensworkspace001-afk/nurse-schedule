@@ -57,6 +57,9 @@ FEATURES = [
     "wish_high_miss", "wish_normal_miss", "nights",
     "isolated_off", "weekend_work", "shift_switch", "streak6",
 ]
+SENIOR_LEVELS = ("N2", "N3", "N4")         # 資深職級（與前端 checkSkillMixSafety 一致）
+
+
 FEATURE_LABELS = {
     "wish_high_miss":   "高優先志願落空",
     "wish_normal_miss": "一般志願落空",
@@ -83,6 +86,8 @@ class Problem:
     min_work_days: int = MIN_MONTH_WORK          # 硬：每人每月至少上班天數（0 = 不限制）
     mix2_weight: float = 1.0                     # 軟：整月混 2 種工作班別的不滿度
     mix3_weight: float = 3.0                     # 軟：整月混 3 種（D/E/N 全上）— 比 2 種重
+    senior_weight: float = 0.0                   # 軟：某天某班沒有資深人員（N2+ 或組長）坐鎮，每班次的不滿度
+                                                 #     （對齊前端 checkSkillMixSafety；0 = 不考慮）
 
     def __post_init__(self):
         _, self.num_days = calendar.monthrange(self.year, self.month)
@@ -102,6 +107,9 @@ class Problem:
 
     def is_protected(self, s: Dict) -> bool:
         return bool(s.get("is_pregnant_or_nursing")) or s.get("leave_status") == "Student"
+
+    def is_senior(self, s: Dict) -> bool:
+        return s.get("is_leader") in (True, "True", "true") or s.get("level") in SENIOR_LEVELS
 
     def weekly_cap(self, s: Dict) -> int:
         return 6 if s.get("special_status") == "BiWeekly" else 5   # 48h / 40h
@@ -270,7 +278,15 @@ def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
       其餘        → 全員參與
     """
     n = len(staff)
-    if rng["min"] is None or n < rng["min"]:
+    if rng["min"] is None:
+        # 試算範圍內都沒找到合法解：下限取「已證明無解的最大人數 + 1」，不要把 None 印給使用者
+        checks = rng.get("checks") or []
+        proven = [c[0] for c in checks if c[1] in ("預檢無解", "INFEASIBLE")]
+        tried = max((c[0] for c in checks), default=n)
+        lb = max(proven) + 1 if proven else n + 1
+        return {"ok": False, "staff": staff,
+                "note": f"人力不足：至少需要 {lb} 人以上（試算到 {tried} 人仍無法確認排得出來），目前 {n} 人，請增補人力或降低每日需求"}
+    if n < rng["min"]:
         return {"ok": False, "staff": staff, "note": f"人力不足：至少需要 {rng['min']} 人，目前 {n} 人，請增補人力或降低每日需求"}
     if n > rng["max"]:
         keep_first = [s for s in staff if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"
@@ -549,11 +565,25 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
                 m.add(sum(c * y[sh] for sid in prob.ids for (y, c) in [week_y[sid, wi]])
                       >= prob.reqs[sh] * (b - a + 1))
 
+    # 每班至少一位資深（N2+ 或組長）坐鎮：軟約束（硬約束會讓資深不足的團隊整個排不出來，
+    # 也會讓預假送出時的可行性檢查失準），權重夠高時只要排得出來就會滿足
+    senior_gaps = []
+    if prob.senior_weight:
+        seniors = [s["staff_id"] for s in prob.staff if prob.is_senior(s)]
+        for d in range(nd):
+            for sh in WORK:
+                if prob.reqs[sh] <= 0:
+                    continue
+                g = m.new_bool_var("")
+                m.add(sum(x[sid, d, sh] for sid in seniors) + g >= 1)
+                senior_gaps.append(g)
+
     max_d = m.new_int_var(0, 10 ** 7, "max_dissat")
     for sid in prob.ids:
         m.add(max_d >= d_exprs[sid])
     extra_obj = extra(m, x, prob, week_y) if extra else 0
-    obj_expr = sum(obj_terms) + int(round(fairness * 10)) * max_d + extra_obj
+    obj_expr = (sum(obj_terms) + int(round(fairness * 10)) * max_d + extra_obj
+                + int(round(prob.senior_weight * 10)) * sum(senior_gaps))
     m.minimize(obj_expr)
 
     # —— 起始班表（hint）：保證結果不比它差 ——
@@ -680,3 +710,10 @@ def sa_polish(prob: Problem, schedule: Dict[str, List[str]], W, mult, fairness,
                 cur[sid][d] = sh
 
     return {"schedule": best, "start_obj": start_obj, "best_obj": best_obj, "accepted": accepted}
+
+
+def senior_gap_count(prob: Problem, schedule: Dict[str, List[str]]) -> int:
+    """有幾個（日, 班別）完全沒有資深人員（N2+ 或組長）— 對應前端 checkSkillMixSafety 的警告數"""
+    seniors = [s["staff_id"] for s in prob.staff if prob.is_senior(s)]
+    return sum(1 for d in range(prob.num_days) for sh in WORK
+               if prob.reqs[sh] > 0 and not any(schedule[sid][d] == sh for sid in seniors))

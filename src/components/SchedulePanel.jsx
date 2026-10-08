@@ -233,6 +233,7 @@ const SchedulePanel = ({
           `📋 參與排班 ${st.num_nurses} 人：${Object.keys(assigned).map(id => nameOf[id] || id).join('、')}\n` +
           `🛡️ 法遵硬約束違規：${st.hard_penalty}\n` +
           `🌴 預假：${st.wishes_total ? `${st.wishes_met} / ${st.wishes_total} 天已滿足${st.wishes_hard ? '（保證）' : '（⚠️ 無法全部保證，已盡量滿足）'}` : '本月沒有登記預假'}\n` +
+          (st.senior_gaps != null ? `👩‍⚕️ 資深坐鎮：${st.senior_gaps === 0 ? '每班都有 N2+ 或組長' : `⚠️ 有 ${st.senior_gaps} 個班次沒有 N2+ 或組長（資深人力不足）`}\n` : '') +
           `🔁 整月班別：只上 1 種 ${types[1] ?? types['1'] ?? 0} 人、混 2 種 ${types[2] ?? types['2'] ?? 0} 人、混 3 種 ${types[3] ?? types['3'] ?? 0} 人｜逆向輪班 ${st.backward_rotations} 次\n\n` +
           `班表已放進草稿，請檢視後按「儲存並發布」。`
       }]);

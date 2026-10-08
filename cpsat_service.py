@@ -48,7 +48,8 @@ DAYS_PER_PERSON_DEFAULT = 4
 #   預假 20 > 整月混 2 種班別 6（3 種 18）> 逆向輪班 3 > 孤立休 2 > 夜班 / 週末公平 0.3
 GEN_WEIGHTS = {k: 1.0 for k in cps.FEATURES}
 GEN_WEIGHTS.update(wish_high_miss=20.0, isolated_off=2.0, nights=0.3, weekend_work=0.3)
-GEN_PROBLEM_KW = dict(mix2_weight=6.0, mix3_weight=18.0, backward_weight=3.0)
+# senior_weight 30：比任何偏好都重（預假在排班時是硬約束，不受影響）— 每班盡量有資深人員坐鎮
+GEN_PROBLEM_KW = dict(mix2_weight=6.0, mix3_weight=18.0, backward_weight=3.0, senior_weight=30.0)
 
 
 # ============================================================
@@ -132,6 +133,8 @@ def eligible_staff(rows: List[Dict]) -> List[Dict]:
             "special_status": s.get("special_status", "Standard"),
             "is_pregnant_or_nursing": s.get("is_pregnant_or_nursing") in (True, "True", "true"),
             "leave_status": s.get("leave_status", "None"),
+            "level": s.get("level", "N0"),
+            "is_leader": s.get("is_leader") in (True, "True", "true"),
         })
     return out
 
@@ -298,6 +301,7 @@ def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Opti
             "wishes_hard": wishes_hard, "staffing": {k: est[k] for k in ("min", "max", "recommended", "note")},
             "backward_rotations": sum(cps.backward_rotations(S[s]) for s in ids),
             "shift_types": dict(Counter(len({c for c in S[s] if c in cps.WORK}) for s in ids)),
+            "senior_gaps": cps.senior_gap_count(prob, S),
         },
     }
 

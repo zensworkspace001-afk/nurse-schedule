@@ -149,5 +149,25 @@ r = client.post("/cpsat/generate_schedule", json={"year": 2026, "month": 8, "req
                 headers=ADMIN)
 check("排班人力不足 → 400 並說明", r.status_code == 400, r.json().get("detail"))
 
+# 每班資深坐鎮（N2+ 或組長）：給 6 位資深，排出來每天每班都要有（對齊前端 checkSkillMixSafety）
+store.entries = {}
+seniors = {"N002", "N004", "N005", "N006", "N008", "N010"}
+saved_staff = store.staff
+store.staff = [dict(s, level="N3" if s["staff_id"] in seniors else "N1") for s in saved_staff]
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 3, "N": 2}, "time_limit": 40},
+                headers=ADMIN)
+st = r.json().get("stats", {})
+check("排班：每班都有資深坐鎮（senior_gaps = 0）", r.status_code == 200 and st.get("senior_gaps") == 0
+      and st.get("hard_penalty") == 0, f"senior_gaps={st.get('senior_gaps')}")
+store.staff = saved_staff
+
+# 試算範圍內都找不到可行人數（min=None）：訊息不能出現 None，下限 = 已證明無解的最大人數 + 1
+from model import adjust_headcount  # noqa: E402
+adj = adjust_headcount([{"staff_id": f"N{i:03d}"} for i in range(20)],
+                       {"min": None, "max": 39, "checks": [(27, "預檢無解", ""), (28, "預檢無解", ""), (29, "UNKNOWN", ""), (35, "UNKNOWN", "")]})
+check("試算無解（min=None）→ 訊息不含 None、下限 29", not adj["ok"] and "None" not in adj["note"] and "29 人以上" in adj["note"],
+      adj["note"])
+
 print(f"\n{sum(results)}/{len(results)} 通過")
 sys.exit(0 if all(results) else 1)
