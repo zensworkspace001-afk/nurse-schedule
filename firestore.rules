@@ -205,6 +205,24 @@ service cloud.firestore {
     }
 
     // ============================================================
+    // 11. LeaveWishes/{yearMonth} — 預假（每人 4 天，先搶先贏 + CP-SAT 可行性檢查）
+    //     寫入：永遠拒絕 — 只允許排班微服務（cpsat_service.py /leave_wishes/submit）用 Admin SDK 寫入，
+    //          它會先檢查「開放中、本人、4 天、每日配額、整體仍排得出合法班表」才寫，
+    //          前端直接寫就能繞過這些檢查，所以一律擋掉。
+    //     頂層 doc：{ counts, quota, version } 只有人數、沒有名字 → 登入者可讀（月曆顯示剩餘名額）
+    //     entries/{staffId}：誰想休哪幾天（可能透露看診 / 家務）→ 只有本人與管理員可讀
+    // ============================================================
+    match /LeaveWishes/{yearMonth} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+
+      match /entries/{staffId} {
+        allow read: if isAdmin() || isStaff(staffId);
+        allow write: if false;
+      }
+    }
+
+    // ============================================================
     // 預設：拒絕所有未明確允許的存取
     // ============================================================
     match /{document=**} {

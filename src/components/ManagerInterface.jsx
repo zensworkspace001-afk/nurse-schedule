@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { motion, useMotionValue, animate } from 'framer-motion';
-import { Settings, Users, CalendarCog, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Scale, Menu, X } from 'lucide-react';
+import { Settings, Users, CalendarCog, CalendarHeart, Megaphone, ClipboardCheck, BarChart3, ShieldAlert, Scale, Menu, X } from 'lucide-react';
 import './ManagerInterface.css';
 import RequirementsPanel from './RequirementsPanel';
 import StaffManagementPanel from './StaffManagementPanel';
@@ -11,6 +11,7 @@ import ScheduleReviewPanel from './ScheduleReviewPanel';
 import StatisticsPanel from './StatisticsPanel';
 import AccessLogPanel from './AccessLogPanel';
 import ComplianceDashboard from './ComplianceDashboard';
+import LeaveWishPanel from './LeaveWishPanel';
 
 const ManagerInterface = ({
   currentUser, announcement,
@@ -26,10 +27,13 @@ const ManagerInterface = ({
   baseSalary, setBaseSalary,
   baseSalaryEnc, setBaseSalaryEnc,
   levelBonus, setLevelBonus,
+  leaveWish,
+  publishedDate,
 }) => {
   const tabs = [
     { id: 'requirements', path: '/requirements', label: '人力需求', icon: Settings },
     { id: 'staff', path: '/staff', label: '員工管理', icon: Users },
+    { id: 'leave-wishes', path: '/leave-wishes', label: '預假管理', icon: CalendarHeart },
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
     { id: 'publish', path: '/publish', label: '發布與認領', icon: Megaphone },
     { id: 'review', path: '/review', label: '結算與歷史', icon: ClipboardCheck },
@@ -221,6 +225,15 @@ const ManagerInterface = ({
                 <StaffManagementPanel staffData={staffData} setStaffData={setStaffData} />
               } />
 
+              <Route path="/leave-wishes" element={
+                <LeaveWishPanel
+                  staffData={staffData} requirements={requirements}
+                  selectedYear={selectedYear} selectedMonth={selectedMonth}
+                  leaveWish={leaveWish}
+                  publishedDate={publishedDate}
+                />
+              } />
+
               <Route path="/schedule" element={
                 <SchedulePanel
                   schedule={schedule} staffData={staffData} violations={violations}
@@ -239,6 +252,7 @@ const ManagerInterface = ({
                   onManualRefresh={onManualRefresh}
                   publicHolidays={publicHolidays}
                   setFinalizedSchedule={setFinalizedSchedule}
+                  leaveWish={leaveWish}
                 />
               } />
 
@@ -254,6 +268,7 @@ const ManagerInterface = ({
                    onPushToHistory={onPushToHistory}
                    calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
                    healthStats={healthStats}
+                   publishedDate={publishedDate}
                 />
               } />
 

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
 import { auth } from '../api/database';
-import { backupScheduleToArchive } from '../api/database';
-import { legalDailyFloor, computeDailyRequirements, clampDailyRequirementsToFeasibleBand } from '../constants';
+import { backupScheduleToArchive, saveLeaveWishSettings } from '../api/database';
+import { generateCpsatSchedule } from '../api/scheduleEngine';
+import { computeDailyRequirements } from '../constants';
 import './SchedulePanel.css';
 
 // ============================================================================
@@ -12,6 +13,7 @@ const SchedulePanel = ({
     onSaveSchedule, schedule, setSchedule, staffData, requirements, bedConfig,
     onGenerateSchedule, selectedYear, selectedMonth, setSelectedYear, setSelectedMonth,
     shiftOptions, setShiftOptions, setFinalizedSchedule, // ★ 接收參數
+    leaveWish, // 預假設定（同月份時 CP-SAT 沿用當時的每日人力）
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
     finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule, historyYear, historyMonth, historySchedule, onManualRefresh, publicHolidays
 }) => {
@@ -164,185 +166,101 @@ const SchedulePanel = ({
   // 👆 ★★★ 補上這段就修復了！ ★★★ 👆
 
   // ============================================================================
-  // 排班最佳化（獨立微服務 main1.py via VITE_CPSAT_URL）
+  // CP-SAT 直接指派排班（Cloud Run 排班引擎：main1.py + cpsat_service.py）
   // ----------------------------------------------------------------------------
-  // 演算法：TLPS (Tissue-Like P-System) + 模擬退火 (SA)
-  //
-  // 與 Gemini 路徑互補：
-  //   - Gemini：LLM 生成「匿名 pattern」→ 員工選班認領 → 偏向模糊條件
-  //   - SA：啟發式搜尋「直接分配給每位員工」→ 罰分極小化 → 大規模可用
-  //
-  // 因為 SA 結果是直接分配（非虛擬 pattern），所以寫進 schedule 與
-  // finalizedSchedule 兩個 doc，員工不必再選。
-  //
-  // ⚠️ SA 不像 CP-SAT 有「數學保證合規」；若 stats.final_penalty > 0
-  // 代表還有殘留違規（會在 violation_breakdown 列出），admin 必須人工檢視。
+  // 取代舊的「SA 最佳化排班 → 匿名虛擬 slot → 員工認領」：
+  //   - CP-SAT 把勞基法、每日人力、孕哺 / 實習禁夜、週內不花花班、連上 ≤ 5 天、連大夜 ≤ 3 晚、
+  //     大夜後連休 2 天、每月至少上班 20 天當「硬約束」→ 有解就保證合法，無解會說明原因
+  //   - 已登記的預假（預假管理分頁）也是硬約束 → 保證滿足
+  //   - 結果直接指派到真實工號（不再匿名化），寫進草稿；護理長檢視後按「儲存並發布」
+  // 人數由引擎先做人力試算：不足就拒絕並說明，過多則本月不排尾端的一般護理師。
   // ============================================================================
-  const handleCpsatSolve = async () => {
-    const cpsatUrl = import.meta.env.VITE_CPSAT_URL;
-    if (!cpsatUrl) {
-      alert('❌ 尚未設定 VITE_CPSAT_URL 環境變數。\n部署請參考 CPSAT_DEPLOY.md。');
-      return;
+  const handleCpsatAssign = async () => {
+    // 每日最低人力：本月若已開放過預假，沿用當時的設定（預假的可行性檢查是用這組人力算的，
+    // 換一組人力就不保證預假可滿足）；否則取 max(護理長填的需求, 衛福部護病比法定下限)。
+    const wishForThisMonth = leaveWish && Number(leaveWish.year) === selectedYear && Number(leaveWish.month) === selectedMonth;
+    const legal = computeDailyRequirements(bedConfig || {});
+    const reqs = wishForThisMonth && leaveWish.reqs
+      ? { D: Number(leaveWish.reqs.D), E: Number(leaveWish.reqs.E), N: Number(leaveWish.reqs.N) }
+      : {
+          D: Math.max(requirements.D || 0, legal.D),
+          E: Math.max(requirements.E || 0, legal.E),
+          N: Math.max(requirements.N || 0, legal.N),
+        };
+
+    // 預假還開放就排班 → 之後才登記的人會被告知「保證休假」，但班表沒有反映。必須先截止（引擎也會擋）。
+    if (wishForThisMonth && leaveWish.open) {
+      const closeNow = window.confirm(
+        `⚠️ ${selectedYear}/${selectedMonth} 的預假尚未截止\n\n` +
+        `截止前排出的班表不會包含之後才登記的預假，但員工那邊會顯示「登記成功、保證休假」。\n\n` +
+        `要現在截止預假並開始排班嗎？（已登記的預假保留，排班時保證滿足）`
+      );
+      if (!closeNow) return;
+      try {
+        await saveLeaveWishSettings({ ...leaveWish, open: false, closedAt: new Date().toISOString() });
+      } catch (err) {
+        alert(`❌ 截止預假失敗：${err.message}`);
+        return;
+      }
     }
 
-    // 1. 篩選參與排班的員工：在職且非 admin、非實習生（實習生由 protected_indices 標記）
-    const eligibleStaff = (staffData || []).filter(s =>
-      s.staff_id && s.staff_id !== 'admin' && s.is_active !== false
-      && s.leave_status !== 'OnLeave' && s.leave_status !== 'Maternal'
-    );
-
-    if (eligibleStaff.length < 3) {
-      alert(`❌ 在職員工只有 ${eligibleStaff.length} 人，SA 求解需要至少 3 人。`);
-      return;
-    }
-
-    // 2. 找出受保護員工（孕/哺乳 + 實習生）—— 在 SA 內會被禁排 E/N（500000 罰分）
-    const isPregnant = (s) => s.is_pregnant_or_nursing === true
-      || s.is_pregnant_or_nursing === 'True' || s.is_pregnant_or_nursing === 'true';
-    const protectedIndices = eligibleStaff
-      .map((s, i) => ({ s, i }))
-      .filter(({ s }) => isPregnant(s) || s.leave_status === 'Student')
-      .map(({ i }) => i);
-
-    // 衛福部三班護病比法定下限（依床數 + 醫院等級）。
-    const floor = legalDailyFloor(bedConfig?.bedCount, bedConfig?.hospitalLevel || 'MedicalCenter');
-    // SA 的「每日擺人目標」必須本身就 ≥ 法定下限，否則 SA 會把人數卡在 requirements 的
-    // 低值（內部 req_max = req+1 會壓上限），平均人力不足 → 護病比監控不會 comply。
-    // 取 computeDailyRequirements（= max(admin 自填, 法定下限)）與 requirements 的較大者，
-    // 避免 requirements 因 RequirementsPanel 未掛載而過時。min_daily_reqs 仍傳純法定下限當第 2 層硬底線。
-    const clamped = computeDailyRequirements(bedConfig || {});
-    const baseReqs = {
-      D: Math.max(requirements.D || 0, clamped.D),
-      E: Math.max(requirements.E || 0, clamped.E),
-      N: Math.max(requirements.N || 0, clamped.N),
-    };
-
-    // ★ 依「實際參與排班人數」把每日總需求夾進 SA 可行帶（上限=不過勞天條、下限=護病比）。
-    // 人力相對需求過剩時不動（低需求反而合法且 DP 多）；需求高於可行上限時自動下修，
-    // 白班優先扣減、各班仍 ≥ 護病比下限，避免把 SA 推進 INFEASIBLE 過勞區。
-    const band = clampDailyRequirementsToFeasibleBand({
-      reqs: baseReqs, floor, staffCount: eligibleStaff.length, numDays: daysInMonth,
-    });
-    const reqD = band.reqs.D;
-    const reqE = band.reqs.E;
-    const reqN = band.reqs.N;
-
-    const payload = {
-      year: selectedYear,
-      month: selectedMonth,
-      nurses: eligibleStaff.map(s => s.staff_id),
-      protected_indices: protectedIndices,
-      daily_reqs: { 1: reqD, 2: reqE, 3: reqN },
-      min_daily_reqs: { 1: floor.D || 0, 2: floor.E || 0, 3: floor.N || 0 },
-      // custom_rules 留空白；之後若要把 customAiInstruction 接入，需要先用 LLM 解析成結構化規則
-      custom_rules: [],
-      max_iterations: 50000,
-    };
-
-    // 3. 跑前再次跟 admin 確認
     const okGo = window.confirm(
-      `🧮 SA 模擬退火排班\n\n` +
-      `將為 ${selectedYear}/${selectedMonth} 生成 ${eligibleStaff.length} 份匿名班表\n` +
-      `（${protectedIndices.length} 人列為保護名單，SA 會盡量讓部分班表不含 E/N 供其認領）\n\n` +
-      `每日人力需求：D=${reqD} / E=${reqE} / N=${reqN}（每日總計 ${reqD + reqE + reqN} 人）\n` +
-      (band.note ? `🔧 ${band.note}\n\n` : '\n') +
-      `✅ 跟 AI 排班相同流程：產出「虛擬 pattern → 員工自己選班認領」的待選班表，\n` +
-      `不會直接定案。預估運算 1-3 分鐘（5 萬次迭代）；若仍有違規會在訊息列列出，要繼續嗎？`
+      `🧮 CP-SAT 直接指派排班\n\n` +
+      `${selectedYear}/${selectedMonth}  每日最低人力：D=${reqs.D} / E=${reqs.E} / N=${reqs.N}` +
+      `${wishForThisMonth ? '（沿用預假開放時的設定）' : ''}\n\n` +
+      `• 勞基法、護病比、孕哺 / 實習禁夜、休息與連班上限一律保證遵守\n` +
+      `• 已登記的預假保證滿足\n` +
+      `• 結果直接指派給每位員工並放進草稿（不再匿名認領），檢視後再按「儲存並發布」\n\n` +
+      `預估 1–3 分鐘（首次呼叫多約 10 秒冷啟動），要繼續嗎？`
     );
     if (!okGo) return;
 
     setProcessing(true);
     setShowGemini(true);
-    setGeminiMessages([{
-      role: 'assistant',
-      content: `🧮 SA 模擬退火進行中... (員工 ${eligibleStaff.length}、保護 ${protectedIndices.length}、班別需求 D=${payload.daily_reqs[1]}/E=${payload.daily_reqs[2]}/N=${payload.daily_reqs[3]})`
-        + (band.note ? `\n🔧 ${band.note}` : '')
-    }]);
-    setLoadingStatus('🧮 SA 退火運算中（最多 50000 次迭代）...');
+    setGeminiMessages([{ role: 'assistant', content: `🧮 CP-SAT 排班中…（${selectedYear}/${selectedMonth}，D=${reqs.D} / E=${reqs.E} / N=${reqs.N}）` }]);
+    setLoadingStatus('🧮 CP-SAT 排班中（最多約 2 分鐘）...');
 
     try {
-      const token = await auth.currentUser.getIdToken();
       const t0 = Date.now();
-      const response = await fetch(`${cpsatUrl.replace(/\/+$/, '')}/generate_schedule`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-      const data = await response.json();
+      const data = await generateCpsatSchedule({ year: selectedYear, month: selectedMonth, reqs, timeLimit: 120 });
 
-      if (!response.ok) {
-        throw new Error(data.detail || `排班服務回應 ${response.status}`);
-      }
-
-      // 4. SA 回傳的是「直接分配到真實 staff_id」的結果。但為了跟 AI generate 一致
-      //    （產出匿名虛擬班表、員工自己選班認領），這裡把每位 nurse 的整月 pattern
-      //    抽離身份、重新編成匿名虛擬 slot D001…DNNN。
-      //    後端 rest 班別是 RG / RC（例假 / 休息日），前端 SHIFT_TYPES 直接支援；
-      //    舊版若回傳 'O' 仍相容（轉成 OFF）。
-      const byNurse = {};
-      data.schedule.forEach(cell => {
+      // 直接指派：key 是真實工號（與舊 SA 路徑不同，不再編成 D001… 匿名 slot）
+      const assigned = {};
+      (data.schedule || []).forEach(cell => {
         const day = parseInt(cell.date.split('-')[2], 10);
-        if (!byNurse[cell.nurse_id]) byNurse[cell.nurse_id] = {};
-        const type = cell.shift === 'O' ? 'OFF' : cell.shift;
-        byNurse[cell.nurse_id][day] = { type, time: '' };
+        if (!assigned[cell.nurse_id]) assigned[cell.nurse_id] = {};
+        assigned[cell.nurse_id][day] = { type: cell.shift, time: '' };
       });
 
-      // 重新編成匿名虛擬 slot，丟棄真實 staff_id 對應（誰排哪張由員工選班決定）
-      const virtualSchedule = {};
-      Object.values(byNurse).forEach((monthPattern, index) => {
-        const virtualId = `D${String(index + 1).padStart(3, '0')}`;
-        virtualSchedule[virtualId] = monthPattern;
-      });
-
-      // 5. 走跟 AI generate 同一條路：onGenerateSchedule 會設草稿、把 finalizedSchedule
-      //    清成 null（待選狀態），員工再透過選班認領，而不是 SA 直接定案。
       setJustGenerated(true);
-      onGenerateSchedule(virtualSchedule);
+      onGenerateSchedule(assigned);
 
+      const st = data.stats || {};
       const elapsedClient = ((Date.now() - t0) / 1000).toFixed(1);
-      const stats = data.stats || {};
-      // solver_status === 'OPTIMAL' 代表罰分已低於後端門檻（殘留違規可忽略）；
-      // FEASIBLE 表示仍有殘留違規。SA 內部罰分含「比勞基法更嚴」的客製規則，
-      // 即使法遵已過，penalty 仍可能 > 0，所以用 solver_status 判定而非 ===0。
-      const compliant = data.solver_status === 'OPTIMAL';
-      // 兩階段 TLPS：hard_penalty===0 表示已無「禁止模式」（= JS 法遵硬底線過關），
-      // 比 solver_status==='OPTIMAL'（還要求軟罰分低於門檻）更貼近真正的合規判定。
-      const feasible = stats.hard_penalty === 0;
-      const slotCount = Object.keys(virtualSchedule).length;
-      const breakdownLines = Object.entries(stats.violation_breakdown || {})
-        .map(([k, v]) => `  • ${k}: ${v} 處`).join('\n') || '  • 無';
-      const dpLine = (stats.desirable_pattern_count != null)
-        ? `🧩 TLPS 模式（理想=法遵+健康）：理想 DP ${stats.desirable_pattern_count} / 不理想 ${stats.undesirable_pattern_count} / 禁止 ${stats.prohibited_pattern_count}（共 ${stats.num_nurses} 人）\n`
-        : '';
-      const phaseLine = stats.feasibility_reached
-        ? `🎯 可行性階段第 ${stats.feasibility_iteration} 次迭代達成（硬約束歸零）→ 進入優化階段\n`
-        : `⛔ 未達可行性：仍有禁止模式（硬罰分 ${stats.hard_penalty}），全程停在可行性階段\n`;
-
+      const nameOf = Object.fromEntries((staffData || []).map(s => [s.staff_id, s.name || s.staff_id]));
+      const types = st.shift_types || {};
+      const legalOk = st.hard_penalty === 0;
       setGeminiMessages(prev => [...prev, {
         role: 'assistant',
         content:
-          `${compliant ? '✅' : '⚠️'} SA 收斂 (${data.solver_status})\n` +
-          `⏱️ 伺服器運算 ${data.elapsed_seconds}s / 含網路 ${elapsedClient}s\n` +
-          `📊 最終罰分：${stats.final_penalty}（硬約束 ${stats.hard_penalty ?? '?'} + 軟約束 ${stats.soft_penalty ?? '?'}）\n` +
-          phaseLine +
-          dpLine +
-          `🔄 最佳解出現在第 ${stats.best_iteration}/${stats.max_iterations} 次迭代\n` +
-          `🌡️ 退火接受 ${stats.accepted_worse_swaps} 次次優 / 拒絕 ${stats.rejected_swaps} 次\n` +
-          `📋 殘留違規類別：\n${breakdownLines}\n\n` +
-          `已生成 ${slotCount} 份匿名待選班表，員工可自行選班認領（與 AI 排班相同流程）。${feasible ? (compliant ? '' : '\n💡 已無禁止模式（法規硬底線過關），僅剩比勞基法更嚴的軟性偏好殘留，可直接開放選班。') : '\n⛔ 仍有禁止模式（違反法規硬底線），務必人工檢視後再開放選班。'}`
+          `${legalOk ? '✅' : '⛔'} CP-SAT 排班完成（${data.solver_status}${st.gap != null ? `，距最佳約 ${Math.round(st.gap * 100)}%` : ''}）\n` +
+          `⏱️ 伺服器 ${data.elapsed_seconds}s / 含網路 ${elapsedClient}s\n` +
+          `👥 ${st.staffing?.note || ''}\n` +
+          `📋 參與排班 ${st.num_nurses} 人：${Object.keys(assigned).map(id => nameOf[id] || id).join('、')}\n` +
+          `🛡️ 法遵硬約束違規：${st.hard_penalty}\n` +
+          `🌴 預假：${st.wishes_total ? `${st.wishes_met} / ${st.wishes_total} 天已滿足${st.wishes_hard ? '（保證）' : '（⚠️ 無法全部保證，已盡量滿足）'}` : '本月沒有登記預假'}\n` +
+          (st.senior_gaps != null ? `👩‍⚕️ 資深坐鎮：${st.senior_gaps === 0 ? '每班都有 N2+ 或組長' : `⚠️ 有 ${st.senior_gaps} 個班次沒有 N2+ 或組長（資深人力不足）`}\n` : '') +
+          `🔁 整月班別：只上 1 種 ${types[1] ?? types['1'] ?? 0} 人、混 2 種 ${types[2] ?? types['2'] ?? 0} 人、混 3 種 ${types[3] ?? types['3'] ?? 0} 人｜逆向輪班 ${st.backward_rotations} 次\n\n` +
+          `班表已放進草稿，請檢視後按「儲存並發布」。`
       }]);
     } catch (err) {
-      console.error('SA 排班失敗:', err);
+      console.error('CP-SAT 排班失敗:', err);
       setGeminiMessages(prev => [...prev, {
         role: 'assistant',
-        content: `❌ SA 排班失敗：\n${err.message}\n\n` +
-          `常見原因：\n` +
-          `• 微服務未啟動（檢查 VITE_CPSAT_URL 是否能 ping 通）\n` +
-          `• 人力不足：每日需要 D+E+N 人，但員工總數不夠\n` +
-          `• 保護名單過多：保護員工 + E/N 需求人數超過總員工數`
+        content: `❌ CP-SAT 排班失敗：\n${err.message}\n\n` +
+          (err.status === 400
+            ? '這通常代表人力不足或需求過高：請到「預假管理」做人力試算，增補人力或降低每日需求後再試。'
+            : '請稍後再試；若持續失敗，請確認排班引擎（Cloud Run）是否正常。')
       }]);
     } finally {
       setProcessing(false);
@@ -770,12 +688,12 @@ const handleCellChange = (staffId, day, newValue) => {
            {/* SA 模擬退火排班（獨立微服務 main1.py）— 與 Gemini 並列、互補 */}
            <button
               id="cpsat-trigger-btn"
-              onClick={handleCpsatSolve}
+              onClick={handleCpsatAssign}
               disabled={processing}
               className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--cpsat"
-              title="SA 模擬退火求解器：罰分最小化，直接分配到員工（跳過虛擬選班）"
+              title="CP-SAT 求解器：勞基法與預假保證滿足，直接指派到每位員工（不再匿名認領）"
            >
-              {processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Calculator size={16} /> SA 最佳化排班</>}
+              {processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Calculator size={16} /> CP-SAT 直接指派排班</>}
            </button>
 
            <button onClick={handleClearAll} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--clear"><Trash2 size={14} /> 清空舊班表</button>

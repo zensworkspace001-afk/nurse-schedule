@@ -1,14 +1,18 @@
 import React from 'react';
 import { Megaphone, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
 import { updateStaffSchedule } from '../api/database';
+import { isDirectAssigned } from '../constants';
 import './PublishPanel.css';
 
 const PublishPanel = ({
     staffData, violations, scheduleRisks,
     selectedYear, selectedMonth, shiftOptions,
     finalizedSchedule, setFinalizedSchedule, onPushToHistory,
-    calculateAndNotifyNextStaff, healthStats,
+    calculateAndNotifyNextStaff, healthStats, publishedDate,
 }) => {
+    // 直接指派（CP-SAT）的月份不開放認領：拔除釋出會把人轉回 Dxxx 空缺並重啟接力，所以一併隱藏。
+    // 要調整請直接改格子，或回排班工作桌重排後再發布。
+    const isDirect = isDirectAssigned(publishedDate, selectedYear, selectedMonth);
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
@@ -144,12 +148,12 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         {/* ▼▼▼ 這是全新替換的頂部區塊 (包含 Push 封存按鈕) ▼▼▼ */}
         <div className="publish__header">
              <div className="publish__header-left">
-                 <h2 className="publish__header-title"><Megaphone size={20} /> 當前發布與認領動態</h2>
+                 <h2 className="publish__header-title"><Megaphone size={20} /> {isDirect ? '當前發布班表（直接指派）' : '當前發布與認領動態'}</h2>
                  <span className="publish__header-badge">{selectedYear}年 {selectedMonth}月</span>
              </div>
 
            <div className="publish__header-actions">
-                 <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all"><AlertTriangle size={14} /> 全部拔除釋出</button>
+                 {!isDirect && <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all"><AlertTriangle size={14} /> 全部拔除釋出</button>}
                  <button onClick={onPushToHistory} className="publish__btn publish__btn--archive">
                      <ArrowRight size={14} /> 結算並封存至歷史區
                  </button>
@@ -210,7 +214,7 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                                               </div>
                                           </div>
                                           {/* ★ 拔除名字按鈕 */}
-                                          {!isVirtual && (
+                                          {!isVirtual && !isDirect && (
                                               <button onClick={() => handleUnassignSingleStaff(rowId)} className="publish__btn--unassign">
                                                   拔除釋出
                                               </button>

@@ -54,6 +54,18 @@ export function computeDailyRequirements(bedConfig) {
   };
 }
 
+// 班表是否還有待認領的虛擬空缺（D001、D002…，Gemini 產生 / 拔除釋出）。
+// CP-SAT 直接指派的班表全部以真實工號為鍵 → false。發布時用它決定 assignMode。
+export const hasVirtualSlots = (schedule) =>
+  Object.keys(schedule || {}).some(k => String(k).startsWith('D'));
+
+// 本月是否為「直接指派」：發布時寫進 Settings.publishedDate.assignMode。
+// 直接指派 → 不開放認領、不啟動 AI 接力、員工端只能檢視。
+export const isDirectAssigned = (publishedDate, year, month) =>
+  publishedDate?.assignMode === 'direct'
+  && Number(publishedDate.year) === Number(year)
+  && Number(publishedDate.month) === Number(month);
+
 // SA 可行性上限的邊際常數。對齊 SA 端 work_days 規則（main1.py / local_test/scheduler.py
 // 的 work_days_below_22：work < num_days - 11）。實測（local_test 掃描）發現：硬性過勞
 // 規則（七休一 §36、每週工時 §30）會在「每人月工作天數 ≈ num_days - 11」處就先咬住，

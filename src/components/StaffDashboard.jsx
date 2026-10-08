@@ -4,6 +4,7 @@ import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 
 import { Loader, Ban, CalendarOff, Clock, Lock, ClipboardList, Lightbulb, PartyPopper, Eye, Bell, Settings, X, Hand, Info, AlertTriangle, CheckCircle, RefreshCw, Camera } from 'lucide-react';
 import { auth, db } from '../api/database';
 import AvatarEditModal from './AvatarEditModal';
+import LeaveWishPicker from './LeaveWishPicker';
 import './StaffDashboard.css';
 
 // ============================================================================
@@ -13,7 +14,7 @@ import './StaffDashboard.css';
 //             由 App.jsx 從 StaffPrivate/{id} 訂閱後傳入。
 //             staffData 現在只含同事的精簡公開投影（staff_id, name, level, is_leader, is_active），
 //             不再含上述敏感欄位 — 故所有「自己的」狀態檢查都改用 myStaffRow。
-const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, currentSchedule, staffData = [] }) => {
+const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, assignMode = 'claim', currentSchedule, staffData = [], leaveWish = null }) => {
 
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -257,6 +258,40 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
     </div>
   );
 
+  // 我的班表月曆 — 已認領畫面與直接指派畫面共用
+  const renderMyCalendar = (myData) => {
+    if (!myData) return null;
+    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
+    const firstWeekday = new Date(targetYear, targetMonth - 1, 1).getDay();
+    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
+    return (
+      <div className="dashboard__my-calendar">
+        <h4 className="dashboard__my-calendar-title"><ClipboardList size={16} /> 我的 {targetMonth} 月班表</h4>
+        <div className="dashboard__my-calendar-grid">
+          {weekDays.map(w => <div key={w} className="dashboard__my-calendar-header">{w}</div>)}
+          {Array.from({ length: firstWeekday }).map((_, i) => <div key={`empty-${i}`} className="dashboard__my-calendar-empty" />)}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
+            const day = i + 1;
+            const cell = myData[day];
+            const shift = (typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF');
+            return (
+              <div key={day} className={`dashboard__my-calendar-cell dashboard__my-calendar-cell--${shift.toLowerCase()}`}>
+                <span className="dashboard__my-calendar-day">{day}</span>
+                <span className="dashboard__my-calendar-shift">{shift}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  // 預假月曆：護理長開放期間顯示（離職 / 長假的防呆 2、3 在它之前 return，不會看到）。
+  // 預假通常在班表發布前開放，所以「尚未輪到您」「班表已認領完」等待畫面也要放。
+  const leaveWishElement = leaveWish?.open && currentUser?.id ? (
+    <LeaveWishPicker staffId={currentUser.id} leaveWish={leaveWish} />
+  ) : null;
+
   // 防呆 2: 離職或停權檢查
   // 離職員工仍允許登入並改密碼（避免帳號被前同事盜用），但不開放頭貼編輯
   // —— 已離職的個資不該再讓本人擅自修改。
@@ -295,6 +330,39 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       );
   }
 
+  // 防呆 3.5: 直接指派（CP-SAT）的月份 — 不開放認領、不看輪次，只能檢視自己的班表。
+  //          放在 4-pre / 4 之前，避免顯示「班表已被同仁認領完畢」「尚未輪到您」等認領用語。
+  if (assignMode === 'direct' && currentSchedule && Object.keys(currentSchedule).length > 0) {
+      const myData = currentSchedule[currentUser.id];
+      return (
+          <>
+              {avatarModalElement}
+              {pwdModalElement}
+              <div className="dashboard__guard">
+                  {dashboardHeader}
+                  {leaveWishElement}
+                  {myData ? (
+                      <div className="dashboard__claimed-banner">
+                          <h3 className="dashboard__claimed-title"><CheckCircle size={18} /> 您 {targetYear} 年 {targetMonth} 月的班表已排定</h3>
+                          <p className="dashboard__claimed-desc">本月班表由護理長直接指派，不需認領。</p>
+                          {renderMyCalendar(myData)}
+                          <p className="dashboard__claimed-note">如需調整班別，請與護理長聯繫。</p>
+                      </div>
+                  ) : (
+                      <>
+                          <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
+                          <h2 className="dashboard__guard-title--locked">本月班表已排定</h2>
+                          <div className="dashboard__guard-info">
+                              <strong>{targetYear} 年 {targetMonth} 月</strong> 的班表由護理長直接指派，您本月沒有排入班次。<br/><br/>
+                              如有疑問請聯絡護理長。
+                          </div>
+                      </>
+                  )}
+              </div>
+          </>
+      );
+  }
+
   // 防呆 4-pre: 班表已被認領完畢，但本人未獲得班次（例如新加入員工、人比班次多）
   // 條件：本人沒認領 + 班表確實有資料（claimedSlots > 0）+ 沒有任何 D 空缺剩下
   const claimedCount   = aiSlots.filter(opt => opt.isClaimed).length;
@@ -306,6 +374,7 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
               {pwdModalElement}
               <div className="dashboard__guard">
                   {dashboardHeader}
+                  {leaveWishElement}
                   <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
                   <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
                   <div className="dashboard__guard-info">
@@ -333,6 +402,7 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
               {pwdModalElement}
               <div className="dashboard__guard">
                   {dashboardHeader}
+                  {leaveWishElement}
                   <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
                   <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
                   <div className="dashboard__guard-info">
@@ -469,6 +539,8 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
             目前開放認領月份：<span className="dashboard__month-highlight">{targetYear}年 {targetMonth}月</span>
           </h3>
 
+          {leaveWishElement}
+
           <div className="dashboard__streak-info">
               <Info size={14} /> 系統偵測：您上個月底已連續上班 <strong>{prevStreak}</strong> 天。
               {prevStreak >= 6 && <div className="dashboard__streak-warning"><AlertTriangle size={14} /> 警告：您已達連六上限，本月 1 號必須排休！</div>}
@@ -483,32 +555,7 @@ const handleFinalSubmit = async () => { // 🌟 1. 加上 async
                   <p className="dashboard__claimed-desc">您的排班已成功鎖定。選好的班表不能再被選一次。</p>
 
                   {/* 我的班表月曆 */}
-                  {(() => {
-                    const myData = currentSchedule[currentUser.id];
-                    if (!myData) return null;
-                    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-                    const weekDays = ['日', '一', '二', '三', '四', '五', '六'];
-                    return (
-                      <div className="dashboard__my-calendar">
-                        <h4 className="dashboard__my-calendar-title"><ClipboardList size={16} /> 我的 {targetMonth} 月班表</h4>
-                        <div className="dashboard__my-calendar-grid">
-                          {weekDays.map(w => <div key={w} className="dashboard__my-calendar-header">{w}</div>)}
-                          {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} className="dashboard__my-calendar-empty" />)}
-                          {Array.from({ length: daysInMonth }).map((_, i) => {
-                            const day = i + 1;
-                            const cell = myData[day];
-                            const shift = (typeof cell === 'object') ? (cell?.type || 'OFF') : (cell || 'OFF');
-                            return (
-                              <div key={day} className={`dashboard__my-calendar-cell dashboard__my-calendar-cell--${shift.toLowerCase()}`}>
-                                <span className="dashboard__my-calendar-day">{day}</span>
-                                <span className="dashboard__my-calendar-shift">{shift}</span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  {renderMyCalendar(currentSchedule[currentUser.id])}
 
                   <p className="dashboard__claimed-note">如需修改，請聯繫護理長在後台將您「拔除釋出」，您才能重新選擇。</p>
                   <button onClick={() => setCurrentStep(2)} className="dashboard__claimed-view-btn"><Eye size={14} /> 進入查看所有人認領狀況</button>

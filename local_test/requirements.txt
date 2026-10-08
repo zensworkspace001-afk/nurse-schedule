@@ -2,3 +2,5 @@
 # 安裝：pip install -r local_test/requirements.txt
 streamlit==1.40.0
 pandas==2.2.3
+# hybrid/（CP-SAT × SA 混合排班 + 權重學習 POC）用；numpy 隨 ortools 安裝
+ortools>=9.12

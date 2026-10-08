@@ -220,3 +220,21 @@ print(calculate_health_score(shifts))
 跑 `seed=42 --d 4 --e 3 --n 2` 兩次得到 50,185 vs 32,500 不同 penalty。`random.seed(seed)` 只設 Python 全域 `random`；`run_sa_multistart` 內部的並行起點或 tabu list 可能有自己的 randomness 沒受控。
 
 > **要完全可重現（學術發表 / 對拍）時，先檢查 `run_sa_multistart()` 內所有的 `random.X()` 呼叫是否都吃同一個 `random.Random(seed)` 實例**。目前不影響功能正確性，只影響「同 seed 應得同結果」的契約。
+
+## `hybrid/` — CP-SAT × SA 混合排班 + 權重自動學習（概念驗證）
+
+獨立於上面的 SA 測試，不修改 `scheduler.py` / `main1.py`。需要 `ortools`（`pip install -r local_test/requirements.txt`）。
+
+```bash
+python local_test/hybrid/run_hybrid.py                 # 2026/5 起模擬 4 個月
+python local_test/hybrid/run_hybrid.py --compare-sa    # 第一個月加跑現有 SA 對照
+python local_test/hybrid/run_hybrid.py --months 6 --time 15 --fairness 3
+```
+
+| 檔案 | 內容 |
+|---|---|
+| `model.py` | CP-SAT 模型（硬約束 = 勞基法/覆蓋/母性保護，保證 0 違規；軟約束 = 志願、夜班、孤立休、週末、換班別、連六，加權）+ 只在可行域內移動的 SA polish |
+| `learning.py` | 用每月滿意度回饋學軟約束權重（帶先驗的非負最小平方）+ 跨月補償乘數（上月被犧牲 → 本月優先） |
+| `run_hybrid.py` | 點數制休假志願（3 高優先 + 5 一般）、多月模擬、學習組 vs 固定權重對照組 |
+
+滿意度回饋目前是**模擬的**（`learning.TRUE_THETA` 隱藏偏好 + 個人差異 + 雜訊），用來驗證學習器能否把權重學回來；接真實系統時改成護理師每月填的 0-10 分即可。

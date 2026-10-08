@@ -28,14 +28,27 @@ Specs call `test.skip(...)` when creds are missing, so CI without secrets still 
 
 Dev server proxies `/api/*` requests to `https://nurse-schedule-bachelor.vercel.app` (configured in `vite.config.js`), so local frontend connects to the production Vercel serverless backend.
 
-**SA scheduling engine (separate Python microservice):**
+**Scheduling microservice (`main1.py` SA + `cpsat_service.py` CP-SAT; separate Python service on Cloud Run):**
 
 ```bash
-pip install -r requirements.txt   # fastapi + firebase-admin (pure Python; no native deps)
+pip install -r requirements.txt   # fastapi, pydantic v1, firebase-admin, ortools (Docker image uses Python 3.12)
 uvicorn main1:app --reload --port 8000
+python local_test/hybrid/test_cpsat_service.py   # endpoint tests with fake token + fake Firestore store (needs httpx)
 ```
 
-Then set `VITE_CPSAT_URL=http://localhost:8000` in `.env.local` so SchedulePanel's 「SA 最佳化排班」 button hits the local instance instead of the deployed one. (The env var name predates the SA migration — kept as `VITE_CPSAT_URL` so existing deployments don't break.) See `CPSAT_DEPLOY.md` for Render/Railway/Fly.io deployment.
+Point the frontend at a local instance with `VITE_SCHEDULE_ENGINE_URL=http://localhost:8000` in `.env.local`. Locally, Firebase Admin init logs an error unless `FIREBASE_*` key env vars are set — expected; authenticated endpoints then 401, so use the test script for logic. Deploy (Cloud Run, project `scheduling-systembachelor`, `asia-east1`, service `nurse-schedule-engine`, runs as dedicated SA `schedule-engine@…` holding only `roles/datastore.user`):
+
+```bash
+gcloud run deploy nurse-schedule-engine --source . --region asia-east1 --project scheduling-systembachelor \
+  --service-account schedule-engine@scheduling-systembachelor.iam.gserviceaccount.com \
+  --cpu 2 --memory 2Gi --cpu-boost --min-instances 0 --max-instances 2 --concurrency 1 --timeout 300 \
+  --allow-unauthenticated \
+  --set-env-vars "^@^FIREBASE_PROJECT_ID=scheduling-systembachelor@CPSAT_WORKERS=2@ALLOWED_ORIGINS=http://localhost:5173,https://nurse-schedule-bachelor.vercel.app" --quiet
+```
+
+`--source .` uploads only what `.gcloudignore` whitelists (and Docker only what `.dockerignore` whitelists) — a new file the service needs must be added to **both** plus a `COPY` in `Dockerfile`. Claude Code's auto mode blocks production deploys, so the user runs this themselves. `CPSAT_DEPLOY.md` covers the older Render/Railway/Fly.io setup (Render still hosts the legacy SA instance).
+
+**`.env.local`** holds the six public `VITE_FIREBASE_*` web-client values plus `VITE_SCHEDULE_ENGINE_URL` (normally via `vercel env pull`; the Vercel CLI is not installed by default). `npm run dev` logs a dependency-scan error for `cannon-es` from `public/sphere-drop.html` — harmless, unrelated to the app.
 
 **MySQL (optional — `access_logs` hybrid storage):**
 
@@ -56,6 +69,10 @@ node --env-file=.env.local scripts/migrate-access-logs-to-mysql.js --commit
 
 Writer is `api/_lib/accessLog.js` (`writeAccessLog`, signature unchanged so its ~13 callers need no edits); reader is `admin-user.js` action `list-access-logs` (folded in rather than a new function — Vercel Hobby's 12-function limit is full). `AccessLogPanel` fetches that endpoint instead of subscribing to Firestore (loses live updates — acceptable for an audit log).
 
+## CI
+
+`.github/workflows/ci.yml` runs on every push/PR to `main`: a `lint` job (`npm ci && npm run lint`), then an `e2e` job (needs `lint` to pass first) that installs Playwright's Chromium and runs `npm run test:e2e` against the deployed Vercel/Firebase backend using repo secrets (`VITE_FIREBASE_*`, `TEST_STAFF_ID`/`TEST_STAFF_PW`, `TEST_ADMIN_ID`/`TEST_ADMIN_PW`). Specs `test.skip()` themselves when creds are missing, so a fork without secrets still passes. Playwright report + failure traces are uploaded as artifacts (14-day retention).
+
 ## Environment Variables
 
 All keys live in Vercel dashboard (Settings > Environment Variables). For local dev, `.env.local` is pulled via `vercel env pull`:
@@ -65,12 +82,13 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 - `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` — Firebase Admin SDK (backend only)
 - `CRON_SECRET` — Vercel Cron job authentication
 - `FIELD_ENC_KEY` — **AES-256-GCM master key for field-level encryption** (base64-encoded 32 bytes). Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. **Lose this and all encrypted fields are unrecoverable** — back it up offline. Used by `api/secure-field.js` and `scripts/migrate-encrypt.js`.
-- `VITE_CPSAT_URL` — Public URL of the SA scheduling microservice (e.g. `https://nurse-schedule-s0ro.onrender.com`). Variable name predates the algorithm swap; kept stable to avoid breaking existing Vercel/Render deployments. Read by `SchedulePanel` to call the optimizer. **Must also be added to `vercel.json` CSP `connect-src`** or production browser will block the fetch.
+- `VITE_SCHEDULE_ENGINE_URL` — Cloud Run scheduling engine (staffing estimate, leave wishes, CP-SAT direct assignment), read by `src/api/scheduleEngine.js`; falls back to the hardcoded Cloud Run URL when unset. **Must also be in `vercel.json` CSP `connect-src`** (it is) or the production browser blocks the fetch.
+- `VITE_CPSAT_URL` — **Legacy.** URL of the Render-hosted SA instance; the frontend no longer reads it since the SA button was replaced (see Scheduling Engines).
 - `ACCESS_LOG_BACKEND` — selects where `api/_lib/accessLog.js` reads/writes audit rows: `firestore` (default — unset behaves exactly as before), `mysql`, or `both` (dual-write during a transition; reads prefer MySQL). Part of the hybrid/polyglot-persistence split where cold/append-only `access_logs` can live in MySQL while hot real-time data (schedules, turns, staff) stays in Firestore. See **MySQL (optional, access_logs only)** below.
 - `DATABASE_URL` **or** `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DATABASE` (+ optional `MYSQL_POOL_SIZE`, default 3) — MySQL connection for `api/_lib/mysql.js`. Only needed when `ACCESS_LOG_BACKEND` includes `mysql`; otherwise no MySQL connection is ever opened.
 - `MYSQL_SSL` / `MYSQL_SSL_CA` (optional) — TLS for the MySQL connection. Cloud MySQL (PlanetScale/Aiven/Railway/RDS…) goes over the public internet and effectively requires TLS; local MySQL (Laragon) neither supports nor needs it. `getPool()` **auto-decides when `MYSQL_SSL` is unset**: localhost/127.0.0.1 → no TLS, remote host → TLS with cert verification — so a public-CA cloud provider works by just filling `DATABASE_URL`. Override with `MYSQL_SSL=true|require|strict` (verify), `relaxed|no-verify` (encrypt, skip verify — self-signed/test), or `false|off` (disable). `MYSQL_SSL_CA` = inline PEM for a private CA (e.g. AWS RDS bundle; `\n` escapes are unescaped); setting it implies verify.
 
-**SA microservice env vars** (set on Render/Railway/Fly.io, NOT Vercel): `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` (mirror of Vercel values), `ALLOWED_ORIGINS` (CORS whitelist, comma-separated), `SA_MAX_ITERATIONS` (default 50000 — a full run is ~1-3 min for 20-40 staff, so ensure the SA host's request timeout is generous; Render/Railway free tiers may cut it off), `RATE_LIMIT_PER_MIN` (default 5).
+**Scheduling microservice env vars** (set on Cloud Run / Render, NOT Vercel): on Cloud Run **no Firebase key is needed** — `_init_firebase()` uses the service account (ADC) when `K_SERVICE` is set and no `FIREBASE_PRIVATE_KEY`/`FIREBASE_SERVICE_ACCOUNT` is present; Render still uses `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY`. `ALLOWED_ORIGINS` (CORS whitelist — Vercel *preview* domains are not on it, so previews get CORS-blocked), `CPSAT_WORKERS` (CP-SAT threads, default `os.cpu_count()`), `WISH_CHECK_SECONDS` (leave-wish feasibility check time limit, default 20), `ADMIN_EMAIL` (default `admin@hospital.com`), `RATE_LIMIT_PER_MIN` (default 5, shared in-memory buckets), `SA_MAX_ITERATIONS` (legacy SA, default 50000).
 
 ## Architecture
 
@@ -84,15 +102,19 @@ All keys live in Vercel dashboard (Settings > Environment Variables). For local 
 
 `src/constants.js` — Shared constants and pure functions. All compliance logic lives here: `SHIFT_TYPES`, `LABOR_LAW_RULES`, `calculateAnnualLeave`, `checkLaborLawCompliance`, `checkSkillMixSafety`, `calculateScheduleRisks`. Import from here — do not duplicate.
 
-`src/api/database.js` — All Firestore CRUD: `subscribeToSettings`, `subscribeToStaff` (admin), `subscribeToStaffPublic` (staff colleagues view), `subscribeToMyStaffPrivate` (staff own row), `subscribeToSchedule`, `saveGlobalSettings`, `saveGlobalStaff` (batch-writes the three staff docs), `saveMonthlySchedule`, `updateStaffSchedule`, `saveArchiveReport`, `subscribeToArchiveReports`, `clearArchiveReports`, `backupScheduleToArchive`, `buildStaffPublicProjection`. Also exports `auth` and `db` Firebase instances.
+`src/api/scheduleEngine.js` — `fetch` wrappers for the Cloud Run engine (`estimateStaffing`, `submitLeaveWish`, `generateCpsatSchedule`); attaches the Firebase ID token and surfaces the backend's `detail` message as the thrown error.
+
+`src/api/database.js` — All Firestore CRUD: `subscribeToSettings`, `subscribeToStaff` (admin), `subscribeToStaffPublic` (staff colleagues view), `subscribeToMyStaffPrivate` (staff own row), `subscribeToSchedule`, `saveGlobalSettings`, `saveGlobalStaff` (batch-writes the three staff docs), `saveMonthlySchedule`, `updateStaffSchedule`, `saveArchiveReport`, `subscribeToArchiveReports`, `clearArchiveReports`, `backupScheduleToArchive`, `buildStaffPublicProjection`, plus leave-wish helpers (`saveLeaveWishSettings`, `subscribeToLeaveWishCounts`, `subscribeToMyLeaveWish`, `subscribeToLeaveWishEntries` — read-only; writes go through the engine). Also exports `auth` and `db` Firebase instances.
 
 **Component hierarchy:**
 - `App.jsx` → `LoginPanel` (unauthenticated) | `ManagerInterface` (admin) | `ProfileWizard` (staff first-login, gated by `profile_completed !== true`) | `StaffDashboard` (staff)
 - Public routes (registered in `main.jsx`, no auth required): `/activate` (ActivatePage), `/privacy-notice` (PrivacyNoticePage)
-- `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`, `AccessLogPanel` (稽核日誌 — admin-only viewer for `access_logs`)
+- `ManagerInterface` → tab router for: `RequirementsPanel`, `StaffManagementPanel`, `LeaveWishPanel` (預假管理), `SchedulePanel`, `PublishPanel`, `ScheduleReviewPanel`, `StatisticsPanel`, `AccessLogPanel` (稽核日誌 — admin-only viewer for `access_logs`)
 
 **Key components:**
-- `SchedulePanel` — Schedule generation workspace with two engines side-by-side: **Gemini** (LLM, generates anonymous virtual D-slot patterns) and **SA** (5-membrane TLPS + L3 Focused simulated annealing, see SA section below). Both now emit the same **anonymous virtual D-slot** output (the SA result is anonymized client-side and routed through `onGenerateSchedule`, so staff claim via agentic turn rather than the schedule being directly finalized). Both render via the same chat-style UI.
+- `SchedulePanel` — Schedule generation workspace with two buttons sharing one chat-style UI: **「生成 AI 班表」** (Gemini — anonymous virtual D-slot patterns that staff claim) and **「CP-SAT 直接指派排班」** (`handleCpsatAssign` → Cloud Run `/cpsat/generate_schedule`; result keyed by **real staff IDs**, loaded into the draft via `onGenerateSchedule`, then published with 「儲存並發布」). Daily demand = the month's `Settings.leaveWish.reqs` if leave wishes were opened for that month (wish feasibility was checked against those numbers), else `max(requirements, computeDailyRequirements(bedConfig))`. The old 「SA 最佳化排班」 button and its client-side `clampDailyRequirementsToFeasibleBand` call were removed.
+- `LeaveWishPanel` — Admin 預假管理: staffing estimate (engine) → per-day quota (default = participants − daily minimum demand) → open/close via `Settings.leaveWish` → live per-day counts and submitted/pending lists.
+- `LeaveWishPicker` — Staff 4-day leave-wish calendar shown while `Settings.leaveWish.open`; mounted in `StaffDashboard`'s main step 1 and in the not-your-turn / claimed-out guard screens (wishes open before publication). Full days are disabled; the engine's 409 reason is shown on rejection.
 - `PublishPanel` — Publish schedule for staff to claim; supports single/bulk unassign of staff; staff column shows `avatar_thumb` next to name.
 - `ScheduleReviewPanel` — Historical schedule viewer, payroll settlement engine (base salary + OT + night bonus + level bonus 進階加給), health score calculator, Excel export. Staff name columns include avatars.
 - `StatisticsPanel` — Nurse-to-patient ratio monitoring (Taiwan 衛福部 regulations), AI cross-month analytics, agentic turn radar.
@@ -140,7 +162,8 @@ Vercel serverless functions:
 ### Firestore Schema
 
 ```
-NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary*, levelBonus, publishedDate)
+NurseApp/Settings          — global app config (shiftOptions, priorityConfig, requirements, bedConfig, baseSalary*, levelBonus, publishedDate,
+                             leaveWish: { open, year, month, reqs:{D,E,N}, quota, days_per_person } — admin-written leave-wish switch)
 NurseApp/Staff             — { staffData: [...], healthStats: [...] }   admin-only read
                              staffData[*] sensitive fields (encrypted blob): idNumber*, bankAccount*, phone*
                              staffData[*].profile_completed: true once the staff has filled the first-login wizard
@@ -171,6 +194,9 @@ password_history/{staffIdLower} — server-only; password-reuse prevention. { st
 staffData[*].must_change_password: true — set by verify-reset-otp when a temp password is issued; App.jsx routes staff to ForcedPasswordChange until cleared by complete-profile change-password
 access_logs                — audit trail; { ts, actor:{uid,email}, action:'decrypt'|'encrypt'|'ai-access'|'ai-access-blocked'|'update-profile'|'delete-staff'|'login'|'login-failure'|'relock', target:{kind,id}, fields:[], ip, ua, extra? }
                              ai-access-blocked: written when api/gemini.js detectSensitivePii catches身分證/手機 in prompt and refuses to forward to Google.
+LeaveWishes/{YYYY_M}       — { counts:{"1":n,...}, quota, version, updatedAt } — per-day headcount only (no names); any authed user reads
+LeaveWishes/{YYYY_M}/entries/{staffId} — { staff_id, days:[1-indexed], submittedAt } — owner + admin read
+                             Both written ONLY by the engine (/leave_wishes/submit, Admin SDK); rules deny all client writes.
 ex_staff/{staff_id}        — 離職員工歸檔 (admin-only read)。{ staff_id, name, email, level, tenure_years, avatar, avatar_thumb, had_avatar, deleted_at, deleted_by:{uid,email} }
                              由 /api/admin-user action='delete-staff' 寫入。
                              刻意不複製加密 PII (idNumber/bankAccount/phone) — 離職應一併銷毀。
@@ -207,16 +233,31 @@ node scripts/migrate-encrypt.js --commit     # actually write
 
 Staff select shifts in a priority queue managed by AI (Gemini). `calculateAndNotifyNextStaff` in App.jsx builds a prompt with all candidate stats, calls Gemini to pick the most fatigued/deserving staff, writes to `SelectionTurn`, logs to `AI_Decision_Logs`, and sends email notification. Pregnant/nursing staff get absolute priority. `cron/check-timeout.js` auto-advances if no selection within 24h.
 
-### SA Optimization Engine (`main1.py`)
+**Direct-assign mode (`publishedDate.assignMode`):** `handleSaveAndPublish` writes `Settings.publishedDate.assignMode` = `'direct'` when the schedule has no `D`-prefixed virtual slots (CP-SAT result keyed by real staff IDs), else `'claim'` (missing = `'claim'`, legacy). In `direct` months the claim flow is off: `auto-relay` clears the turn and returns without picking/emailing, `cron/check-timeout` clears stale turns instead of force-skipping, `claim-schedule` returns 403, `StaffDashboard` shows a view-only screen of the staff's own month (guard 3.5, before the claim guards), and `PublishPanel` hides 拔除釋出 (it would turn rows back into `D` slots and restart the relay). The backend reads the mode from Firestore via `api/_lib/assignMode.js` (`isDirectAssignedMonth`) rather than trusting the client; frontend twin is `isDirectAssigned` / `hasVirtualSlots` in `constants.js`. Gemini virtual-slot schedules still publish as `'claim'` and go through the relay unchanged. `firestore.rules`' `LeaveWishes` block only takes effect once pasted into the Firebase Console.
+
+### CP-SAT Engine (`cpsat_service.py` + `local_test/hybrid/model.py`) — current scheduling path
+
+**Single source of truth:** the engine is `local_test/hybrid/model.py`; the `Dockerfile` copies it into the image as `cpsat_model.py`, and `cpsat_service.py` falls back to importing it from `local_test/hybrid/` when run locally. **Editing `model.py` changes production on the next deploy** — no hand-port step (unlike `scheduler.py` ↔ `main1.py`). `cpsat_service.py` exposes a `build_router(verify_token, rate_limit, store_factory)` mounted by `main1.py`; Firestore access is isolated in `FirestoreStore` so tests inject a fake store.
+
+| Endpoint | Who | Behaviour |
+|---|---|---|
+| `POST /cpsat/staffing_estimate` | admin | `staffing_range()` → min (pre-check + CP-SAT proof) / max (`Σ(req+MAX_OVERSTAFF)×days ÷ min_work_days`) / recommended / `gray` (UNKNOWN counts); `adjust_headcount()` → refuse if below min, drop trailing Standard nurses above max. Cached in-process by (month, reqs, team composition). |
+| `POST /cpsat/generate_schedule` | admin | **409 while that month's `Settings.leaveWish` is still open** (a schedule generated before closing would miss later "guaranteed" wishes; `SchedulePanel` offers to close the window first, and `LeaveWishPanel` warns before re-opening a month that already has a published direct schedule). Registered leave wishes are **hard** constraints (falls back to soft only if that is infeasible, flagged `wishes_hard:false`); returns the same `{status, solver_status, schedule:[cells], stats}` shape as SA. |
+| `POST /leave_wishes/submit` | staff | Checks open window, caller on roster, exactly `days_per_person` distinct in-month days, per-day quota, then `check_wishes_feasible()` (all accepted wishes pinned as hard; UNKNOWN treated as infeasible); commits with an optimistic `version` transaction and retries up to 3× on concurrent writes. **Accepted ⇒ guaranteed** at generation time. |
+
+Model (`Problem` fields are the knobs): hard = 勞基法 (weekly cap 5 / BiWeekly 6 + ≤10 per 2 weeks, RG gap ≤6 work days, RG ≥4, RG+RC ≥8, ≤27 work days, 11h forbidden sequences), coverage `req ≤ n ≤ req+MAX_OVERSTAFF(2)`, protected (孕哺/Student) D-only, one work-shift type per calendar week (`one_shift_per_week`), `max_consec_work=5` (stricter than legal 6 so health stays 100), ≤3 consecutive nights, `post_night_rest=2` (Knauth & Hornberger 2003), `min_work_days=20`. Soft (weighted, scaled ×10 to integers): `FEATURES` (wishes, nights, isolated off, weekend work, shift switch, streak6) + `backward_weight` (D→E→N forward rotation, Czeisler 1982) + `mix2_weight`/`mix3_weight` (monthly shift-type mixing) + `fairness`×max individual cost + `senior_weight` (each day×shift with no N2+/leader on it — mirrors the frontend `checkSkillMixSafety` warning; soft, not hard, so a senior-poor team still gets a schedule and the leave-wish feasibility check, which builds its own weight-free `Problem`, stays exact; `stats.senior_gaps` reports what's left; `solve_cpsat` first minimises the gap count alone for ~time_limit/5 and pins it as an upper bound, because inside the weighted objective the parallel search often stopped with gaps left). Generation weights are tiered so lower priorities can't add up past higher ones: senior 30 > wish 20 > mix2 6 (mix3 18) > backward 3 > isolated 2 > nights/weekend 0.3 (wishes are pinned hard at generation anyway). `eligible_staff()` must pass `level`/`is_leader` through for this to work. Pre-checks `monthly_workday_shortfall` / `weekly_staffing_shortfall` return instant human-readable INFEASIBLE reasons (CP-SAT alone can take minutes to prove infeasibility due to staff symmetry). `solve_cpsat(hint=…)` pins the hint via an assumption to get a complete solution + exact score, then searches with `objective ≤ hint` and returns the hint itself (`HINT_KEPT`) if nothing better is found — a partial `add_hint` on `x` alone was ignored by the parallel search. Measured on the 14-staff sample: per-date quota of `staff − daily demand` is necessary but **not sufficient** (6 night-eligible nurses off the same 4 weekdays is infeasible under quota), hence the per-submission feasibility check (~1–2 s).
+
+### SA Optimization Engine (`main1.py`) — legacy
+
+**Status:** the frontend no longer calls SA (its button was replaced by CP-SAT direct assignment); `POST /generate_schedule` is kept for the old flow. Note it only verifies a Firebase token — any logged-in staff can call it (rate-limited), unlike the admin-gated CP-SAT endpoints. The anonymize-and-claim flow and the `clampDailyRequirementsToFeasibleBand` clamp described below are no longer wired into `SchedulePanel`.
 
 Independent Python microservice (FastAPI + simulated annealing). Lives at repo root but **not deployed by Vercel** (see CSP/`.vercelignore` note). Complementary to the Gemini flow:
 
 - **Gemini path** (`api/gemini.js`): LLM generates anonymous `pattern` strings → frontend assigns virtual D-slot IDs → staff claim via agentic turn. Output is non-deterministic, retried up to 5 times client-side to pass the daily-headcount filter.
 - **SA path** (`main1.py`): TLPS membrane representation + **L3 Focused** simulated annealing. Each day's assignments live in **5 "membranes"** — D/E/N plus **RG (例假) and RC (休息日)** split out (so §36's「兩 RG 之間 ≤ 6 工作日」can be checked precisely instead of collapsing all rest into one `O`). Greedy rotation init + shift-specialization (each nurse keeps one work type all month). Mutation operators: antiport (single-cell), block antiport (3/7-day), month_swap, week_rotation, plus a **Focused layer** (red/green nurse classification by personal penalty, tabu list, targeted fix functions per dominant violation, adaptive thaw on stagnation). The SA computes assignments to real `staff_id` internally (needs identities for protected-list E/N bans), but the **frontend anonymizes the result into virtual D-slots and routes through `onGenerateSchedule` — identical to the Gemini path — so staff claim via agentic turn rather than the schedule being directly finalized.** `run_sa()` is kept byte-for-byte in sync with `local_test/scheduler.py` (same seed → same schedule); port changes there first, then copy the function across.
 
-`SchedulePanel` exposes both via side-by-side buttons (「生成 AI 班表」 purple, 「SA 最佳化排班」 teal). Admin chooses per generation; both now produce the same anonymous claimable virtual-slot output.
 
-**Daily-demand feasible-band clamp (`clampDailyRequirementsToFeasibleBand` in `constants.js`, applied in SchedulePanel before building the SA payload):** the per-shift `daily_reqs` started as `max(admin ratio, legal floor)` — derived from *beds*, ignoring the *eligible-staff count*. Empirically (local_test sweep), pushing the daily total too high for the staff on hand makes the SA `INFEASIBLE` — the HARD overwork rules (七休一, 週工時) bind at roughly **`work_days ≈ num_days − 11`** per nurse, which is *also* the soft `work_days_below` threshold, so that point is simultaneously the soft floor and the hard ceiling. The clamp therefore caps the daily total at `feasibleMax = floor(staffCount × (numDays − 11) / numDays)` (constant `SA_FEASIBLE_WORKDAY_MARGIN = 11`, mirrors the SA `work_days` rule), never below the legal ratio floor total. It only ever **trims down** (raising the total breaks feasibility — verified: total 10 for 14 staff = INFEASIBLE, total 7–9 = feasible), and trims **proportionally across D/E/N** (not all from D — cutting D alone shrinks the D pool and overworks D specialists, since the SA allocates pools by req proportion; e.g. `D8E3N3→D5E2N2`, a proven-feasible shape, not `D3E3N3`). If the legal floor itself exceeds `feasibleMax` (genuinely under-staffed), the floor wins and a `⚠️ 建議增補人力` note is surfaced (the schedule will be INFEASIBLE — hire more). The adjustment note shows in both the confirm dialog and the chat message.
+**Daily-demand feasible-band clamp (`clampDailyRequirementsToFeasibleBand` in `constants.js`; formerly applied in SchedulePanel before building the SA payload — now unused by the frontend):** the per-shift `daily_reqs` started as `max(admin ratio, legal floor)` — derived from *beds*, ignoring the *eligible-staff count*. Empirically (local_test sweep), pushing the daily total too high for the staff on hand makes the SA `INFEASIBLE` — the HARD overwork rules (七休一, 週工時) bind at roughly **`work_days ≈ num_days − 11`** per nurse, which is *also* the soft `work_days_below` threshold, so that point is simultaneously the soft floor and the hard ceiling. The clamp therefore caps the daily total at `feasibleMax = floor(staffCount × (numDays − 11) / numDays)` (constant `SA_FEASIBLE_WORKDAY_MARGIN = 11`, mirrors the SA `work_days` rule), never below the legal ratio floor total. It only ever **trims down** (raising the total breaks feasibility — verified: total 10 for 14 staff = INFEASIBLE, total 7–9 = feasible), and trims **proportionally across D/E/N** (not all from D — cutting D alone shrinks the D pool and overworks D specialists, since the SA allocates pools by req proportion; e.g. `D8E3N3→D5E2N2`, a proven-feasible shape, not `D3E3N3`). If the legal floor itself exceeds `feasibleMax` (genuinely under-staffed), the floor wins and a `⚠️ 建議增補人力` note is surfaced (the schedule will be INFEASIBLE — hire more). The adjustment note shows in both the confirm dialog and the chat message.
 
 SA penalty function encodes hard rules with high weight (連續上班 >6 天 = 2000, 連續大夜 >3 天 = 1000, forbidden N→D/N→E/E→D = 1000, post-night-not-off = 2000, protected staff on E/N = 500000, FORCE_OFF/FORCE_WORK violation = 1000000, personal health floor breach = 50000) plus stricter-than-law custom rules (RG/RC each ∈ [4,5], monthly work days range, weekly RG+RC rhythm, mixed-work-shift ban = 5000) and soft preferences (isolated rest, OT 6th-day). The file name remains `main1.py` (Render/Dockerfile reference it) — the previous CP-SAT implementation has been replaced.
 
@@ -247,6 +288,8 @@ python local_test/run_demo.py --iters 30000 --seed 42                  # longer 
 | `scheduler.py` | `main1.py` `generate_schedule()` |
 | `compliance.py` | `src/constants.js` `checkLaborLawCompliance` |
 | `health.py` | `src/components/PublishPanel.jsx` `calculateHealthScore` |
+
+`local_test/hybrid/` (needs `ortools`, see `local_test/requirements.txt`) holds the CP-SAT engine itself (`model.py`, deployed — see CP-SAT Engine), `learning.py` + `run_hybrid.py` (multi-month simulation learning soft weights from simulated satisfaction feedback, with cross-month compensation), and `test_cpsat_service.py`. The Streamlit panel (`streamlit run local_test/dashboard.py`) replaces any SA result with a CP-SAT schedule when it has compliance violations or mixed-shift weeks, never auto-trims below the CP-SAT legal minimum headcount, and passes `violations` + `shift_mix=True` to `health.py` (test-panel-only deductions; without those args `health.py` still matches `PublishPanel`). Streamlit reruns don't reload imported modules — restart it after editing `health.py`/`scheduler.py`/`model.py`.
 
 **Sync invariant:** these are hand-maintained ports, not imports. When you change the production scheduler / compliance / health logic, update the matching `local_test/*.py` or cross-validation silently drifts. Intended workflow: iterate here + verify with `--seed 42`, then port the change back to production. Known intentional relaxation: SA emits a single rest type `O`, so `compliance.py` treats `O` as a wildcard RG (looser than production's RG/RC split).
 
@@ -296,9 +339,9 @@ php artisan serve --port=8000
 
 Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron and rewrites all `/api/*` routes plus SPA fallback to `index.html`.
 
-`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, jsDelivr, **tfhub.dev + www.kaggle.com + storage.googleapis.com** (BlazeFace model weights), and **the SA microservice URL**. **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
+`vercel.json` also ships a strict Content-Security-Policy whitelisting Firebase, Google APIs, OpenWeatherMap, jsDelivr, **tfhub.dev + www.kaggle.com + storage.googleapis.com** (BlazeFace model weights), and **both scheduling-service URLs** (Render SA + Cloud Run engine). **Adding any new external script, API, or image source requires updating the `Content-Security-Policy` header in `vercel.json`** — otherwise it works locally but is silently blocked in production.
 
-`.vercelignore` excludes `main1.py`, `requirements.txt`, `Dockerfile`, `CPSAT_DEPLOY.md`, and `php-backend/` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` or `php-backend/composer.json` and tries to install Python/PHP toolchains, which is irrelevant work that slows down the frontend deploy. Keep the files in git so Render/Railway/PHP hosts can pull them.
+`.vercelignore` excludes `main1.py`, `cpsat_service.py`, `requirements.txt`, `Dockerfile`, `.dockerignore`, `.gcloudignore`, `CPSAT_DEPLOY.md`, and `php-backend/` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` or `php-backend/composer.json` and tries to install Python/PHP toolchains, which is irrelevant work that slows down the frontend deploy. Keep the files in git so Render/Railway/PHP hosts can pull them.
 
 ### Legacy `server/` and `my-app/` Directories
 
@@ -307,6 +350,12 @@ The `server/` folder contains a legacy local Express dev server (port 3001) back
 Likewise, `my-app/` is an unrelated scratch/sandbox directory with its own `node_modules` and configs. Ignore it for any work on the nurse-schedule app.
 
 Various **root-level scratch artifacts** are experiments unrelated to the app and safe to ignore: loose Python (`1.PY`, `coppy.py`, `gooo.py`), `consequence.ipynb`, `yolov8n.pt` (a stray YOLO model, unrelated to the in-browser BlazeFace avatar check), `ui-template/` + the design `.zip`, `markdown.md`, `001.txt`, and `demo_out.log`. The real Python services are only `main1.py` (SA microservice) and `local_test/` (test harness).
+
+### `labor-law-compliance/` — Standalone Compliance-Checker Sub-Project
+
+A separate, self-contained React/Vite web app living in this repo but otherwise unrelated to the main build — it has its own `package.json`/`node_modules`/git history-independent lifecycle and is excluded from the Vercel build via `.vercelignore` (same pattern as `my-app/`, `php-backend/`). Run it with `cd labor-law-compliance && npm install && npm run dev` (port 5174, separate from the main app's 5173).
+
+`src/compliance/rules.js` is a **manually-maintained copy** (not an import) of the compliance functions from the main app's `src/constants.js` (`checkLaborLawCompliance`, `computeProximityWarnings`, `checkSkillMixSafety`, `calculateScheduleRisks`, ratio/legal-floor helpers) — the `lucide-react` icon dependency was dropped from `SHIFT_TYPES`. It is a pure client-side tool: paste staff/schedule JSON, no backend or Firebase. **If you change compliance logic in `src/constants.js`, this copy will silently drift** — port the change manually if it matters here. See `labor-law-compliance/README.md` for the data format and known limitations.
 
 ### Diagnostic & Repair Scripts
 

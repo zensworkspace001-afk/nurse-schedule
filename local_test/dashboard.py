@@ -86,6 +86,29 @@ def _schedule_to_df(schedule_list, nurses, num_days, name_map):
     return pd.DataFrame(rows).set_index("員工")
 
 
+def _trim_order(staff, k):
+    """auto-trim 的砍人順序：保護名單永遠留，其餘從尾端砍（與下方 trim 區塊一致）"""
+    prot = [s for s in staff if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"]
+    rest = [s for s in staff if s not in prot]
+    return sorted(prot + rest[:max(0, k - len(prot))], key=lambda s: s["staff_id"])
+
+
+@st.cache_data(show_spinner=False)
+def _hard_min_staff(year, month, reqs):
+    """最少要幾人，「週內不花花班 + 勞基法」的人力預檢才過得了；沒裝 ortools 回 None"""
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "hybrid"))
+        from model import Problem, weekly_staffing_shortfall
+    except ImportError:
+        return None
+    for k in range(1, len(SAMPLE_STAFF) + 1):
+        staff = _trim_order(SAMPLE_STAFF, k)
+        prob = Problem(year, month, staff, reqs, {s["staff_id"]: {"high": set(), "normal": set()} for s in staff})
+        if not weekly_staffing_shortfall(prob):
+            return k
+    return len(SAMPLE_STAFF) + 1
+
+
 def _schedule_to_dict(schedule_list):
     """轉成 compliance 期待的 {nurse_id: {day: shift}}"""
     by_nurse = defaultdict(dict)
@@ -219,6 +242,12 @@ with st.sidebar:
             adjust_mode = "fill"
             target_count = lo
         elif n_have > hi:
+            # 裁減下限：不能砍到「合法 + 週內不花花班」都排不出來（hi 只看 SA 的休假偏好，會砍過頭）
+            _hard_min = _hard_min_staff(year, month, {"D": d_req, "E": e_req, "N": n_req})
+            if _hard_min is not None and _hard_min > hi:
+                st.info(f"🛡️ 試算建議砍到 {hi} 人，但少於 {_hard_min} 人就無法合法且不花花班 → 最多只裁到 {_hard_min} 人")
+                hi = _hard_min
+        if n_have > hi:
             n_drop = n_have - hi
             auto_adjust = st.checkbox(
                 f"🤖 自動裁減員工到建議上限 ({hi} 人，砍 {n_drop} 人)",
@@ -228,7 +257,7 @@ with st.sidebar:
             )
             adjust_mode = "trim"
             target_count = hi
-        else:
+        elif n_have >= lo:
             auto_adjust = False
             adjust_mode = None
             target_count = n_have
@@ -422,7 +451,56 @@ with st.spinner(spinner_msg):
 stats = result["stats"]
 schedule_dict = _schedule_to_dict(result["schedule"])
 violations = check_labor_law_compliance(schedule_dict, effective_staff, year, month)
-health = calculate_team_health(schedule_dict, stats["num_days"])
+
+# ============================================================
+# 法遵違規不被允許 → CP-SAT 保底
+# ============================================================
+# SA 沒有可行性保證：人力吃緊時（例如 14 人 D3 E3 N3）會回 INFEASIBLE，
+# 留下 INSUFFICIENT_OFF / WEEKLY_HOURS 等違規；同樣設定 CP-SAT 1 秒內就找得到合法解。
+# 所以只要 SA 結果有任何法遵違規或週內花花班，就改用 hybrid/model.py 的 CP-SAT 重排
+# （CP-SAT 模型把「同一日曆週只上一種班別」當硬約束）。
+sa_violations = violations
+cpsat_fallback = None
+# 週內花花班（同一日曆週混排 D/E/N）也不被允許 —— SA 只在「整月」層級軟性懲罰混班，不保證
+import calendar as _cal_mod
+_week_starts = [d for d in range(1, stats["num_days"] + 1) if d == 1 or _cal_mod.weekday(year, month, d) == 0]
+_week_ranges = [(a, (_week_starts[i + 1] - 1) if i + 1 < len(_week_starts) else stats["num_days"])
+                for i, a in enumerate(_week_starts)]
+sa_mixed_weeks = sum(
+    1 for nid in nurses for a, b in _week_ranges
+    if len({schedule_dict[nid].get(d) for d in range(a, b + 1)} & {"D", "E", "N"}) > 1
+)
+if violations or sa_mixed_weeks:
+    try:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "hybrid"))
+        from model import Problem, solve_cpsat, FEATURES
+    except ImportError:
+        st.error(f"⛔ SA 班表有 {len(violations)} 處法遵違規（不被允許），且未安裝 ortools 無法用 CP-SAT 保底。"
+                 "請執行 `pip install -r local_test/requirements.txt`")
+        st.stop()
+    with st.spinner("⛔ SA 結果違法 → 改用 CP-SAT 求合法班表..."):
+        _prob = Problem(year, month, effective_staff, {"D": d_req, "E": e_req, "N": n_req},
+                        {sid: {"high": set(), "normal": set()} for sid in nurses})
+        cpsat_fallback = solve_cpsat(_prob, {k: 1.0 for k in FEATURES}, {sid: 1.0 for sid in nurses},
+                                     fairness=1.0, time_limit=15, seed=seed or 0)
+    if cpsat_fallback["schedule"] is None:
+        _why = "\n".join(f"- {r}" for r in cpsat_fallback.get("reasons", []))
+        st.error(f"⛔ SA 班表有 {len(violations)} 處法遵違規、{sa_mixed_weeks} 個花花週；CP-SAT 在「合法 + 週內不花花班」"
+                 f"下也找不到班表（{cpsat_fallback['status']}）→ 請增加人力或降低每日需求。"
+                 + (f"\n\n人力預檢：\n{_why}" if _why else "\n\n（未被預檢擋下，可能只是 15 秒內沒找到，可再試一次）"))
+        st.stop()
+    result["schedule"] = [
+        {"nurse_id": sid, "date": f"{year}-{month:02d}-{d + 1:02d}", "shift": sh}
+        for sid in nurses for d, sh in enumerate(cpsat_fallback["schedule"][sid])
+    ]
+    schedule_dict = _schedule_to_dict(result["schedule"])
+    violations = check_labor_law_compliance(schedule_dict, effective_staff, year, month)
+    _types = ", ".join(f"{k}×{v}" for k, v in summarize_violations(sa_violations).items())
+    st.warning(f"⛔ SA 結果有 {len(sa_violations)} 處法遵違規（{_types or '無'}）、{sa_mixed_weeks} 個週內花花班 → 不被允許，"
+               f"已改用 **CP-SAT 保底班表**（{cpsat_fallback['status']}，{cpsat_fallback['elapsed']}s，"
+               f"保證 0 硬違規 + 週內不花花班 → 現在法遵違規 {len(violations)} 處）。「SA 統計」tab 仍是原本 SA 的數據。")
+
+health = calculate_team_health(schedule_dict, stats["num_days"], violations, shift_mix=True)  # 違法、整月混班別也扣分（僅測試面板）
 
 # ============================================================
 # 頂部三大指標
@@ -467,7 +545,7 @@ tab_grid, tab_health, tab_sa = st.tabs([
 # ----- Tab 1: 班表 -----
 with tab_grid:
     df = _schedule_to_df(result["schedule"], nurses, stats["num_days"], name_map)
-    styled = df.style.applymap(_color_shift)
+    styled = df.style.map(_color_shift)
     st.dataframe(styled, use_container_width=True, height=420)
 
     legend_cols = st.columns(5)

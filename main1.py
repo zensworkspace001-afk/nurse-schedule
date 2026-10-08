@@ -28,7 +28,10 @@ healthcheck），演算法為「Tissue-Like P-System」+ 模擬退火 (SA)。
    SA 內部罰分含「比法律更嚴」的客製規則，所以即使合規 penalty 仍可能 > 0。
 
 API
-  POST /generate_schedule       — 主要排班入口（需 Firebase ID token）
+  POST /generate_schedule       — SA 排班入口（需 Firebase ID token）
+  POST /cpsat/staffing_estimate — CP-SAT 人力試算（admin；見 cpsat_service.py）
+  POST /cpsat/generate_schedule — CP-SAT 直接指派排班（admin；預假為硬約束）
+  POST /leave_wishes/submit     — 員工送出預假（配額 + CP-SAT 可行性檢查）
   GET  /health                  — 健康檢查（無需 auth，給負載平衡器 / 監控用）
   GET  /                        — 服務簡介
   GET  /docs                    — Swagger UI
@@ -74,6 +77,12 @@ def _init_firebase():
         return
     sa_json = os.getenv("FIREBASE_SERVICE_ACCOUNT")
     try:
+        if not sa_json and not os.getenv("FIREBASE_PRIVATE_KEY") and os.getenv("K_SERVICE"):
+            # Cloud Run（K_SERVICE 由平台注入）：同一個 GCP 專案，直接用服務帳戶身分（ADC），不需要金鑰
+            firebase_admin.initialize_app(options={"projectId": os.getenv("FIREBASE_PROJECT_ID")
+                                                   or os.getenv("GOOGLE_CLOUD_PROJECT")})
+            log.info("Firebase Admin SDK 以 Cloud Run 服務帳戶（ADC）初始化成功")
+            return
         if sa_json:
             cred = credentials.Certificate(json.loads(sa_json))
         else:
@@ -1411,7 +1420,10 @@ def root():
         "algorithm": "TLPS + Simulated Annealing (L3 Focused SA)",
         "endpoints": {
             "GET /health": "健康檢查（無需 auth）",
-            "POST /generate_schedule": "排班求解（需 Firebase Bearer token）",
+            "POST /generate_schedule": "SA 排班求解（需 Firebase Bearer token）",
+            "POST /cpsat/staffing_estimate": "CP-SAT 人力試算（admin）",
+            "POST /cpsat/generate_schedule": "CP-SAT 直接指派排班，預假為硬約束（admin）",
+            "POST /leave_wishes/submit": "送出本人預假（staff；配額 + 可行性檢查）",
             "GET /docs": "互動式 API 文件 (Swagger UI)",
             "GET /redoc": "API 文件 (ReDoc)",
         },
@@ -1475,6 +1487,14 @@ def generate_schedule(req: ScheduleRequest, user: Dict = Depends(verify_firebase
         )
 
     return result
+
+
+# ==========================================
+# CP-SAT 排班 + 預假（cpsat_service.py；引擎本體為 local_test/hybrid/model.py）
+# ==========================================
+from cpsat_service import build_router  # noqa: E402
+
+app.include_router(build_router(verify_firebase_token, _check_rate_limit))
 
 
 @app.exception_handler(Exception)

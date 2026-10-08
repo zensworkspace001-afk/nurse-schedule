@@ -1,0 +1,269 @@
+/* ==========================================================================
+   LeaveWishPanel — 預假管理（視覺沿用 AccessLogPanel / StaffManagementPanel 的玻璃擬態）
+   ========================================================================== */
+
+.lw-panel {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 16px;
+  padding: 2rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  animation: panelFadeIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+  color: #ffffff;
+}
+
+.lw-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.lw-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.lw-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.lw-panel__status--open {
+  background: rgba(74, 222, 128, 0.18);
+  border-color: rgba(74, 222, 128, 0.45);
+  color: #86efac;
+}
+
+.lw-panel__card {
+  background: rgba(0, 0, 0, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+
+.lw-panel__card-title {
+  margin: 0 0 10px;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.lw-panel__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.lw-panel__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.lw-panel__input {
+  width: 92px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.2);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.lw-panel__input option {
+  background: #2c3e50;
+}
+
+.lw-panel__input:disabled {
+  opacity: 0.55;
+}
+
+.lw-panel__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 9px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lw-panel__btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.18); }
+.lw-panel__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.lw-panel__btn--primary {
+  border-color: rgba(74, 222, 128, 0.6);
+  background: rgba(74, 222, 128, 0.22);
+}
+.lw-panel__btn--primary:hover:not(:disabled) { background: rgba(74, 222, 128, 0.36); }
+
+.lw-panel__btn--danger {
+  border-color: rgba(248, 113, 113, 0.6);
+  background: rgba(248, 113, 113, 0.2);
+}
+.lw-panel__btn--danger:hover:not(:disabled) { background: rgba(248, 113, 113, 0.34); }
+
+.lw-panel__spin { animation: lwSpin 1s linear infinite; }
+@keyframes lwSpin { to { transform: rotate(360deg); } }
+
+.lw-panel__estimate {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: rgba(74, 222, 128, 0.1);
+  border: 1px solid rgba(74, 222, 128, 0.35);
+}
+
+.lw-panel__estimate--bad {
+  background: rgba(248, 113, 113, 0.12);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+
+.lw-panel__estimate-nums {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.lw-panel__estimate-nums b {
+  color: #ffffff;
+  font-size: 1.05rem;
+}
+
+.lw-panel__estimate-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 0.85rem;
+}
+
+.lw-panel__muted {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.lw-panel__msg {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+.lw-panel__msg--error { background: rgba(248, 113, 113, 0.15); border: 1px solid rgba(248, 113, 113, 0.4); color: #fecaca; }
+.lw-panel__msg--success { background: rgba(74, 222, 128, 0.14); border: 1px solid rgba(74, 222, 128, 0.4); color: #bbf7d0; }
+.lw-panel__msg--warn { background: rgba(252, 211, 77, 0.14); border: 1px solid rgba(252, 211, 77, 0.4); color: #fde68a; }
+
+.lw-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+  max-width: 560px;
+}
+
+.lw-panel__weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.lw-panel__day {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 5px 2px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.lw-panel__day--low  { background: rgba(244, 114, 182, 0.14); }
+.lw-panel__day--mid  { background: rgba(244, 114, 182, 0.3); }
+.lw-panel__day--full { background: rgba(248, 113, 113, 0.42); border-color: rgba(248, 113, 113, 0.7); }
+
+.lw-panel__day-num { font-weight: 700; font-size: 0.9rem; }
+.lw-panel__day-count { font-size: 0.7rem; color: rgba(255, 255, 255, 0.75); }
+
+.lw-panel__lists {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 14px;
+}
+
+@media (max-width: 720px) {
+  .lw-panel { padding: 1rem; }
+  .lw-panel__lists { grid-template-columns: 1fr; }
+}
+
+.lw-panel__list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 0.88rem;
+  color: #86efac;
+}
+
+.lw-panel__list-title--pending { color: #fde68a; }
+
+.lw-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+}
+
+.lw-panel__list li {
+  display: flex;
+  gap: 10px;
+  padding: 4px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.lw-panel__list--inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.lw-panel__list--inline li {
+  padding: 2px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
+.lw-panel__who { min-width: 5em; font-weight: 600; }
+.lw-panel__days { color: rgba(255, 255, 255, 0.75); }
