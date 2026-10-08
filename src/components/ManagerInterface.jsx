@@ -230,6 +230,7 @@ const ManagerInterface = ({
                   staffData={staffData} requirements={requirements}
                   selectedYear={selectedYear} selectedMonth={selectedMonth}
                   leaveWish={leaveWish}
+                  publishedDate={publishedDate}
                 />
               } />
 

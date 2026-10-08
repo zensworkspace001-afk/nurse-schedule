@@ -584,6 +584,20 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
     extra_obj = extra(m, x, prob, week_y) if extra else 0
     obj_expr = (sum(obj_terms) + int(round(fairness * 10)) * max_d + extra_obj
                 + int(round(prob.senior_weight * 10)) * sum(senior_gaps))
+    # 資深坐鎮優先：先單獨求「最少資深缺口」並鎖住上限，再在此前提下最佳化其餘偏好。
+    # 只放進加權目標時，平行搜尋在時限內常停在還有缺口的解（實測 14 人樣本有時剩 2 個）。
+    if senior_gaps and not hint:
+        m.minimize(sum(senior_gaps))
+        s0 = cp_model.CpSolver()
+        s0.parameters.max_time_in_seconds = max(3.0, time_limit / 5)
+        s0.parameters.num_workers = workers
+        s0.parameters.random_seed = seed
+        st0 = s0.solve(m)
+        if st0 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            m.add(sum(senior_gaps) <= int(round(s0.objective_value)))
+            for key, v in x.items():
+                m.add_hint(v, s0.value(v))
+            time_limit = max(1.0, time_limit - s0.wall_time)
     m.minimize(obj_expr)
 
     # —— 起始班表（hint）：保證結果不比它差 ——

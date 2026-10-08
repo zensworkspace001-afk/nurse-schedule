@@ -246,6 +246,11 @@ def submit_wish(store, sid: str, days: List[int]) -> Dict:
 
 def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Optional[List[str]],
              time_limit: float, hint: Optional[Dict[str, List[str]]], use_wishes: bool) -> Dict:
+    # 預假還開放就排班 → 之後才登記的人會被告知「保證休假」，但班表已經排好、沒有反映。必須先截止。
+    st = store.leave_settings()
+    if use_wishes and st and st.get("open") and int(st.get("year", 0)) == year and int(st.get("month", 0)) == month:
+        raise HTTPException(409, f"{year}/{month} 的預假尚未截止，請先到「預假管理」截止後再排班"
+                                 "（截止前排出的班表不會包含之後才登記的預假）")
     est = staffing_estimate(store, year, month, reqs, staff_ids)
     if not est["ok"]:
         raise HTTPException(400, est["note"])

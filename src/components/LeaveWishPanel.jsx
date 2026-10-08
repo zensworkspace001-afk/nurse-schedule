@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarHeart, Calculator, Lock, Unlock, Loader, AlertTriangle, CheckCircle, Users } from 'lucide-react';
 import { saveLeaveWishSettings, subscribeToLeaveWishCounts, subscribeToLeaveWishEntries } from '../api/database';
 import { estimateStaffing } from '../api/scheduleEngine';
+import { isDirectAssigned } from '../constants';
 import './LeaveWishPanel.css';
 
 // ============================================================================
@@ -19,7 +20,7 @@ const isEligible = (s) =>
   s && s.is_active !== false && s.is_active !== 'false'
   && s.leave_status !== 'Maternal' && s.leave_status !== 'OnLeave';
 
-const LeaveWishPanel = ({ staffData = [], requirements, selectedYear, selectedMonth, leaveWish }) => {
+const LeaveWishPanel = ({ staffData = [], requirements, selectedYear, selectedMonth, leaveWish, publishedDate }) => {
   const [year, setYear] = useState(Number(leaveWish?.year) || selectedYear);
   const [month, setMonth] = useState(Number(leaveWish?.month) || selectedMonth);
   const [reqs, setReqs] = useState(() => ({
@@ -68,6 +69,10 @@ const LeaveWishPanel = ({ staffData = [], requirements, selectedYear, selectedMo
 
   const handleOpen = async () => {
     if (!estimate?.ok || quota < 1) return;
+    // 已發布直接指派班表的月份再開放預假：新登記的預假不會出現在已發布的班表上
+    if (isDirectAssigned(publishedDate, year, month) && !window.confirm(
+      `⚠️ ${year}/${month} 的班表已經發布（直接指派）。\n\n重新開放後新登記的預假不會反映在已發布的班表上，` +
+      `截止後必須回「排班工作桌」重新排班並發布。\n\n確定要重新開放嗎？`)) return;
     if (isOpenElsewhere && !window.confirm(`目前 ${leaveWish.year}/${leaveWish.month} 的預假仍在開放中，要改為開放 ${year}/${month} 嗎？\n（原月份會自動截止，已登記的資料保留）`)) return;
     setSaving(true);
     try {

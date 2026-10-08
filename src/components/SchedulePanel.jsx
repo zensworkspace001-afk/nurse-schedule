@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
 import { auth } from '../api/database';
-import { backupScheduleToArchive } from '../api/database';
+import { backupScheduleToArchive, saveLeaveWishSettings } from '../api/database';
 import { generateCpsatSchedule } from '../api/scheduleEngine';
 import { computeDailyRequirements } from '../constants';
 import './SchedulePanel.css';
@@ -187,6 +187,22 @@ const SchedulePanel = ({
           E: Math.max(requirements.E || 0, legal.E),
           N: Math.max(requirements.N || 0, legal.N),
         };
+
+    // 預假還開放就排班 → 之後才登記的人會被告知「保證休假」，但班表沒有反映。必須先截止（引擎也會擋）。
+    if (wishForThisMonth && leaveWish.open) {
+      const closeNow = window.confirm(
+        `⚠️ ${selectedYear}/${selectedMonth} 的預假尚未截止\n\n` +
+        `截止前排出的班表不會包含之後才登記的預假，但員工那邊會顯示「登記成功、保證休假」。\n\n` +
+        `要現在截止預假並開始排班嗎？（已登記的預假保留，排班時保證滿足）`
+      );
+      if (!closeNow) return;
+      try {
+        await saveLeaveWishSettings({ ...leaveWish, open: false, closedAt: new Date().toISOString() });
+      } catch (err) {
+        alert(`❌ 截止預假失敗：${err.message}`);
+        return;
+      }
+    }
 
     const okGo = window.confirm(
       `🧮 CP-SAT 直接指派排班\n\n` +

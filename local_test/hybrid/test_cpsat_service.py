@@ -139,6 +139,11 @@ store.entries = {"N001": [8, 9, 15, 16], "N002": [8, 16, 18, 24], "N007": [2, 8,
 r = client.post("/cpsat/generate_schedule",
                 json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 3, "N": 2}, "time_limit": 30},
                 headers=ADMIN)
+check("預假尚未截止就排班 → 409", r.status_code == 409 and "尚未截止" in r.json().get("detail", ""), r.json().get("detail"))
+store.settings = dict(store.settings, open=False)   # 護理長截止預假
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 3, "N": 2}, "time_limit": 30},
+                headers=ADMIN)
 j = r.json()
 st = j.get("stats", {})
 check("排班：0 硬違規、預假全滿足、直接指派到真實工號",
