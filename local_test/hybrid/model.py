@@ -20,6 +20,7 @@ CP-SAT × SA 混合排班（概念驗證）
 """
 
 import calendar
+import logging
 import math
 import random
 from dataclasses import dataclass, field
@@ -250,7 +251,7 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
                  for i in range(max(0, k - len(others)))]
         return prot + kept + extra
 
-    hi = (sum(r + MAX_OVERSTAFF for r in reqs.values()) * nd) // max(1, MIN_MONTH_WORK)
+    hi = max_headcount(reqs, nd)
     checks = [c for c in (resume or {}).get("checks", []) if c[1] != "TIMEOUT"]
     done = {c[0] for c in checks}
     n_min = None
@@ -319,6 +320,11 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
             "protected": len(prot), "checks": checks, "timed_out": timed_out, "approx": approx}
 
 
+def max_headcount(reqs: Dict[str, int], num_days: int) -> int:
+    """最多人數：每人至少 MIN_MONTH_WORK 天，但每班最多超編 MAX_OVERSTAFF 人 → 人再多就「班不夠分」"""
+    return (sum(r + MAX_OVERSTAFF for r in reqs.values()) * num_days) // max(1, MIN_MONTH_WORK)
+
+
 def _proven_lower_bound(rng: Dict) -> Optional[int]:
     """從最小人數開始、連續被證明排不出來的那一段 + 1；中間夾著無法判定的就停（人太多造成的不可行不算）"""
     lb = None
@@ -329,7 +335,10 @@ def _proven_lower_bound(rng: Dict) -> Optional[int]:
     return lb
 
 
-def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
+log = logging.getLogger(__name__)
+
+
+def adjust_headcount(staff: List[Dict], rng: Dict, keep_ids=()) -> Dict:
     """
     依試算結果決定這次參與排班的人：
       人數 < min  → 不能排（回傳缺幾人；不自動虛構員工）
@@ -352,8 +361,9 @@ def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
     if n < rng["min"]:
         return {"ok": False, "staff": staff, "note": f"人力不足：至少需要 {rng['min']} 人，目前 {n} 人，請增補人力或降低每日需求"}
     if n > rng["max"]:
+        # 已登記預假（保證休假）的人也優先保留，否則被排除等於預假失效
         keep_first = [s for s in staff if s.get("is_pregnant_or_nursing") or s.get("leave_status") == "Student"
-                      or s.get("special_status") == "BiWeekly"]
+                      or s.get("special_status") == "BiWeekly" or s["staff_id"] in keep_ids]
         rest = [s for s in staff if s not in keep_first]
         kept = keep_first + rest[:rng["max"] - len(keep_first)]
         dropped = [s["staff_id"] for s in staff if s not in kept]
@@ -624,7 +634,12 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
                 m.add(u >= x[sid, d, sh])
             used.append(u)
         t2 = m.new_bool_var(""); t3 = m.new_bool_var("")
-        m.add(t2 >= sum(used) - 1); m.add(t3 >= sum(used) - 2)
+        # 混 2 種以上：任兩種都用到就成立（不能寫 t2 ≥ Σused − 1 — 三種都上時右邊是 2，
+        # 布林變數不可能成立，等於把「混 3 種」變成禁止，而不是設計上的扣分）
+        for i in range(len(used)):
+            for j in range(i + 1, len(used)):
+                m.add(t2 >= used[i] + used[j] - 1)
+        m.add(t3 >= sum(used) - 2)
         mix_expr = int(round(prob.mix2_weight * 10)) * t2 + int(round((prob.mix3_weight - prob.mix2_weight) * 10)) * t3
         d_exprs[sid] = sum(Wi[k] * f[k] for k in FEATURES) + bw * sum(back) + mix_expr
         obj_terms.append(int(round(mult[sid] * 10)) * d_exprs[sid])
@@ -657,18 +672,25 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
                 + int(round(prob.senior_weight * 10)) * sum(senior_gaps))
     # 資深坐鎮優先：先單獨求「最少資深缺口」並鎖住上限，再在此前提下最佳化其餘偏好。
     # 只放進加權目標時，平行搜尋在時限內常停在還有缺口的解（實測 14 人樣本有時剩 2 個）。
-    if senior_gaps and not hint:
+    # 有起始班表就從它出發；找到的解取代起始班表，下面的 hint 流程保證結果不比它差。
+    if senior_gaps:
+        if hint:
+            for (sid, d, sh), v in x.items():
+                m.add_hint(v, 1 if hint[sid][d] == sh else 0)
         m.minimize(sum(senior_gaps))
         s0 = cp_model.CpSolver()
         s0.parameters.max_time_in_seconds = max(3.0, time_limit / 5)
         s0.parameters.num_workers = workers
         s0.parameters.random_seed = seed
         st0 = s0.solve(m)
+        m.clear_hints()
+        if hint and st0 not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+            log.warning("資深坐鎮階段連起始班表都沒採用（%s）— 起始班表可能違反完整模型的硬約束", s0.status_name(st0))
         if st0 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             m.add(sum(senior_gaps) <= int(round(s0.objective_value)))
-            for key, v in x.items():
-                m.add_hint(v, s0.value(v))
-            time_limit = max(1.0, time_limit - s0.wall_time)
+            hint = {sid: [next(sh for sh in SHIFTS if s0.value(x[sid, d, sh])) for d in range(nd)]
+                    for sid in prob.ids}
+        time_limit = max(1.0, time_limit - s0.wall_time)
     m.minimize(obj_expr)
 
     # —— 起始班表（hint）：保證結果不比它差 ——
@@ -678,6 +700,7 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
     #       (3) 正式搜尋若沒找到更好的，直接回傳 hint。
     hint_value = None
     hint_used = False
+    hint_rejected = False
     if hint:
         pin = m.new_bool_var("pin_hint")
         for sid in prob.ids:
@@ -690,6 +713,10 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
         s1.parameters.num_workers = workers
         st1 = s1.solve(m)
         m.clear_assumptions()
+        if st1 == cp_model.INFEASIBLE:
+            # 起始班表在完整模型裡不合法：通常代表它和產生它的模型硬約束不一致（例如舊的混 3 種班 bug），是 bug 不是常態
+            hint_rejected = True
+            log.warning("起始班表固定後不可行（完整模型與產生起點的模型硬約束不一致？）")
         if st1 in (cp_model.OPTIMAL, cp_model.FEASIBLE):
             hint_value = int(round(s1.objective_value))
             for i in range(len(m.proto.variables)):
@@ -710,8 +737,9 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
     if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if hint_value is not None:   # 沒找到比起點更好的 → 起點本身就是答案
             return {"status": "HINT_KEPT", "schedule": {sid: list(hint[sid]) for sid in prob.ids},
-                    "elapsed": round(time() - t0, 2), "gap": 0.0, "hint_value": hint_value, "objective": hint_value}
-        return {"status": status_name, "schedule": None, "elapsed": round(time() - t0, 2)}
+                    "elapsed": round(time() - t0, 2), "gap": 0.0, "hint_value": hint_value, "objective": hint_value,
+                    "hint_rejected": hint_rejected}
+        return {"status": status_name, "schedule": None, "elapsed": round(time() - t0, 2), "hint_rejected": hint_rejected}
 
     schedule = {sid: [next(sh for sh in SHIFTS if solver.value(x[sid, d, sh])) for d in range(nd)]
                 for sid in prob.ids}
@@ -722,6 +750,7 @@ def solve_cpsat(prob: Problem, W: Dict[str, float], mult: Dict[str, float],
         "gap": (solver.objective_value - solver.best_objective_bound) / max(1.0, solver.objective_value),
         "objective": int(round(solver.objective_value)),
         "hint_value": hint_value,
+        "hint_rejected": hint_rejected,
     }
 
 

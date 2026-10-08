@@ -44,7 +44,6 @@ WORKERS = max(1, int(os.getenv("CPSAT_WORKERS", str(os.cpu_count() or 2))))
 # 每個請求的計算時間上限（秒）：超過就停止並回報，不讓請求拖到 Cloud Run 的 300 秒逾時。
 # 被 Cloud Run 切斷的請求會在背景繼續算、佔住 CPU，拖慢之後的請求。
 REQUEST_BUDGET = float(os.getenv("ENGINE_TIME_BUDGET", "110"))
-ESTIMATE_SHARE = 0.6        # 排班時，人力試算（沒有快取時）最多用掉預算的這個比例，剩下給求解
 SOLVE_MARGIN = 10.0         # 建模型、組回應等求解器時限以外的時間
 WISH_CHECK_SECONDS = float(os.getenv("WISH_CHECK_SECONDS", "20"))
 DAYS_PER_PERSON_DEFAULT = 4
@@ -183,8 +182,7 @@ _staffing_cache: Dict[Tuple, Dict] = {}
 _staffing_partial: Dict[Tuple, Dict] = {}   # 逾時中止的試算進度：下次從停下的人數接著算
 
 
-def staffing_estimate(store, year: int, month: int, reqs: Dict[str, int],
-                      staff_ids: Optional[List[str]] = None, deadline: Optional[float] = None) -> Dict:
+def _team_and_key(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Optional[List[str]]):
     staff = eligible_staff(store.staff_rows())
     if staff_ids:
         wanted = {str(x).upper() for x in staff_ids}
@@ -194,7 +192,12 @@ def staffing_estimate(store, year: int, month: int, reqs: Dict[str, int],
     # 試算只跟「人數組成」有關（保護 / 雙週 / 一般），跟是誰無關 → 用組成當快取 key
     comp = (sum(1 for s in staff if s["is_pregnant_or_nursing"] or s["leave_status"] == "Student"),
             sum(1 for s in staff if s["special_status"] == "BiWeekly"), len(staff))
-    key = (year, month, tuple(sorted(reqs.items())), comp)
+    return staff, (year, month, tuple(sorted(reqs.items())), comp)
+
+
+def staffing_estimate(store, year: int, month: int, reqs: Dict[str, int],
+                      staff_ids: Optional[List[str]] = None, deadline: Optional[float] = None) -> Dict:
+    staff, key = _team_and_key(store, year, month, reqs, staff_ids)
     rng = _staffing_cache.get(key)
     if rng is None:
         rng = cps.staffing_range(year, month, reqs, staff, check_time=20.0, workers=WORKERS,
@@ -266,18 +269,27 @@ def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Opti
                                  "（截止前排出的班表不會包含之後才登記的預假）")
     t_start = time()
     deadline = t_start + REQUEST_BUDGET
-    est = staffing_estimate(store, year, month, reqs, staff_ids, deadline=t_start + REQUEST_BUDGET * ESTIMATE_SHARE)
-    if not est["ok"]:
-        raise HTTPException(400, est["note"])
-    rows = {s["staff_id"]: s for s in eligible_staff(store.staff_rows())}
-    staff = [rows[i] for i in est["participants"]]
-    ids = [s["staff_id"] for s in staff]
     nd = calendar.monthrange(year, month)[1]
-
-    wishes: Dict[str, List[int]] = {}
+    # 不在這裡跑人力試算（找「最少幾人」對排班沒用，卻會吃掉大半時間預算）：
+    # 有試算快取就沿用；沒有就只做人數上限，可不可行交給下面的輕量求解直接回答。
+    team, key = _team_and_key(store, year, month, reqs, staff_ids)
+    entries: Dict[str, List[int]] = {}
     if use_wishes:
         _, entries = store.wish_state(f"{year}_{month}")
-        wishes = {s: [d - 1 for d in ds if 1 <= d <= nd] for s, ds in entries.items() if s in ids}
+    rng = _staffing_cache.get(key)          # Cloud Run 多台 / 冷啟動時多半沒有，不能依賴
+    if rng is not None:
+        adj = cps.adjust_headcount(team, rng, keep_ids=set(entries))
+        if not adj["ok"]:
+            raise HTTPException(400, adj["note"])
+        staffing = {"min": rng["min"], "max": rng["max"], "recommended": rng["comfort"], "note": adj["note"]}
+    else:
+        hi = cps.max_headcount(reqs, nd)
+        adj = cps.adjust_headcount(team, {"min": 0, "max": hi, "comfort": None}, keep_ids=set(entries))
+        note = adj["note"] if len(adj["staff"]) < len(team) else f"參與排班 {len(team)} 人"
+        staffing = {"min": None, "max": hi, "recommended": None, "note": note}
+    staff = adj["staff"]
+    ids = [s["staff_id"] for s in staff]
+    wishes = {s: [d - 1 for d in ds if 1 <= d <= nd] for s, ds in entries.items() if s in ids}
 
     def pin(m, x, pr, wy):  # 已登記預假 = 硬約束（送出時已檢查過可行，保證滿足）
         for s, ds in wishes.items():
@@ -290,20 +302,51 @@ def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Opti
         hint = {s: v for s, v in hint.items() if s in ids and len(v) == nd and all(c in cps.SHIFTS for c in v)}
         hint = hint if len(hint) == len(ids) else None
     t0 = time()
-    time_limit = max(5.0, min(time_limit, deadline - t0 - SOLVE_MARGIN))
-    r = cps.solve_cpsat(prob, GEN_WEIGHTS, {i: 1.0 for i in ids}, 1.0, time_limit=time_limit,
-                        workers=WORKERS, extra=pin if wishes else None, hint=hint)
+    # 先用輕量模型（不建偏好變數）找一份合法班表當起點：完整模型在 2 vCPU 上常在時限內連合法解都找不到，
+    # 有了起點，solve_cpsat 保證結果不比它差（HINT_KEPT），剩下的時間只用來提升品質。
+    def timeout_503():
+        return HTTPException(503, f"排班在 {int(time() - t_start)} 秒內沒有找到合法班表，已中止（上限約 2 分鐘）。"
+                                  "請再試一次，或增補人力 / 降低每日需求")
+
     wishes_hard = bool(wishes)
+    if not hint:
+        zero = cps.Problem(year, month, staff, reqs, {i: {"high": set(), "normal": set()} for i in ids},
+                           backward_weight=0, mix2_weight=0, mix3_weight=0)
+
+        def feasible(limit, with_wishes):
+            return cps.solve_cpsat(zero, {k: 0.0 for k in cps.FEATURES}, {i: 1.0 for i in ids}, 0.0,
+                                   time_limit=limit, workers=WORKERS, extra=pin if with_wishes else None)
+
+        f = feasible(max(5.0, (deadline - time() - SOLVE_MARGIN) * 0.6), bool(wishes))
+        if f["schedule"] is None and f.get("reasons"):
+            raise HTTPException(400, "人力不足：" + "；".join(f["reasons"]) + "。請增補人力或降低每日需求")
+        if f["schedule"] is None and wishes and f["status"] == "INFEASIBLE":
+            # 已登記預假彼此衝突（理論上送出時已檢查，不該發生）：改拿不含預假的起點，預假改當軟約束，
+            # 不再跑一次注定無解的「預假當硬約束」完整模型
+            log.warning(f"{year}/{month} 預假當硬約束無解，改為軟約束")
+            wishes_hard = False
+            f = feasible(max(5.0, (deadline - time() - SOLVE_MARGIN) * 0.5), False)
+        if f["schedule"] is not None:
+            hint = f["schedule"]
+        elif f["status"] == "UNKNOWN":
+            raise timeout_503()
+        else:
+            raise HTTPException(400, f"目前 {len(ids)} 人排不出合法班表，請到「預假管理」做人力試算，增補人力或降低每日需求")
+    time_limit = max(5.0, min(time_limit, deadline - time() - SOLVE_MARGIN))
+    r = cps.solve_cpsat(prob, GEN_WEIGHTS, {i: 1.0 for i in ids}, 1.0, time_limit=time_limit,
+                        workers=WORKERS, extra=pin if wishes_hard else None, hint=hint)
+    if r.get("hint_rejected"):
+        log.warning(f"{year}/{month} 起始班表被完整模型判定不可行 — 兩個模型的硬約束不一致，請檢查 model.py")
     retry_limit = deadline - time() - SOLVE_MARGIN
-    if r["schedule"] is None and wishes and retry_limit >= 5:
-        # 理論上不會發生（送出時已檢查），保險起見退回「預假當軟約束」（只用剩下的時間預算）
+    if r["schedule"] is None and wishes_hard and retry_limit >= 5:
+        # 呼叫端自帶的 hint 不含預假等情況：退回「預假當軟約束」（只用剩下的時間預算）
         log.warning(f"{year}/{month} 預假當硬約束無解（{r['status']}），退回軟約束")
         r = cps.solve_cpsat(prob, GEN_WEIGHTS, {i: 1.0 for i in ids}, 1.0, time_limit=retry_limit,
                             workers=WORKERS, hint=hint)
         wishes_hard = False
     if r["schedule"] is None:
         if r["status"] == "UNKNOWN":
-            raise HTTPException(503, f"排班超過 {int(REQUEST_BUDGET)} 秒仍沒有找到合法班表，已中止。請再試一次，或增補人力 / 降低每日需求")
+            raise timeout_503()
         raise HTTPException(400, "；".join(r.get("reasons") or []) or f"找不到合法班表（{r['status']}），請增補人力或降低需求")
 
     S = r["schedule"]
@@ -322,7 +365,7 @@ def generate(store, year: int, month: int, reqs: Dict[str, int], staff_ids: Opti
             "objective": r.get("objective"), "hint_value": r.get("hint_value"),
             "hard_penalty": hard, "num_days": nd, "num_nurses": len(ids),
             "wishes_total": sum(len(v) for v in wishes.values()), "wishes_met": hit,
-            "wishes_hard": wishes_hard, "staffing": {k: est[k] for k in ("min", "max", "recommended", "note")},
+            "wishes_hard": wishes_hard, "staffing": staffing,
             "backward_rotations": sum(cps.backward_rotations(S[s]) for s in ids),
             "shift_types": dict(Counter(len({c for c in S[s] if c in cps.WORK}) for s in ids)),
             "senior_gaps": cps.senior_gap_count(prob, S),

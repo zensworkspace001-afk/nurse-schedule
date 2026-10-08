@@ -187,11 +187,50 @@ ns = [c[0] for c in full["checks"]]
 check("接續試算：沿用進度、不重複檢查、找到最少人數",
       not full["timed_out"] and full["min"] is not None and len(ns) == len(set(ns))
       and all(c in full["checks"] for c in part["checks"] if c[1] != "TIMEOUT"), f"min={full['min']} checks={ns}")
+# 「整月混 3 種班」是扣分（mix3_weight），不能變成禁止：強制一人 D/E/N 都上，完整模型仍要排得出來
+import model as _cps  # noqa: E402
+mixp = cpsat_service._problem(2026, 8, [s for s in cpsat_service.eligible_staff(base)], {"D": 3, "E": 2, "N": 2})
+mix_sid = next(s["staff_id"] for s in mixp.staff if not mixp.is_protected(s))
+def _force_all3(m, x, pr, wy):
+    for sh in _cps.WORK:
+        m.add(sum(x[mix_sid, d, sh] for d in range(pr.num_days)) >= 1)
+    return 0
+mr = _cps.solve_cpsat(mixp, cpsat_service.GEN_WEIGHTS, {i: 1.0 for i in mixp.ids}, 1.0, time_limit=30, extra=_force_all3)
+check("整月混 3 種班只扣分、不是禁止", mr["status"] != "INFEASIBLE", f"{mix_sid} → {mr['status']}")
+
+# 不變式：輕量（零權重）模型的合法解，固定進完整模型（GEN 權重）不可以是 INFEASIBLE
+#  — 兩者硬約束必須一致；否則排班時的起點會被默默丟掉（就是混 3 種班 bug 的樣子）
+zp = _cps.Problem(2026, 8, mixp.staff, {"D": 3, "E": 2, "N": 2}, {i: {"high": set(), "normal": set()} for i in mixp.ids},
+                  backward_weight=0, mix2_weight=0, mix3_weight=0)
+zs = _cps.solve_cpsat(zp, {k: 0.0 for k in _cps.FEATURES}, {i: 1.0 for i in zp.ids}, 0.0, time_limit=30, extra=_force_all3)
+def _pin_hint(m, x, pr, wy):
+    for sid in pr.ids:
+        for d in range(pr.num_days):
+            m.add(x[sid, d, zs["schedule"][sid][d]] == 1)
+    return 0
+pinned = _cps.solve_cpsat(mixp, cpsat_service.GEN_WEIGHTS, {i: 1.0 for i in mixp.ids}, 1.0, time_limit=30, extra=_pin_hint)
+check("不變式：零權重模型的解固定進完整模型不可 INFEASIBLE", zs["schedule"] is not None and pinned["status"] != "INFEASIBLE",
+      f"zero={zs['status']} pinned={pinned['status']}")
+
+# 超過人數上限要排除人時，已登記預假（保證休假）的人優先保留
+many = [{"staff_id": f"S{i:02d}", "special_status": "Standard"} for i in range(10)]
+kept = _adj(many, {"min": 1, "max": 8, "comfort": 1}, keep_ids={"S09"})
+check("人數超過上限：已登記預假的人不會被排除", "S09" in {s["staff_id"] for s in kept["staff"]} and len(kept["staff"]) == 8,
+      kept["note"])
+
 over = {"min": None, "max": 24, "timed_out": True,
         "checks": [(10, "預檢無解", ""), (15, "預檢無解", ""), (16, "UNKNOWN", ""), (25, "INFEASIBLE", ""), (28, "INFEASIBLE", "")]}
 note = _adj(base, over)["note"]
 check("人太多造成的排不出來不算下限（只採連續被證明的那一段）", "15 人以下" in note and "28" not in note, note)
 store.settings = dict(store.settings or {}, open=False)
+# 預假彼此衝突（全員都要 8/1–8/4 休）→ 排班仍要有結果，改為軟約束並標示
+store.entries = {s["staff_id"]: [1, 2, 3, 4] for s in store.staff}
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}, "time_limit": 40},
+                headers=ADMIN)
+st = r.json().get("stats", {})
+check("預假彼此衝突 → 仍排出合法班表、wishes_hard=false", r.status_code == 200 and st.get("wishes_hard") is False
+      and st.get("hard_penalty") == 0, f"{r.status_code} wishes_hard={st.get('wishes_hard')} {r.json().get('detail', '')}")
 store.entries = {}
 saved_budget = cpsat_service.REQUEST_BUDGET
 cpsat_service.REQUEST_BUDGET = 30.0
