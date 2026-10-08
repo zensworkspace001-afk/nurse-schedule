@@ -31,7 +31,7 @@ const ManagerInterface = ({
   publishedDate,
 }) => {
   const tabs = [
-    { id: 'requirements', path: '/requirements', label: '人力需求', icon: Settings },
+    { id: 'requirements', path: '/requirements', label: '護病比', icon: Settings },
     { id: 'staff', path: '/staff', label: '員工管理', icon: Users },
     { id: 'leave-wishes', path: '/leave-wishes', label: '預假管理', icon: CalendarHeart },
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
@@ -227,7 +227,7 @@ const ManagerInterface = ({
 
               <Route path="/leave-wishes" element={
                 <LeaveWishPanel
-                  staffData={staffData} requirements={requirements}
+                  staffData={staffData} requirements={requirements} bedConfig={bedConfig}
                   selectedYear={selectedYear} selectedMonth={selectedMonth}
                   leaveWish={leaveWish}
                   publishedDate={publishedDate}

@@ -3,7 +3,7 @@ import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileD
 import { auth } from '../api/database';
 import { backupScheduleToArchive, saveLeaveWishSettings } from '../api/database';
 import { generateCpsatSchedule } from '../api/scheduleEngine';
-import { computeDailyRequirements } from '../constants';
+import { computeDailyRequirements, legalDailyFloor } from '../constants';
 import './SchedulePanel.css';
 
 // ============================================================================
@@ -177,16 +177,25 @@ const SchedulePanel = ({
   // ============================================================================
   const handleCpsatAssign = async () => {
     // 每日最低人力：本月若已開放過預假，沿用當時的設定（預假的可行性檢查是用這組人力算的，
-    // 換一組人力就不保證預假可滿足）；否則取 max(護理長填的需求, 衛福部護病比法定下限)。
+    // 換一組人力就不保證預假可滿足）；否則取 max(「病床與護病比」算出的需求, 衛福部護病比法定下限)。
+    // 不論哪一種都不可低於法定下限 — 預假那條路以前直接沿用，會繞過下限。
     const wishForThisMonth = leaveWish && Number(leaveWish.year) === selectedYear && Number(leaveWish.month) === selectedMonth;
     const legal = computeDailyRequirements(bedConfig || {});
-    const reqs = wishForThisMonth && leaveWish.reqs
+    const floor = legalDailyFloor(bedConfig?.bedCount ?? 0, bedConfig?.hospitalLevel || 'MedicalCenter');
+    const base = wishForThisMonth && leaveWish.reqs
       ? { D: Number(leaveWish.reqs.D), E: Number(leaveWish.reqs.E), N: Number(leaveWish.reqs.N) }
       : {
           D: Math.max(requirements.D || 0, legal.D),
           E: Math.max(requirements.E || 0, legal.E),
           N: Math.max(requirements.N || 0, legal.N),
         };
+    const reqs = { D: Math.max(base.D, floor.D), E: Math.max(base.E, floor.E), N: Math.max(base.N, floor.N) };
+    const raisedToFloor = ['D', 'E', 'N'].filter(k => reqs[k] > base[k]);
+    if (raisedToFloor.length && !window.confirm(
+      `⚠️ ${selectedYear}/${selectedMonth} 預假開放時設定的每日人力（D${base.D} / E${base.E} / N${base.N}）` +
+      `低於衛福部護病比法定下限，排班改用 D${reqs.D} / E${reqs.E} / N${reqs.N}。\n\n` +
+      `已登記的預假是用較低的人力檢查的，可能無法全部保證（排不出來時會改為盡量滿足並標示）。\n` +
+      `人力不足時會排班失敗，請到「護病比」分頁確認病床數與醫院等級。要繼續嗎？`)) return;
 
     // 預假還開放就排班 → 之後才登記的人會被告知「保證休假」，但班表沒有反映。必須先截止（引擎也會擋）。
     if (wishForThisMonth && leaveWish.open) {
