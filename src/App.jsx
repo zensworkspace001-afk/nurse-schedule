@@ -969,10 +969,15 @@ const handleSaveAndPublish = async () => {
               )}
             </div>
             <span className="app__header-user"><Hand size={18} /> {currentUser.name} {currentUser.role === 'admin' ? '' : ' (護理師)'}</span>
+            {/* 窄螢幕只留圖示（文字藏在 app__btn-text，title 當提示），header 永遠一行不換行 */}
             {currentUser.role === 'admin' && (
-                <button onClick={() => setShowAdminPwdModal(true)} className="app__header-pwd-btn"><Settings size={14} /> 修改密碼</button>
+                <button onClick={() => setShowAdminPwdModal(true)} className="app__header-pwd-btn" title="修改密碼">
+                  <Settings size={14} /><span className="app__btn-text">修改密碼</span>
+                </button>
             )}
-            <button onClick={handleLogout} className="app__header-logout-btn"><LogOut size={14} /> 登出</button>
+            <button onClick={handleLogout} className="app__header-logout-btn" title="登出">
+              <LogOut size={14} /><span className="app__btn-text">登出</span>
+            </button>
           </div>
       </div>
 
