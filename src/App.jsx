@@ -465,7 +465,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
             saveMonthlySchedule(selectedYear, selectedMonth, {
               schedule: schedule
               // ★ 警告：絕對不能在這裡自動寫入 finalizedSchedule，只能由發布按鈕寫入！
-            });
+            }).catch(err => console.error("自動存檔班表草稿失敗:", err));
         }
 
         // ★ 注意：baseSalary 不在自動存檔範圍 — 它是加密欄位，由
@@ -477,7 +477,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
           requirements: requirements || { D: 15, E: 12, N: 8 },
           bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15, hospitalLevel: 'MedicalCenter' },
           levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
-        });
+        }).catch(err => console.error("自動存檔設定失敗:", err));
 
         // ★ 與 schedule 的「不寫空」guard 同款：staffData 從 useState([]) 起步，
         //   subscribeToStaff 的 snapshot 若比 2s timeout 慢回來，這裡會把
@@ -489,7 +489,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
           saveGlobalStaff({
             staffData,
             healthStats: healthStats || []
-          });
+          }).catch(err => console.error("自動存檔員工資料失敗:", err));
         }
 
     }, 2000);
