@@ -174,5 +174,31 @@ adj = adjust_headcount([{"staff_id": f"N{i:03d}"} for i in range(20)],
 check("試算無解（min=None）→ 訊息不含 None、下限 29", not adj["ok"] and "None" not in adj["note"] and "29 人以上" in adj["note"],
       adj["note"])
 
+# —— 時間預算（每個請求最多約 2 分鐘）——
+import time as _time  # noqa: E402
+from model import staffing_range, adjust_headcount as _adj  # noqa: E402
+base = [dict(s, is_active=True) for s in copy.deepcopy(SAMPLE_STAFF)]
+part = staffing_range(2026, 9, {"D": 3, "E": 2, "N": 2}, base, check_time=20, deadline=_time.time())
+check("試算到截止時間 → 停止並標記 timed_out、不印 None",
+      part["timed_out"] and part["min"] is None and part["checks"][-1][1] == "TIMEOUT"
+      and "None" not in _adj(base, part)["note"], _adj(base, part)["note"])
+full = staffing_range(2026, 9, {"D": 3, "E": 2, "N": 2}, base, check_time=20, resume=part)
+ns = [c[0] for c in full["checks"]]
+check("接續試算：沿用進度、不重複檢查、找到最少人數",
+      not full["timed_out"] and full["min"] is not None and len(ns) == len(set(ns))
+      and all(c in full["checks"] for c in part["checks"] if c[1] != "TIMEOUT"), f"min={full['min']} checks={ns}")
+store.settings = dict(store.settings or {}, open=False)
+store.entries = {}
+saved_budget = cpsat_service.REQUEST_BUDGET
+cpsat_service.REQUEST_BUDGET = 30.0
+t = _time.time()
+r = client.post("/cpsat/generate_schedule",
+                json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 3, "N": 2}, "time_limit": 120},
+                headers=ADMIN)
+elapsed = _time.time() - t
+cpsat_service.REQUEST_BUDGET = saved_budget
+check("排班要求 120 秒也會被壓在時間預算（30 秒）內", r.status_code in (200, 503) and elapsed < 35,
+      f"{r.status_code}，{elapsed:.1f}s")
+
 print(f"\n{sum(results)}/{len(results)} 通過")
 sys.exit(0 if all(results) else 1)

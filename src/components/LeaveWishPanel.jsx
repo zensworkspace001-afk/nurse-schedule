@@ -139,7 +139,7 @@ const LeaveWishPanel = ({ staffData = [], requirements, selectedYear, selectedMo
             </label>
           ))}
           <button type="button" className="lw-panel__btn" onClick={handleEstimate} disabled={estimating || isOpenHere}>
-            {estimating ? <><Loader size={14} className="lw-panel__spin" /> 試算中（最多約 1 分鐘）…</> : <><Calculator size={14} /> 人力試算</>}
+            {estimating ? <><Loader size={14} className="lw-panel__spin" /> 試算中（最多約 2 分鐘）…</> : <><Calculator size={14} /> 人力試算</>}
           </button>
         </div>
 

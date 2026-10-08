@@ -24,7 +24,7 @@ import math
 import random
 from dataclasses import dataclass, field
 from time import time
-from typing import Dict, List, Set
+from typing import Dict, List, Optional, Set
 
 from ortools.sat.python import cp_model
 
@@ -219,7 +219,8 @@ def monthly_workday_shortfall(prob: Problem) -> List[str]:
 
 
 def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List[Dict],
-                   max_extra: int = 15, check_time: float = 30.0, wish_slack: int = 4) -> Dict:
+                   max_extra: int = 15, check_time: float = 30.0, wish_slack: int = 4,
+                   deadline: Optional[float] = None, workers: int = 8, resume: Optional[Dict] = None) -> Dict:
     """
     人力試算：在目前團隊組成（base_staff 的保護名單、雙週人員）下，每日需求 reqs 需要幾人。
 
@@ -229,7 +230,9 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
                  人太多會「班不夠分」→ floor(Σ(需求+超編上限) × 天數 / 最少上班天數)
       comfort  — 建議人數：≥ min 且每天預假配額（人數 − 每日最低需求）≥ wish_slack
       gray     — 時限內既沒證明有解、也沒證明無解（UNKNOWN）的人數：可能排得出來但很難，不建議
-      checks   — 每個試過的人數與結果（預檢無解 / INFEASIBLE / FEASIBLE / UNKNOWN）
+      checks   — 每個試過的人數與結果（預檢無解 / INFEASIBLE / FEASIBLE / UNKNOWN / TIMEOUT）
+      timed_out — 到了 deadline（time() 絕對時間）還沒找到 min 就停止；這種結果不該被快取
+    resume: 上一次 timed_out 的結果 → 沿用已檢查過的人數，從下一個人數接著試（每次重試都會往前推進）
     人數不足時以「一般護理師」補位（不改動既有人員的身分）；人數過多時從尾端移除一般護理師。
     """
     nd = calendar.monthrange(year, month)[1]
@@ -248,9 +251,13 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
         return prot + kept + extra
 
     hi = (sum(r + MAX_OVERSTAFF for r in reqs.values()) * nd) // max(1, MIN_MONTH_WORK)
-    checks = []
+    checks = [c for c in (resume or {}).get("checks", []) if c[1] != "TIMEOUT"]
+    done = {c[0] for c in checks}
     n_min = None
+    timed_out = False
     for n in range(max(demand, len(prot) + 1), len(base_staff) + max_extra + 1):
+        if n in done:
+            continue
         staff = team(n)
         ids = [s["staff_id"] for s in staff]
         prob = Problem(year, month, staff, reqs, {i: {"high": set(), "normal": set()} for i in ids},
@@ -259,7 +266,15 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
         if why:
             checks.append((n, "預檢無解", why[0]))
             continue
-        r = solve_cpsat(prob, {k: 0.0 for k in FEATURES}, {i: 1.0 for i in ids}, 0.0, time_limit=check_time)
+        limit = check_time
+        if deadline is not None:
+            limit = min(check_time, deadline - time() - 2)
+            if limit < 3:
+                checks.append((n, "TIMEOUT", ""))
+                timed_out = True
+                break
+        r = solve_cpsat(prob, {k: 0.0 for k in FEATURES}, {i: 1.0 for i in ids}, 0.0, time_limit=limit,
+                        workers=workers)
         checks.append((n, r["status"], ""))
         if r["schedule"] is not None:
             n_min = n
@@ -267,7 +282,7 @@ def staffing_range(year: int, month: int, reqs: Dict[str, int], base_staff: List
     comfort = None if n_min is None else max(n_min, demand + wish_slack)
     gray = [n for n, st, _ in checks if st == "UNKNOWN"]
     return {"min": n_min, "max": hi, "comfort": comfort, "gray": gray, "demand": demand, "days": nd,
-            "protected": len(prot), "checks": checks}
+            "protected": len(prot), "checks": checks, "timed_out": timed_out}
 
 
 def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
@@ -278,6 +293,12 @@ def adjust_headcount(staff: List[Dict], rng: Dict) -> Dict:
       其餘        → 全員參與
     """
     n = len(staff)
+    if rng["min"] is None and rng.get("timed_out"):
+        checks = rng.get("checks") or []
+        proven = [c[0] for c in checks if c[1] in ("預檢無解", "INFEASIBLE")]
+        known = f"已確認 {max(proven)} 人以下排不出來；" if proven else ""
+        return {"ok": False, "staff": staff,
+                "note": f"人力試算超過時間上限而中止（{known}目前 {n} 人）。請稍後再試，或降低每日需求"}
     if rng["min"] is None:
         # 試算範圍內都沒找到合法解：下限取「已證明無解的最大人數 + 1」，不要把 None 印給使用者
         checks = rng.get("checks") or []
