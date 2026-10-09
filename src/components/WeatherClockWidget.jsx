@@ -245,7 +245,7 @@ const WeatherClockWidget = ({ inline = false }) => {
           title="點切換城市"
         >
           <MapPin size={11} />
-          <span>{weather?.city || (city === 'auto' ? '偵測中…' : city.split(',')[0])}</span>
+          <span>{weather?.city || (city === 'auto' ? (err ? '天氣暫不可用' : '偵測中…') : city.split(',')[0])}</span>
           <ChevronDown size={11} />
         </button>
         {showCityPicker && (

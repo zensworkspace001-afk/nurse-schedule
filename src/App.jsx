@@ -17,6 +17,21 @@ import WeatherClockWidget from './components/WeatherClockWidget';
 import ConnectionStatusBanner from './components/ConnectionStatusBanner';
 import './App.refactored.css';
 
+// 物件內容指紋（key 排序後 JSON），用來判斷自動存檔前後內容是否真的有變
+const stableKey = (v) => JSON.stringify(v, (_k, val) =>
+  val && typeof val === 'object' && !Array.isArray(val)
+    ? Object.keys(val).sort().reduce((o, k) => { o[k] = val[k]; return o; }, {})
+    : val);
+
+// 自動存檔寫進 NurseApp/Settings 的欄位（快照指紋與自動存檔共用同一組預設值）
+const settingsPayload = (d) => ({
+  shiftOptions: d.shiftOptions || [],
+  priorityConfig: d.priorityConfig || {},
+  requirements: d.requirements || { D: 15, E: 12, N: 8 },
+  bedConfig: d.bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15, hospitalLevel: 'MedicalCenter' },
+  levelBonus: d.levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 },
+});
+
 const NurseSchedulingSystem = () => {
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -28,6 +43,9 @@ const NurseSchedulingSystem = () => {
   // 避免 onAuthStateChanged 在表單登入時搶先設值、打斷 LoginPanel 的 750ms 蓋板動畫。
   const [authChecked, setAuthChecked] = useState(false);
   const initialAuthHandled = useRef(false);
+  // 自動存檔的「雲端目前內容」指紋：快照進來或寫完就更新；內容沒變就不寫
+  // （以前光是瀏覽管理分頁，快照設進 state 就觸發 2 秒自動存檔把同樣的資料寫回去，一次 10 多筆）
+  const lastSyncedRef = useRef({ settings: null, staff: null, schedule: {} });
   useEffect(() => {
     const buildUserPayload = (user) => {
       const localPart = (user.email || '').split('@')[0].toLowerCase();
@@ -165,8 +183,18 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     if (!publishedDateLoadedRef.current) return;  // 等雲端真的載入
     if (!publishedDate?.month || !publishedDate?.year) return;
     if (initialNoSavedMonthRef.current) {
-      setSelectedMonth(publishedDate.month);
-      setSelectedYear(publishedDate.year);
+      // 工作月份：有開放中的預假 → 那個月；最後發布的月份已過 → 下個月；否則沿用最後發布的月份。
+      // （以前一律用 publishedDate，正式資料停在 2026/3 時，排班工作桌一按 CP-SAT 就是在排半年前的 3 月）
+      let wy = Number(publishedDate.year), wm = Number(publishedDate.month);
+      const now = new Date();
+      if (leaveWish?.open && leaveWish.year && leaveWish.month) {
+        wy = Number(leaveWish.year); wm = Number(leaveWish.month);
+      } else if (wy * 12 + wm < now.getFullYear() * 12 + now.getMonth() + 1) {
+        wm = now.getMonth() + 2; wy = now.getFullYear();
+        if (wm > 12) { wm = 1; wy++; }
+      }
+      setSelectedMonth(wm);
+      setSelectedYear(wy);
       initialNoSavedMonthRef.current = false;
     }
     if (initialNoSavedHistoryRef.current) {
@@ -174,7 +202,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       setHistoryYear(publishedDate.year);
       initialNoSavedHistoryRef.current = false;
     }
-  }, [publishedDate]);
+  }, [publishedDate, leaveWish]);
 
   const [showStatusDropdown, setShowStatusDropdown] = useState(false);
   const [closingStatusDropdown, setClosingStatusDropdown] = useState(false);
@@ -330,6 +358,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
 
     const unsubSettings = subscribeToSettings((data) => {
       if (!data) return;
+      lastSyncedRef.current.settings = stableKey(settingsPayload(data));
       if (data.shiftOptions) setShiftOptions(data.shiftOptions);
       if (data.priorityConfig) setPriorityConfig(data.priorityConfig);
       if (data.requirements) setRequirements(data.requirements);
@@ -382,6 +411,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
 
       unsubStaff = subscribeToStaff((data) => {
         if (data) {
+          lastSyncedRef.current.staff = stableKey({ staffData: data.staffData || [], healthStats: data.healthStats || [] });
           if (data.staffData) setStaffData(data.staffData);
           if (data.healthStats) setHealthStats(data.healthStats);
         }
@@ -427,6 +457,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
 
     const unsub = isAdmin
       ? subscribeToSchedule(y, m, (data) => {
+          lastSyncedRef.current.schedule[`${y}_${m}`] = stableKey((data && data.schedule) || {});
           if (data) {
             setSchedule(data.schedule || {});
             setFinalizedSchedule(data.finalizedSchedule || null);
@@ -460,7 +491,9 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     const timeoutId = setTimeout(() => {
         
         // ★ 核心修復 2：絕對禁止把「空畫面」寫入雲端覆蓋掉別人的心血！
-        if (schedule && Object.keys(schedule).length > 0) {
+        const ym = `${selectedYear}_${selectedMonth}`;
+        if (schedule && Object.keys(schedule).length > 0 && stableKey(schedule) !== lastSyncedRef.current.schedule[ym]) {
+            lastSyncedRef.current.schedule[ym] = stableKey(schedule);
             saveMonthlySchedule(selectedYear, selectedMonth, {
               schedule: schedule
               // ★ 警告：絕對不能在這裡自動寫入 finalizedSchedule，只能由發布按鈕寫入！
@@ -470,13 +503,11 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
         // ★ 注意：baseSalary 不在自動存檔範圍 — 它是加密欄位，由
         //   ScheduleReviewPanel 的「💾 儲存底薪」明確走 /api/secure-field 加密後寫入。
         //   若這裡也順手寫，會把密文蓋成明文 0/40000，整個加密就破功了。
-        saveGlobalSettings({
-          shiftOptions: shiftOptions || [],
-          priorityConfig: priorityConfig || {},
-          requirements: requirements || { D: 15, E: 12, N: 8 },
-          bedConfig: bedConfig || { bedCount: 50, ratioD: 10, ratioE: 12, ratioN: 15, hospitalLevel: 'MedicalCenter' },
-          levelBonus: levelBonus || { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 }
-        }).catch(err => console.error("自動存檔設定失敗:", err));
+        const settings = settingsPayload({ shiftOptions, priorityConfig, requirements, bedConfig, levelBonus });
+        if (stableKey(settings) !== lastSyncedRef.current.settings) {
+          lastSyncedRef.current.settings = stableKey(settings);
+          saveGlobalSettings(settings).catch(err => console.error("自動存檔設定失敗:", err));
+        }
 
         // ★ 與 schedule 的「不寫空」guard 同款：staffData 從 useState([]) 起步，
         //   subscribeToStaff 的 snapshot 若比 2s timeout 慢回來，這裡會把
@@ -484,11 +515,10 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
         //   doc 因為 saveGlobalStaff 的 for loop 不會跑空陣列所以倖存）。
         //   只在 staffData 至少有一筆時才寫，初次 wipe 過 staffData 的場景請從
         //   StaffPrivate/* 跑 scripts/restore-staff-from-private.js 還原。
-        if (Array.isArray(staffData) && staffData.length > 0) {
-          saveGlobalStaff({
-            staffData,
-            healthStats: healthStats || []
-          }).catch(err => console.error("自動存檔員工資料失敗:", err));
+        const staffPayload = { staffData, healthStats: healthStats || [] };
+        if (Array.isArray(staffData) && staffData.length > 0 && stableKey(staffPayload) !== lastSyncedRef.current.staff) {
+          lastSyncedRef.current.staff = stableKey(staffPayload);
+          saveGlobalStaff(staffPayload).catch(err => console.error("自動存檔員工資料失敗:", err));
         }
 
     }, 2000);
@@ -805,7 +835,7 @@ const handleSaveAndPublish = async () => {
             </button>
             {/* ★ 系統連線狀態 — 下拉選單 ★ */}
             <div className="app__status-dropdown-wrapper">
-              <button ref={statusTriggerRef} className="app__status-trigger" onClick={() => showStatusDropdown ? handleCloseStatusDropdown() : setShowStatusDropdown(true)}>
+              <button ref={statusTriggerRef} className="app__status-trigger" title="系統連線狀態（各 API 是否正常）" aria-label="系統連線狀態" onClick={() => showStatusDropdown ? handleCloseStatusDropdown() : setShowStatusDropdown(true)}>
                 {(() => {
                   const colors = HEALTH_ENDPOINTS.map(ep => endpointStatus[ep.key]?.color || 'gray');
                   const overall = colors.includes('red') ? 'red' : colors.includes('yellow') ? 'yellow' : colors.includes('gray') ? 'gray' : 'green';
@@ -900,6 +930,7 @@ const handleSaveAndPublish = async () => {
             targetYear={publishedDate.year}
             targetMonth={publishedDate.month}
             currentSchedule={finalizedSchedule}
+            isStale={Number(publishedDate.year) * 12 + Number(publishedDate.month) < new Date().getFullYear() * 12 + new Date().getMonth() + 1}
             leaveWish={leaveWish}
           />
         )}

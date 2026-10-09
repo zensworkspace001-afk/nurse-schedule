@@ -118,9 +118,13 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
   const [aiMessages, setAiMessages] = useState([{ role: 'assistant', content: '📊 【跨月大數據分析精靈】已就緒！\n只要您曾在「✅ 結算與歷史」面板匯出過 Excel，雲端就會自動記憶。\n您可以直接問我：「比較 2 月和 3 月的加班費差異」或「找出這幾個月請假最多的人」。' }]);
   const [aiInput, setAiInput] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const chatEndRef = useRef(null);
+  const chatBoxRef = useRef(null);
 
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [aiMessages, isAnalyzing]);
+  // 只捲對話框內部到最新訊息 — scrollIntoView 會連整頁一起捲，打開統計報表就直接跳過最上面的護病比監控
+  useEffect(() => {
+    const box = chatBoxRef.current;
+    if (box) box.scrollTop = box.scrollHeight;
+  }, [aiMessages, isAnalyzing]);
 
   // -- (1) 計算統計數據 (優先選班用) --
   const calculateStats = (data, key) => {
@@ -404,14 +408,30 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
       const minRatio = 0; const maxRatio = 20; // 護病比的右側 Y 軸範圍 (0 到 1:20)
 
-      const getX = (index) => padding + (index * (chartWidth / Math.max(1, dynamicHealthStats.length - 1)));
+      // 橫軸依「實際月份」定位：缺資料的月份留空、線在那裡斷開（以前等距排列，6 月接 8 月看起來像連續月份）
+      const monthIdx = (d) => Number(d.year) * 12 + Number(d.month);
+      const mIdx = dynamicHealthStats.map(monthIdx);
+      const minM = Math.min(...mIdx), spanM = Math.max(...mIdx) - minM;
+      const getX = (index) => padding + (spanM ? ((mIdx[index] - minM) / spanM) * chartWidth : chartWidth / 2);
+      // 把一條數列切成連續月份的線段（遇到缺月或空值就斷）
+      const segments = (valueOf, toY) => {
+          const segs = []; let cur = [];
+          dynamicHealthStats.forEach((d, i) => {
+              const v = valueOf(d);
+              if (v === null || v === undefined || Number.isNaN(Number(v))) { if (cur.length) segs.push(cur); cur = []; return; }
+              if (cur.length && mIdx[i] - mIdx[i - 1] > 1) { segs.push(cur); cur = []; }
+              cur.push(`${getX(i)},${toY(Number(v))}`);
+          });
+          if (cur.length) segs.push(cur);
+          return segs.map(pts => pts.join(' '));
+      };
       const getYHealth = (value) => padding + chartHeight - ((value - minScore) / (maxScore - minScore)) * chartHeight;
       const getYRatio = (value) => padding + chartHeight - ((value - minRatio) / (maxRatio - minRatio)) * chartHeight;
 
-      const avgPoints = dynamicHealthStats.filter(d => d.avg !== null).map((d) => `${getX(dynamicHealthStats.indexOf(d))},${getYHealth(d.avg)}`).join(' ');
-      const ratioDPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioD))}`).join(' ');
-      const ratioEPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioE))}`).join(' ');
-      const ratioNPoints = dynamicHealthStats.map((d, i) => `${getX(i)},${getYRatio(Number(d.ratioN))}`).join(' ');
+      const avgSegs = segments(d => d.avg, getYHealth);
+      const ratioDSegs = segments(d => d.ratioD, getYRatio);
+      const ratioESegs = segments(d => d.ratioE, getYRatio);
+      const ratioNSegs = segments(d => d.ratioN, getYRatio);
 
       return (
           <div className="statistics__chart-wrapper">
@@ -453,22 +473,22 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
                   {/* 1. 健康度曲線 (平均與中位數) */}
                   <g className="statistics__chart-anim" style={{ opacity: trendToggles.health ? 1 : 0, transform: trendToggles.health ? 'translateY(0)' : 'translateY(-15px)' }}>
-                      <polyline points={avgPoints} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" />
+                      {avgSegs.map((pts, k) => <polyline key={k} points={pts} fill="none" stroke="#3498db" strokeWidth="3" strokeLinejoin="round" />)}
                   </g>
 
                   {/* 2. 白班護病比曲線 */}
                   <g className="statistics__chart-anim" style={{ opacity: trendToggles.ratioD ? 1 : 0, transform: trendToggles.ratioD ? 'translateY(0)' : 'translateY(15px)' }}>
-                      <polyline points={ratioDPoints} fill="none" stroke="#f1c40f" strokeWidth="4" strokeLinejoin="round" />
+                      {ratioDSegs.map((pts, k) => <polyline key={k} points={pts} fill="none" stroke="#f1c40f" strokeWidth="4" strokeLinejoin="round" />)}
                   </g>
 
                   {/* 3. 小夜護病比曲線 */}
                   <g className="statistics__chart-anim" style={{ opacity: trendToggles.ratioE ? 1 : 0, transform: trendToggles.ratioE ? 'translateY(0)' : 'translateY(15px)' }}>
-                      <polyline points={ratioEPoints} fill="none" stroke="#e84393" strokeWidth="4" strokeLinejoin="round" />
+                      {ratioESegs.map((pts, k) => <polyline key={k} points={pts} fill="none" stroke="#e84393" strokeWidth="4" strokeLinejoin="round" />)}
                   </g>
 
                   {/* 4. 大夜護病比曲線 */}
                   <g className="statistics__chart-anim" style={{ opacity: trendToggles.ratioN ? 1 : 0, transform: trendToggles.ratioN ? 'translateY(0)' : 'translateY(15px)' }}>
-                      <polyline points={ratioNPoints} fill="none" stroke="#34495e" strokeWidth="4" strokeLinejoin="round" />
+                      {ratioNSegs.map((pts, k) => <polyline key={k} points={pts} fill="none" stroke="#a9c7ff" strokeWidth="4" strokeLinejoin="round" />)}
                   </g>
 
                   {/* X軸標籤與各點數值 (Hover 或常駐顯示) */}
@@ -656,7 +676,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
                   {/* 對話區 */}
                   <div className="statistics__chat-conversation">
-                      <div className="statistics__chat-messages">
+                      <div className="statistics__chat-messages" ref={chatBoxRef}>
                           {aiMessages.map((m, i) => (
                               <div key={i} className={`statistics__chat-msg ${m.role === 'user' ? 'statistics__chat-msg--user' : 'statistics__chat-msg--assistant'}`}>
                                   <div className={`statistics__chat-msg-bubble ${m.role === 'user' ? 'statistics__chat-msg-bubble--user' : 'statistics__chat-msg-bubble--assistant'}`}>
@@ -671,7 +691,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
                                   </div>
                               </div>
                           )}
-                          <div ref={chatEndRef} />
                       </div>
 
                       {/* 輸入區 */}

@@ -9,7 +9,7 @@ const StaffManagementPanel = ({ staffData, setStaffData, currentUser, announceme
   const [localStaff, setLocalStaff] = useState([]);
   const [isDirty, setIsDirty] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all'); // all | active | inactive
+  const [filterStatus, setFilterStatus] = useState('active'); // all | active | inactive — 日常操作預設只看在職
 
 useEffect(() => {
   // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
