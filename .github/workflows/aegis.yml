@@ -30,6 +30,9 @@ jobs:
       - name: 欄位加密 / 密碼雜湊 Node ↔ C# 對照（階段二）
         working-directory: aegis
         run: dotnet test tests/Aegis.Security.Tests --logger "console;verbosity=normal"
+      - name: 資料層與 ETL（SQLite）
+        working-directory: aegis
+        run: dotnet test tests/Aegis.Data.Tests && dotnet test tests/Aegis.Migration.Tests
       - name: 產生 Python 黃金樣本
         run: python -u aegis/baseline/make_golden.py
       - name: C# 引擎比對
