@@ -233,10 +233,10 @@ try {
       {showForgot && (
         <ForgotPasswordModal
           onClose={() => setShowForgot(false)}
-          onFilled={(filledId, tempPw) => {
-            // 帶回登入表單：填好工號與暫時密碼，使用者直接按登入即可
+          onFilled={(filledId) => {
+            // 帶回登入表單：填好工號，密碼欄清空讓使用者輸入剛設定的新密碼
             setEmployeeId(filledId);
-            setPassword(tempPw);
+            setPassword('');
             setError('');
           }}
         />
