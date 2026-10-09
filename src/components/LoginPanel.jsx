@@ -11,6 +11,7 @@ import WeatherClockWidget from './WeatherClockWidget';
 import AnnouncementBanner from './AnnouncementBanner';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import './LoginPanel.css';
+import { buildUserPayload } from '../utils/currentUser';
 
 // Hook：偵測是否為行動版尺寸（≤640px）
 // 桌面：widget 渲染在卡片外（position: fixed 才能黏到 viewport 右上角）
@@ -97,16 +98,15 @@ try {
             }
         } catch { /* 寫稽核失敗不影響登入流程 */ }
 
+        // 角色看 ID token 的 claims（被授權的護理長也是管理員），與 App 還原 session 共用同一個函式
+        const userPayload = await buildUserPayload(auth.currentUser);
+
         // 2. 登入成功 → 建立毛玻璃蓋板（與登出同款動畫，方向相反）
         //    glassFadeIn：35% 蓋滿 → 60% 持續 → 100% 退開，總長 1.5s
         //    在 750ms（畫面被蓋滿）時切換 currentUser，主畫面在蓋板退開時逐漸顯露
         const cover = document.createElement('div');
         cover.className = 'app__transition-cover';
         document.body.appendChild(cover);
-
-        const userPayload = inputId === 'admin'
-            ? { id: 'ADMIN', name: '管理人員', role: 'admin' }
-            : { id: inputId.toUpperCase(), name: '載入中...', role: 'staff', rule: 'Standard' };
 
         setTimeout(() => onLogin(userPayload), 750);
         setTimeout(() => cover.remove(), 1500);

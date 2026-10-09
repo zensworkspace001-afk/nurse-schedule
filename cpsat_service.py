@@ -169,8 +169,13 @@ def _problem(year: int, month: int, staff: List[Dict], reqs: Dict[str, int],
                        {i: {"high": set(w.get(i, [])), "normal": set()} for i in ids}, **GEN_PROBLEM_KW)
 
 
+def _is_admin(user: Dict) -> bool:
+    """超級管理員 ADMIN_EMAIL，或 custom claim admin=True 的員工帳號（與 shared/policy.js 一致）"""
+    return (user.get("email") or "").lower() == ADMIN_EMAIL.lower() or user.get("admin") is True
+
+
 def _require_admin(user: Dict):
-    if (user.get("email") or "").lower() != ADMIN_EMAIL.lower():
+    if not _is_admin(user):
         raise HTTPException(403, "僅限管理員")
 
 

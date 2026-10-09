@@ -52,11 +52,11 @@ store = FakeStore()
 
 
 def fake_verify(authorization: str = Header(None)):
-    # 測試用 token 格式："Bearer uid:email"
+    # 測試用 token 格式："Bearer uid:email" 或 "Bearer uid:email:admin"（帶 custom claim admin=True）
     if not authorization:
         raise HTTPException(401, "缺少登入憑證")
-    uid, email = authorization.split(" ", 1)[1].split(":", 1)
-    return {"uid": uid, "email": email}
+    uid, email, *rest = authorization.split(" ", 1)[1].split(":")
+    return {"uid": uid, "email": email, **({"admin": True} if rest == ["admin"] else {})}
 
 
 app = FastAPI()
@@ -130,6 +130,9 @@ r = client.post("/cpsat/staffing_estimate", json={"year": 2026, "month": 8, "req
 j = r.json()
 check("人力試算 D3/E2/N2 → 最少 12、全員參與", r.status_code == 200 and j["min"] == 12 and j["ok"]
       and len(j["participants"]) == 14, j.get("note"))
+r = client.post("/cpsat/staffing_estimate", json={"year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2}},
+                headers={"Authorization": "Bearer N002:n002@hospital.com:admin"})
+check("被授權為管理員的員工可以人力試算", r.status_code == 200 and r.json()["min"] == 12)
 r = client.post("/cpsat/staffing_estimate", json={"year": 2026, "month": 8, "reqs": {"D": 5, "E": 4, "N": 3}},
                 headers=ADMIN)
 check("人力試算 D5/E4/N3 → 人力不足", r.status_code == 200 and not r.json()["ok"], r.json().get("note"))

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut, ShieldCheck, ExternalLink, Camera } from 'lucide-react';
 import { auth } from '../api/database';
 import { signOut } from 'firebase/auth';
@@ -6,6 +6,7 @@ import ParticleBackground from './ParticleBackground';
 import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { TAIWAN_BANKS } from '../constants/banks';
 import AvatarEditModal from './AvatarEditModal';
+import { usePdpaRead, PDPA_NOTICE_VERSION } from '../utils/pdpa';
 import './ProfileWizard.css';
 
 // 員工首次啟用後的「完善個人資料」精靈。
@@ -14,9 +15,7 @@ import './ProfileWizard.css';
 //   2. 個人狀態（孕/哺乳、可否大夜）
 //   3. 加密 PII（身分證 / 銀行帳號 / 手機）
 // 提交至 /api/complete-profile，後端統一驗證 + 加密 + 寫稽核。
-// PDPA §8 告知頁的 localStorage 旗標 — 必須跟 PrivacyNoticePage 保持一致。
-// 升版告知文案時把 key bump 到 v2，員工會被強制重讀。
-const PDPA_READ_KEY = 'pdpa_read_v1';
+// PDPA §8 告知版本與「已讀」旗標集中在 src/utils/pdpa.js（版本號在 shared/policy.js，後端也驗）。
 
 const ProfileWizard = ({ staffRow, currentUser }) => {
   const [step, setStep] = useState(1);
@@ -28,30 +27,13 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   //   pdpaRead   = 員工已經把告知頁滑到底並按過「我已詳閱完畢」
   //   pdpaAgreed = 員工在 wizard 內勾選了同意 checkbox
   // 兩者皆需 true 才能離開 step 1。提交時把 pdpa_consented_at 寫進 staffData 留證。
-  const [pdpaRead, setPdpaRead] = useState(() => !!localStorage.getItem(PDPA_READ_KEY));
+  const pdpaRead = usePdpaRead();
   const [pdpaAgreed, setPdpaAgreed] = useState(false);
 
   // 頭貼上傳 — 走同一支 AvatarEditModal（後端 /api/complete-profile mode='update'
   // 只 patch avatar/avatar_thumb，不會動 profile_completed，所以 wizard 還沒走完
   // 也能先上傳頭貼。完成 wizard 時 mode='first' 用 spread 保留現有 avatar 值。
   const [showAvatarEdit, setShowAvatarEdit] = useState(false);
-
-  // 監聽其他分頁（告知頁）對 localStorage 的寫入 —— 同 origin 下的 storage 事件
-  useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key === PDPA_READ_KEY && e.newValue) setPdpaRead(true);
-    };
-    window.addEventListener('storage', onStorage);
-    // 兜底：使用者切回 wizard 分頁時主動 re-check（storage event 在 same-tab 寫入不會觸發）
-    const onFocus = () => {
-      if (localStorage.getItem(PDPA_READ_KEY)) setPdpaRead(true);
-    };
-    window.addEventListener('focus', onFocus);
-    return () => {
-      window.removeEventListener('storage', onStorage);
-      window.removeEventListener('focus', onFocus);
-    };
-  }, []);
 
   const [form, setForm] = useState(() => ({
     name: staffRow?.name && staffRow.name !== '載入中...' ? staffRow.name : '',
@@ -131,9 +113,8 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
           idNumber: form.idNumber.trim(),
           bankAccount: composedBankAccount(),
           phone: form.phone.trim(),
-          // PDPA §8 留證：告知文案版本、員工讀完時間、勾選同意時間
-          pdpa_notice_version: 'v1',
-          pdpa_consented_at: new Date().toISOString(),
+          // PDPA §8 留證：告知文案版本（後端只接受目前版本；同意時間由後端記錄）
+          pdpa_notice_version: PDPA_NOTICE_VERSION,
         }),
       });
       const data = await res.json();

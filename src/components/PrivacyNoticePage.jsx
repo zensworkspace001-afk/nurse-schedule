@@ -1,22 +1,23 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ShieldCheck, CheckCircle2, ChevronDown } from 'lucide-react';
+import { hasReadNotice, markNoticeRead, PDPA_NOTICE_VERSION, PDPA_NOTICE_EFFECTIVE_DATE } from '../utils/pdpa';
 import './PrivacyNoticePage.css';
 
 // 個資法 §8 告知頁。
-// 強制使用者滑到底才能按下「我已詳閱完畢」；按下後寫 localStorage.pdpa_read_v1，
-// 讓 ProfileWizard 的 storage 事件監聽器解鎖同意 checkbox。
+// 強制使用者滑到底才能按下「我已詳閱完畢」；按下後寫 localStorage 的已讀旗標（src/utils/pdpa.js），
+// 讓 ProfileWizard / PdpaReconsent 的 storage 事件監聽器解鎖同意 checkbox。
 //
 // 為什麼用 localStorage 而非 postMessage：localStorage 跨分頁 + 重啟後仍持久；
 // 即使使用者關掉這個分頁再回到 wizard 也能讀得到，UX 更穩。
 //
-// 版本碼 v1：未來告知文案修訂時把 key 升到 v2，員工會被強制重讀新版（舊版同意不算）。
-const STORAGE_KEY = 'pdpa_read_v1';
+// 修改本頁告知內容時，把 shared/policy.js 的 PDPA_NOTICE_VERSION 往上加：旗標 key 跟著換，
+// 所有員工會被要求重讀並重新同意（後端只接受目前版本）。
 const SCROLL_BOTTOM_THRESHOLD = 50; // 距離底部 ≤50px 視為已讀完
 
 const PrivacyNoticePage = () => {
   const scrollRef = useRef(null);
   const [hasReachedBottom, setHasReachedBottom] = useState(false);
-  const [acked, setAcked] = useState(() => !!localStorage.getItem(STORAGE_KEY));
+  const [acked, setAcked] = useState(hasReadNotice);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -35,8 +36,7 @@ const PrivacyNoticePage = () => {
   }, []);
 
   const handleAck = () => {
-    const ts = new Date().toISOString();
-    localStorage.setItem(STORAGE_KEY, ts);
+    markNoticeRead();
     setAcked(true);
   };
 
@@ -139,7 +139,7 @@ const PrivacyNoticePage = () => {
           </section>
 
           <section className="privnotice__section privnotice__section--footer">
-            <p>本告知文案版本：v1（{new Date().toLocaleDateString('zh-TW')} 起適用）</p>
+            <p>本告知文案版本：{PDPA_NOTICE_VERSION}（{PDPA_NOTICE_EFFECTIVE_DATE} 起適用）</p>
             <p>如告知內容修訂，本系統將要求您重新確認新版本。</p>
           </section>
         </div>
@@ -164,13 +164,13 @@ const PrivacyNoticePage = () => {
               className="privnotice__ack-btn"
               autoFocus
             >
-              <CheckCircle2 size={16} /> 我已詳閱完畢，繼續填寫資料
+              <CheckCircle2 size={16} /> 我已詳閱完畢
             </button>
           )}
 
           {acked && (
             <div className="privnotice__done">
-              <CheckCircle2 size={18} /> 已完成詳閱確認，請關閉此分頁，回到原系統勾選同意框。
+              <CheckCircle2 size={18} /> 已完成詳閱確認，請關閉此分頁，回到原系統勾選同意框。（若原系統的勾選框仍無法勾選，請重新整理原分頁）
             </div>
           )}
         </div>

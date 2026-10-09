@@ -459,6 +459,15 @@
   color: #e74c3c;
 }
 
+.staff-mgmt__icon-btn--admin {
+  color: #b8c0cc;
+  margin-right: 10px;
+}
+
+.staff-mgmt__icon-btn--admin-on {
+  color: #2e86de;
+}
+
 /* ==========================================================================
    Responsive Web Design (RWD)
    ========================================================================== */
