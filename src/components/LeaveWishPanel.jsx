@@ -69,12 +69,18 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
   const submitted = eligible.filter(s => entries[s.staff_id]);
   const pending = eligible.filter(s => !entries[s.staff_id]);
 
+  // 試算結果記住它是用哪一組 年/月/每日人力 算的；輸入一變（自己改、或雲端同步改了）就視為沒試算過，
+  // 不能拿舊結果開放預假（否則開出去的是沒試算過、可能根本排不出來的人力）
+  const inputKey = `${year}-${month}-${reqs.D}-${reqs.E}-${reqs.N}`;
+  const estimateOk = !!estimate?.ok && estimate._for === inputKey;
+
   const handleEstimate = async () => {
+    touched.current = true;          // 試算後不再被雲端同步覆蓋輸入
     setEstimating(true);
     setMsg({ type: '', text: '' });
     try {
       const r = await estimateStaffing({ year, month, reqs });
-      setEstimate(r);
+      setEstimate({ ...r, _for: inputKey });
       if (r.ok) setQuota(r.default_quota);
     } catch (err) {
       setMsg({ type: 'error', text: err.message });
@@ -84,7 +90,7 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
   };
 
   const handleOpen = async () => {
-    if (!estimate?.ok || quota < 1 || belowFloor.length) return;
+    if (!estimateOk || quota < 1 || belowFloor.length) return;
     // 已發布班表的月份再開放預假：新登記的預假不會出現在已發布的班表上
     if (isPublishedMonth(publishedDate, year, month) && !window.confirm(
       `⚠️ ${year}/${month} 的班表已經發布。\n\n重新開放後新登記的預假不會反映在已發布的班表上，` +
@@ -120,7 +126,9 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
   // 衛福部護病比法定下限（依「病床與護病比」的病床數與醫院等級）：預假的每日人力不可低於它，
   // 否則預假檢查與排班都建立在不合法的人力上（排班工作桌也會再取 max 一次）
   const floor = legalDailyFloor(bedConfig?.bedCount ?? 0, bedConfig?.hospitalLevel || 'MedicalCenter');
-  const belowFloor = ['D', 'E', 'N'].filter(k => Number(reqs[k]) < floor[k]);
+  // 開放中的月份以雲端實際開放的人力為準（輸入框顯示的也是它）
+  const effReqs = (isOpenHere && leaveWish?.reqs) ? leaveWish.reqs : reqs;
+  const belowFloor = ['D', 'E', 'N'].filter(k => Number(effReqs[k]) < floor[k]);
   const levelName = (RATIO_STANDARDS[bedConfig?.hospitalLevel] || RATIO_STANDARDS.MedicalCenter).name;
 
   const setReq = (k, v) => { touched.current = true; setReqs({ ...reqs, [k]: Math.max(0, Number(v) || 0) }); setEstimate(null); };
@@ -165,13 +173,16 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
               {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>{i + 1}</option>)}
             </select>
           </label>
-          {['D', 'E', 'N'].map(k => (
-            <label key={k} className="lw-panel__field">{{ D: '白班 D', E: '小夜 E', N: '大夜 N' }[k]}
-              <input type="number" className="lw-panel__input" min="0" max="50"
-                     value={isOpenHere ? Number(leaveWish.reqs?.[k] ?? reqs[k]) : reqs[k]}
-                     onChange={e => setReq(k, e.target.value)} disabled={isOpenHere} />
-            </label>
-          ))}
+          {/* D / E / N 包成一組：窄螢幕換行時三格一起換，不會被拆到兩列 */}
+          <div className="lw-panel__req-group">
+            {['D', 'E', 'N'].map(k => (
+              <label key={k} className="lw-panel__field">{{ D: '白班 D', E: '小夜 E', N: '大夜 N' }[k]}
+                <input type="number" className="lw-panel__input" min="0" max="50"
+                       value={isOpenHere ? Number(leaveWish.reqs?.[k] ?? reqs[k]) : reqs[k]}
+                       onChange={e => setReq(k, e.target.value)} disabled={isOpenHere} />
+              </label>
+            ))}
+          </div>
           <span className="lw-panel__muted lw-panel__floor-note">
             法定下限（{bedConfig?.bedCount ?? 0} 床・{levelName}）：白班 {floor.D} / 小夜 {floor.E} / 大夜 {floor.N}
           </span>
@@ -186,8 +197,21 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
             低於衛福部護病比法定下限，不能開放預假。請調高每日人力（或展開上方「病房設定」確認病床數與醫院等級）。
           </div>
         )}
+        {belowFloor.length > 0 && isOpenHere && (
+          <div className="lw-panel__msg lw-panel__msg--warn">
+            <AlertTriangle size={14} /> 本月預假是用低於法定下限的人力開放的（白班 {effReqs.D} / 小夜 {effReqs.E} / 大夜 {effReqs.N}），
+            排班時會改用下限（白班 {floor.D} / 小夜 {floor.E} / 大夜 {floor.N}），已登記的預假可能無法全部保證。
+            請先確認「病房設定」的病床數與醫院等級是否正確。
+          </div>
+        )}
 
-        {estimate && (
+        {estimate && estimate._for !== inputKey && (
+          <div className="lw-panel__msg lw-panel__msg--warn">
+            <AlertTriangle size={14} /> 每日人力或月份已變更，上面的試算結果不適用，請重新試算。
+          </div>
+        )}
+
+        {estimate && estimate._for === inputKey && (
           <div className={`lw-panel__estimate ${estimate.ok ? '' : 'lw-panel__estimate--bad'}`}>
             <div className="lw-panel__estimate-nums">
               <span>目前可排班 <b>{estimate.team_size}</b> 人</span>
@@ -209,7 +233,7 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
         <div className="lw-panel__form">
           <label className="lw-panel__field">每日名額（人）
             <input type="number" className="lw-panel__input" min="1" max="50" value={isOpenHere ? leaveWish.quota : quota}
-                   onChange={e => { touched.current = true; setQuota(Math.max(0, Number(e.target.value) || 0)); }} disabled={isOpenHere || !estimate?.ok} />
+                   onChange={e => { touched.current = true; setQuota(Math.max(0, Number(e.target.value) || 0)); }} disabled={isOpenHere || !estimateOk} />
           </label>
           <span className="lw-panel__muted">每人 {DAYS_PER_PERSON} 天，先搶先贏；預設名額 = 參與人數 − 每日最低需求</span>
           {isOpenHere ? (
@@ -218,8 +242,8 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
             </button>
           ) : (
             <button type="button" className="lw-panel__btn lw-panel__btn--primary" onClick={handleOpen}
-                    disabled={saving || !estimate?.ok || quota < 1 || belowFloor.length > 0}
-                    title={belowFloor.length ? '每日人力低於法定下限' : !estimate?.ok ? '請先完成人力試算' : ''}>
+                    disabled={saving || !estimateOk || quota < 1 || belowFloor.length > 0}
+                    title={belowFloor.length ? '每日人力低於法定下限' : !estimateOk ? '請先用目前的每日人力完成人力試算' : ''}>
               <Unlock size={14} /> 開放預假
             </button>
           )}

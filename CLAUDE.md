@@ -225,6 +225,8 @@ node scripts/migrate-encrypt.js --commit     # actually write
 
 **⚠️ Key loss = data loss:** if `FIELD_ENC_KEY` is rotated or lost, all existing ciphertext is permanently unrecoverable. Back the key up offline before deployment.
 
+**This already happened once:** the Vercel `FIELD_ENC_KEY` was replaced on 2026-06-02 (~07:04–07:17 UTC); everything encrypted before that (`Settings.baseSalary`, the PII of N001/N002/N031/N032/N034) fails with `Unsupported state or unable to authenticate data`. If the old key turns up, `scripts/reencrypt-from-old-key.js` (reads `OLD_FIELD_ENC_KEY` + `ADMIN_PASSWORD` from `.env.local`; dry-run by default, `--commit` writes, ciphertext backup to `~/nurse-schedule-backups/`) decrypts locally with the old key, re-encrypts through production `/api/secure-field`, and patches `NurseApp/Settings`, `NurseApp/Staff` and `StaffPrivate/{id}`.
+
 ### Scheduling flow (claim flow removed 2026-10)
 
 護理長在「人力與預假」開放 / 截止預假 → 「排班工作桌」按 CP-SAT 直接指派排班 → 檢視 / 微調草稿 → 「儲存並發布」（寫 `Schedules/{ym}` + `SchedulesPublic/{ym}` 與 `Settings.publishedDate = {year, month}`）→ 員工在首頁檢視自己的整月班表。

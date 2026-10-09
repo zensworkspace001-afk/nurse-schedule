@@ -13,7 +13,7 @@ import './StaffDashboard.css';
 //             由 App.jsx 從 StaffPrivate/{id} 訂閱後傳入。
 //             staffData 現在只含同事的精簡公開投影（staff_id, name, level, is_leader, is_active），
 //             不再含上述敏感欄位 — 故所有「自己的」狀態檢查都改用 myStaffRow。
-const StaffDashboard = ({ currentUser, myStaffRow, targetYear = 2026, targetMonth = 2, currentSchedule, leaveWish = null }) => {
+const StaffDashboard = ({ currentUser, myStaffRow, targetYear = 2026, targetMonth = 2, currentSchedule, isStale = false, leaveWish = null }) => {
 
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -228,7 +228,8 @@ const StaffDashboard = ({ currentUser, myStaffRow, targetYear = 2026, targetMont
   }
 
   // 主畫面：本月班表（護理長以 CP-SAT 直接指派後發布，員工只能檢視）
-  const hasSchedule = currentSchedule && Object.keys(currentSchedule).length > 0;
+  // 最後發布的月份已經過去（例如現在 10 月、最後發布是 3 月）→ 不要把舊月份當成「目前的班表」
+  const hasSchedule = !isStale && currentSchedule && Object.keys(currentSchedule).length > 0;
   const myData = hasSchedule ? currentSchedule[currentUser.id] : null;
   return (
       <>
@@ -242,7 +243,9 @@ const StaffDashboard = ({ currentUser, myStaffRow, targetYear = 2026, targetMont
                       <div className="dashboard__guard-icon"><Clock size={48} /></div>
                       <h2 className="dashboard__guard-title--locked">班表尚未發布</h2>
                       <div className="dashboard__guard-info">
-                          護理長尚未發布 <strong>{targetYear} 年 {targetMonth} 月</strong> 的班表，發布後會顯示在這裡。
+                          {isStale
+                            ? <>新的班表尚未發布（最近一次發布的是 {targetYear} 年 {targetMonth} 月），發布後會顯示在這裡。</>
+                            : <>護理長尚未發布 <strong>{targetYear} 年 {targetMonth} 月</strong> 的班表，發布後會顯示在這裡。</>}
                       </div>
                   </>
               ) : myData ? (

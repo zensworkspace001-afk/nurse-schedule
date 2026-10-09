@@ -16,7 +16,7 @@
 | `POST /api/log-login` | `api/log-login.js` | ✅ 端到端（瀏覽器登入後 access_logs 寫入確認）|
 | `POST /api/complete-profile` | `api/complete-profile.js` | ✅ 端到端 first + update mode（瀏覽器新員工 PII 加密寫入）|
 | `POST /api/secure-field` | `api/secure-field.js` | ✅ 端到端（瀏覽器 admin 解密員工 PII 還原明文）|
-| `POST /api/claim-schedule` | `api/claim-schedule.js` | 🟡 HTTP 級實測；瀏覽器選班路徑待確認 |
+| `POST /api/claim-schedule` | ~~`api/claim-schedule.js`~~ | ⚪ Node 端已隨認領流程移除（2026-10），此 port 不再使用 |
 | `POST /api/auto-settle` | `api/auto-settle.js` | ✅ 4 種 cURL 情境（CSRF 擋 / cron 認證 / Time Tuner / 404）|
 | `POST /api/cron/check-timeout` | `api/cron/check-timeout.js` | ✅ HTTP 級實測（auth gate 全綠;真實 cron 觸發需上線後測）|
 

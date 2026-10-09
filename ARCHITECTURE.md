@@ -115,11 +115,11 @@
 | `api/log-login.js` | `LogLoginController` | ✅ 瀏覽器端到端 |
 | `api/complete-profile.js` | `CompleteProfileController` | ✅ 瀏覽器端到端(first + update) |
 | `api/secure-field.js` | `SecureFieldController` | ✅ 瀏覽器端到端 |
-| `api/claim-schedule.js` | `ClaimScheduleController` | 🟡 HTTP 級;瀏覽器路徑待確認 |
+| ~~`api/claim-schedule.js`~~ | `ClaimScheduleController` | ⚪ Node 端已隨認領流程移除(2026-10),PHP port 成為死碼 |
 | `api/auto-settle.js` | `AutoSettleController` | ✅ 4 種 cURL 情境 |
 | `api/cron/check-timeout.js` | `CronCheckTimeoutController` | ✅ HTTP 級 |
 
-**未 port(難批 4 支):** `gemini.js`、`auto-relay.js`、`analyze-excel.js`、`admin-user.js`(含 `readAccessLogs` / `delete-staff` / `sync` / `reset`)。
+**未 port(難批 3 支):** `gemini.js`、`analyze-excel.js`、`admin-user.js`(含 `readAccessLogs` / `delete-staff` / `sync` / `reset`)。(`auto-relay.js` 已隨認領流程移除,2026-10。)
 
 ### 3. 資料層
 
@@ -223,7 +223,7 @@ PHP / Node:Bearer 驗 → 找 staff in staffData → FieldCrypto.encrypt 三個 
 加密前先 `serialize` 成 `{t: 'str'|'num'|'bool'|'null'|'json', v: <value>}` JSON 信封,保留型別資訊。
 **跨語言相容**(Node `crypto.js` ↔ PHP `FieldCrypto.php` 雙向互通,實測中文/數字/浮點/布林/null/巢狀皆可還原)。
 
-### 流程 3:認領班次(Firestore 交易)
+### 流程 3:認領班次(Firestore 交易)— ⚪ 已移除(2026-10,改為 CP-SAT 直接指派,以下僅供參考)
 
 ```
 SA / Gemini 生成 finalizedSchedule,其中虛擬空缺以 D001/D002/... 為 key
@@ -251,7 +251,7 @@ Vercel Cron 每日 00:00 觸發 POST /api/cron/check-timeout(Bearer ${CRON_SECRE
 Node 後端:
    - runRetentionSweep():掃過期 access_logs(>180天)、AI_Decision_Logs(>180天)、
                           archive_reports(>2555天)、pending_activation(>7天) 批次刪除
-   - 讀 SelectionTurn/{YYYY_M};若 active_staff_id 逾時 24h → 觸發 auto-relay + 寄信通知
+   - (原本的「讀 SelectionTurn,逾時 24h 觸發 auto-relay」已隨認領流程移除)
    ↓
 獨立的 auto-settle 在月底最後一天才會被 cron 觸發:
    POST /api/auto-settle (Bearer ${CRON_SECRET}, ?force=true 可手動)
@@ -310,7 +310,7 @@ StaffPublic 同步寫遮罩版
 |---|---|---|
 | `VITE_FIREBASE_*`(6 個) | 前端 Firebase Client | Firebase console |
 | `FIREBASE_PROJECT_ID` / `FIREBASE_CLIENT_EMAIL` / `FIREBASE_PRIVATE_KEY` | Node / PHP / SA / migration scripts(server-side) | Firebase console service account |
-| `GEMINI_API_KEY` | Node `gemini.js` / `auto-relay.js` / `analyze-excel.js` | Google AI Studio |
+| `GEMINI_API_KEY` | Node `gemini.js` / `analyze-excel.js` | Google AI Studio |
 | `RESEND_API_KEY` | `sendEmail.js`(Node + PHP)| Resend dashboard |
 | `FIELD_ENC_KEY` | `crypto.js`(Node)/ `FieldCrypto.php` / `secure-field.js` / `complete-profile.js` | **本地生成 base64 32 bytes,離線備份** |
 | `CRON_SECRET` | Vercel Cron / `auto-settle` / `cron/check-timeout` | 自訂隨機字串 |
@@ -396,12 +396,12 @@ Laragon 內建 Apache + mod_php + auto-vhost,Junction 一個資料夾自動產 v
 
 ### ❌ 還沒做(刻意,知道存在)
 
-- **難批 4 支端點** — `gemini` / `auto-relay` / `analyze-excel` / `admin-user`(後者最大,含 sync/reset/delete/list-access-logs)
+- **難批 3 支端點** — `gemini` / `analyze-excel` / `admin-user`(後者最大,含 sync/reset/delete/list-access-logs;`auto-relay` 已移除)
 - **PHP backend 雲端部署**(Render/Railway 等)
 - **production 流量切換** — 仍然 100% 走 Vercel
 - **`vercel.json` CSP `connect-src` 加 PHP host**
 - **前端 `VITE_PHP_API_BASE` 邏輯** — 之後切流量要用
-- 部分本機驗證沒做完:`claim-schedule` 瀏覽器路徑、`auto-settle` 真實 UI 觸發
+- 部分本機驗證沒做完:`auto-settle` 真實 UI 觸發(`claim-schedule` 已移除)
 
 ### ⚠️ 已知議題
 
@@ -434,7 +434,7 @@ Laragon 內建 Apache + mod_php + auto-vhost,Junction 一個資料夾自動產 v
 階段                          狀態    建議優先序
 ─────────────────────────────────────────────
 1. 難批 port (4 支)            ⏳     高(完整覆蓋需要)
-   gemini → auto-relay → analyze-excel → admin-user
+   gemini → analyze-excel → admin-user
 
 2. PHP 後端部署到 Render/Railway  ⏳     中(難批做完前不急)
 

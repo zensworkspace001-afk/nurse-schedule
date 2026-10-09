@@ -651,7 +651,7 @@ return (
                             // 縮圖優先；舊資料只有主圖也能顯示
                             const avatarSrc = staffRow?.avatar_thumb || staffRow?.avatar || null;
                             const { score, deductions } = calculateHealthScore(historySchedule[rowId]);
-                            const scoreColor = score >= 90 ? '#27ae60' : (score >= 75 ? '#f39c12' : '#c0392b');
+                            const scoreColor = score >= 90 ? '#4ade80' : (score >= 75 ? '#fbbf24' : '#f87171'); // 深色玻璃底上要用淺色才讀得清楚
 
                             return (
                                 <tr key={rowId} className={`review__table-row${isVirtual ? ' review__table-row--virtual' : ''}`}>
