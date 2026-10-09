@@ -25,6 +25,10 @@ public sealed class AegisDbContext(DbContextOptions<AegisDbContext> options) : D
     public DbSet<AccessLog> AccessLogs => Set<AccessLog>();
     public DbSet<PasswordHistoryEntry> PasswordHistory => Set<PasswordHistoryEntry>();
     public DbSet<ExStaff> ExStaff => Set<ExStaff>();
+    public DbSet<AppUser> Users => Set<AppUser>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<OneTimeToken> OneTimeTokens => Set<OneTimeToken>();
+    public DbSet<LegacyHashConfig> LegacyHashConfig => Set<LegacyHashConfig>();
     public DbSet<StaffPublicView> StaffPublic => Set<StaffPublicView>();
     public DbSet<SchedulePublicView> SchedulePublic => Set<SchedulePublicView>();
 
@@ -81,6 +85,10 @@ public sealed class AegisDbContext(DbContextOptions<AegisDbContext> options) : D
         });
         b.Entity<PasswordHistoryEntry>(e => { e.ToTable("PasswordHistory"); e.HasKey(x => new { x.StaffId, x.Seq }); });
         b.Entity<ExStaff>().ToTable("ExStaff");
+        b.Entity<AppUser>(e => { e.ToTable("AppUser"); e.HasIndex(x => x.LoginId).IsUnique(); e.HasIndex(x => x.StaffId); });
+        b.Entity<RefreshToken>(e => { e.ToTable("RefreshToken"); e.HasIndex(x => x.UserId); e.HasIndex(x => x.FamilyId); });
+        b.Entity<OneTimeToken>(e => { e.ToTable("OneTimeToken"); e.HasIndex(x => new { x.UserId, x.Purpose }); });
+        b.Entity<LegacyHashConfig>(e => { e.ToTable("LegacyHashConfig"); e.Property(x => x.Id).ValueGeneratedNever(); });
         b.Entity<StaffPublicView>(e => { e.HasNoKey(); e.ToView("vStaffPublic"); });
         if (!Database.IsSqlServer())   // SQLite（測試用）沒有 rowversion：改成一般欄位、不當並行權杖（並行用 LeaveWishWindow.Version）
         {

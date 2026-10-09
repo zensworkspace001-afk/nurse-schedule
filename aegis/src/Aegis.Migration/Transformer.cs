@@ -23,6 +23,8 @@ public sealed class MigrationPlan
     public List<AccessLog> AccessLogs { get; } = [];
     public List<PasswordHistoryEntry> PasswordHistory { get; } = [];
     public List<ExStaff> ExStaff { get; } = [];
+    public List<AppUser> Users { get; } = [];
+    public LegacyHashConfig? HashConfig { get; set; }
     public Dictionary<string, int> SourceCounts { get; } = new();         // 來源文件 / 列數（報告對帳用）
     public List<string> PlaintextPiiEncrypted { get; } = [];              // 決策 5：明文個資已加密
     public List<string> Skipped { get; } = [];                            // 刻意不遷移的資料
@@ -210,6 +212,31 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
                 HadAvatar = Bool(f, "had_avatar") ?? false, DeletedAt = Time(f, "deleted_at"), DeletedByUid = Str(by, "uid"), DeletedByEmail = Str(by, "email") });
         }
         plan.SourceCounts["ex_staff"] = s.Docs("ex_staff").Count;
+
+        // —— 登入帳號（方案 A：保留 Firebase 密碼雜湊，第一次登入成功後換成新格式）——
+        if (s.AuthUsers is { } users)
+        {
+            plan.SourceCounts["auth_users"] = users.Count;
+            var staffIds = plan.Staff.Select(x => x.StaffId).ToDictionary(x => x.ToUpperInvariant(), x => x);
+            foreach (var u in users)
+            {
+                string login = (u.Email ?? u.LocalId).Split('@')[0].ToLowerInvariant();
+                bool super = string.Equals(u.Email, "admin@hospital.com", StringComparison.OrdinalIgnoreCase);
+                string? staffId = staffIds.GetValueOrDefault(u.LocalId.ToUpperInvariant()) ?? staffIds.GetValueOrDefault(login.ToUpperInvariant());
+                if (staffId is null && !super) plan.Warnings.Add($"登入帳號 {login} 沒有對應的員工資料（仍匯入、可登入，但看不到員工畫面）");
+                if (u.PasswordHash is null || u.Salt is null) plan.Warnings.Add($"登入帳號 {login} 沒有密碼雜湊（需由管理員重設）");
+                plan.Users.Add(new AppUser
+                {
+                    Id = u.LocalId, LoginId = login, StaffId = staffId, Email = u.Email, Disabled = u.Disabled, IsSuperAdmin = super,
+                    PasswordHash = u.PasswordHash is null || u.Salt is null ? "" : $"firebase-scrypt${u.Salt}${u.PasswordHash}",
+                    CreatedAt = u.CreatedAt ?? s.ExportedAt,
+                });
+            }
+            if (s.AuthHashConfig is { } hc)
+                plan.HashConfig = new LegacyHashConfig { SignerKey = hc.SignerKey, SaltSeparator = hc.SaltSeparator, Rounds = hc.Rounds, MemoryCost = hc.MemoryCost };
+            else if (users.Count > 0) plan.Warnings.Add("沒有取得 Firebase 雜湊參數：舊密碼無法驗證，所有人都需要重設");
+        }
+        else plan.Warnings.Add("快照沒有登入帳號（匯出時沒加 --include-auth）：匯入後需由管理員為每個人建立帳號");
         return plan;
     }
 

@@ -57,6 +57,8 @@ public sealed class MigrationLoader(AegisDbContext db, IFieldCrypto? crypto) : I
         db.AccessLogs.AddRange(plan.AccessLogs);
         db.PasswordHistory.AddRange(plan.PasswordHistory);
         db.ExStaff.AddRange(plan.ExStaff);
+        db.Users.AddRange(plan.Users);
+        if (plan.HashConfig != null) db.LegacyHashConfig.Add(plan.HashConfig);
         await db.SaveChangesAsync(ct);
         db.ChangeTracker.Clear();
 
@@ -79,6 +81,7 @@ public sealed class MigrationLoader(AegisDbContext db, IFieldCrypto? crypto) : I
             ("PasswordHistory(docs)", plan.SourceCounts.GetValueOrDefault("password_history"),
                 await db.PasswordHistory.Select(p => p.StaffId).Distinct().CountAsync(ct)),
             ("ExStaff", plan.SourceCounts.GetValueOrDefault("ex_staff"), await db.ExStaff.CountAsync(ct)),
+            ("AppUser", plan.SourceCounts.GetValueOrDefault("auth_users"), await db.Users.CountAsync(ct)),
         };
 
         var undecryptable = new List<string>();
