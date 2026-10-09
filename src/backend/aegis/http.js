@@ -56,7 +56,7 @@ http.interceptors.response.use((r) => r, async (error) => {
       return http(cfg);
     }
   }
-  return Promise.reject(toError(error));
+  throw toError(error);
 });
 
 export function toError(error) {

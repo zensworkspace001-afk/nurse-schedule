@@ -17,7 +17,8 @@ function toPayload(u) {
 
 function authError(e) {
   const err = new Error(e.message);
-  err.code = e.code || (e.status === 429 ? 'auth/too-many-requests' : e.status === 401 ? 'auth/invalid-credential' : e.network ? 'auth/network-request-failed' : 'unknown');
+  const byStatus = { 429: 'auth/too-many-requests', 401: 'auth/invalid-credential' };
+  err.code = e.code || byStatus[e.status] || (e.network ? 'auth/network-request-failed' : 'unknown');
   return err;
 }
 

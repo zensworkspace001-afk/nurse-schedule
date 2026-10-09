@@ -36,7 +36,7 @@ export async function ensureConnected() {
 export function on(event, handler) {
   if (!conn) build();
   conn.on(event, handler);
-  ensureConnected();
+  ensureConnected().catch(() => {});   // 連不上會自動重試；先註冊的處理器連上後就會收到
   return () => conn?.off(event, handler);
 }
 

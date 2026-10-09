@@ -229,9 +229,10 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
           if (ep.check) {   // 資料庫連線：由後端介面自己檢查（回傳 null = 正常，字串 = 警告原因）
             const warn = await ep.check();
             const ms = Date.now() - t0;
-            results[ep.key] = warn
-              ? { color: 'yellow', reason: `${ep.label} ${warn} (${ms}ms)` }
-              : { color: ms < 2000 ? 'green' : ms < 5000 ? 'yellow' : 'red', reason: `${ep.label} 正常 (${ms}ms)` };
+            let color = 'red';
+            if (warn || (ms >= 2000 && ms < 5000)) color = 'yellow';
+            else if (ms < 2000) color = 'green';
+            results[ep.key] = { color, reason: warn ? `${ep.label} ${warn} (${ms}ms)` : `${ep.label} 正常 (${ms}ms)` };
             return;
           }
           const controller = new AbortController();

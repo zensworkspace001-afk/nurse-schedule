@@ -89,9 +89,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
-      - run: npm ci
+      - run: npm ci --ignore-scripts   # 不執行套件的安裝腳本
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium   # 用鎖定版本的本機 playwright，不讓 npx 臨時下載
       - name: 啟動 Aegis.Api（Development + 示範資料）
         working-directory: aegis/src/Aegis.Api
         run: |

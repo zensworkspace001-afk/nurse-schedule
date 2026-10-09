@@ -20,6 +20,7 @@ for (const y of years) {
   if (!res.ok) { console.error(`✗ ${y}：HTTP ${res.status}`); process.exitCode = 1; continue; }
   const data = await res.json();
   if (!Array.isArray(data) || !data[0]?.date) { console.error(`✗ ${y}：格式不符`); process.exitCode = 1; continue; }
-  fs.writeFileSync(path.join(out, `${y}.json`), JSON.stringify(data));
-  console.log(`✓ ${y}：${data.length} 天、其中放假 ${data.filter((d) => d.isHoliday).length} 天 → ${path.join(out, `${y}.json`)}`);
+  const file = path.join(out, `${y}.json`);
+  fs.writeFileSync(file, JSON.stringify(data));
+  console.log(`✓ ${y}：${data.length} 天、其中放假 ${data.filter((d) => d.isHoliday).length} 天 → ${file}`);
 }

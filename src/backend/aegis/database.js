@@ -9,7 +9,10 @@ const etags = new Map();       // 資源 key → 最近一次 GET / PUT 的 ETag
 const reloaders = new Map();   // 資源 key → Set(重抓並交給訂閱者的函式)
 
 function reportError(err, source) {
-  const code = err.network ? 'unavailable' : err.status === 401 ? 'unauthenticated' : err.status === 403 ? 'permission-denied' : 'unknown';
+  let code = 'unknown';
+  if (err.network) code = 'unavailable';
+  else if (err.status === 401) code = 'unauthenticated';
+  else if (err.status === 403) code = 'permission-denied';
   reportFirestoreError({ code, message: err.message }, source);
 }
 
@@ -27,8 +30,8 @@ function subscribeDoc(key, url, events, callback, filter = () => true) {
     .catch((e) => { if (alive) reportError(e, key); });
   if (!reloaders.has(key)) reloaders.set(key, new Set());
   reloaders.get(key).add(load);
-  load();
-  const offs = events.map((ev) => on(ev, (...args) => { if (filter(...args)) load(); }));
+  void load();   // load 自己處理錯誤（報給連線狀態列）
+  const offs = events.map((ev) => on(ev, (...args) => { if (filter(...args)) void load(); }));
   const offR = onReconnected(load);
   return () => { alive = false; reloaders.get(key)?.delete(load); offs.forEach((f) => f()); offR(); };
 }
@@ -94,7 +97,7 @@ export const subscribeToSchedule = (year, month, cb) => {
 export const subscribeToSchedulePublic = (year, month, cb) => {
   if (!year || !month) return () => {};
   let leave = null;
-  subscribeMonth(year, month).then((f) => { leave = f; });
+  subscribeMonth(year, month).then((f) => { leave = f; }).catch(() => {});   // 加入月份群組失敗：重連時會再加
   const off = subscribePush(`schedulePublic:${ym(year, month)}`, `/api/schedules/${year}/${month}/public`, 'SchedulePublicChanged', cb,
                             (y, m, doc) => (y === year && m === month ? doc : undefined));
   return () => { off(); leave?.(); };

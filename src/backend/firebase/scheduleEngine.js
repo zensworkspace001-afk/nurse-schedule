@@ -8,8 +8,12 @@ import { auth } from './database';
 
 const DEFAULT_ENGINE_URL = 'https://nurse-schedule-engine-273758593077.asia-east1.run.app';
 
-export const engineUrl = () =>
-  (import.meta.env.VITE_SCHEDULE_ENGINE_URL || DEFAULT_ENGINE_URL).replace(/\/+$/, '');
+// 去掉結尾的 /（用迴圈而不是 /\/+$/，避免 regex 回溯）
+export const engineUrl = () => {
+  let url = import.meta.env.VITE_SCHEDULE_ENGINE_URL || DEFAULT_ENGINE_URL;
+  while (url.endsWith('/')) url = url.slice(0, -1);
+  return url;
+};
 
 // 引擎每個請求最多算約 2 分鐘（cpsat_service.REQUEST_BUDGET）；多留冷啟動與網路時間，超過就放棄等待
 const CLIENT_TIMEOUT_MS = 150_000;
