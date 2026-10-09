@@ -171,7 +171,7 @@ public sealed class StaffingCalculator(ICpSatScheduler scheduler, IFeasibilityPr
             return new(true, kept, note);
         }
         string least = rng.Approx ? $"不超過 {rng.Min}" : $"{rng.Min}";
-        return new(true, staff, $"人力適中（最少 {least}、建議 ≥ {rng.Comfort}、最多 {rng.Max}）");
+        return new(true, staff, $"人力適中（最少 {least}、建議 ≥ {rng.Comfort?.ToString() ?? "None"}、最多 {rng.Max}）");   // Python 印 None
     }
 
     // Python f-string 印 list 的樣子：['N001', 'N002']

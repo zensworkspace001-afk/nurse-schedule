@@ -42,4 +42,16 @@ cd aegis && dotnet test                   # C# 引擎跑同樣案例，逐次比
 - **Python 的 `round()` 是銀行家捨入**（.5 取偶數）。`EngineConstants.PyRound` 用 `MidpointRounding.ToEven`。
 - **OR-Tools 版本必須相同**：Python `ortools==9.15.6755`，NuGet `Google.OrTools 9.15.6755`。
 
-CI：`.github/workflows/aegis.yml`。改到 `model.py` 或 `aegis/` 時，會在同一台機器上重產樣本並比對。
+CI：`.github/workflows/aegis.yml`。改到 `model.py` 或 `aegis/` 時，會在同一台機器上重產樣本並比對（只跑決定性的基準測試）。
+
+### 業務流程層與背景排班
+
+| 專案 | 內容 |
+|---|---|
+| `src/Aegis.Scheduling` | `IScheduleService`，對應 `cpsat_service.py` 的 `staffing_estimate` / `submit_wish` / `generate`（110 秒預算、零權重起點、預假衝突退回軟約束、外部起點修復）；`IScheduleDataStore` 只定介面，階段二再接 SQL Server。回應 JSON 欄位與現行 API 相同。 |
+| `src/Aegis.Scheduling.Hosting` | `IScheduleJobQueue` + `ScheduleWorker`（BackgroundService，一次算一個）+ `IScheduleJobNotifier`（階段三接 SignalR）；`services.AddAegisScheduling()` 註冊全部。 |
+| `tests/Aegis.Scheduling.Tests` | `test_cpsat_service.py` 的驗收測試移植：37 項中有 34 項在這裡，另外 3 項授權檢查在階段三的 Controller 測；再加上背景佇列的測試。 |
+
+```bash
+cd aegis && dotnet test tests/Aegis.Scheduling.Tests   # 約 9 分鐘；有實際秒數的時間預算，只在本機跑（CI 的 2 vCPU 會因速度誤判）
+```

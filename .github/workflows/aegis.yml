@@ -31,4 +31,4 @@ jobs:
         run: python -u aegis/baseline/make_golden.py
       - name: C# 引擎比對
         working-directory: aegis
-        run: dotnet test --logger "console;verbosity=detailed"
+        run: dotnet test tests/Aegis.Engine.Baseline --logger "console;verbosity=detailed"
