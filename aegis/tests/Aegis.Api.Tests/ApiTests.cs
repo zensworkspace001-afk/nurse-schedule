@@ -91,6 +91,20 @@ public sealed class ApiTests : IDisposable
         Assert.Equal(4, (await Json(r2))!["requirements"]!["D"]!.GetValue<int>());           // merge：其他欄位不受影響
     }
 
+    // Nginx 壓縮回應時把 ETag 改成 W/"…"，瀏覽器帶回來的就是弱 ETag：內容相同要照樣放行、內容不同照樣 409
+    [Fact]
+    public async Task 設定_反向代理的弱ETag也能比對()
+    {
+        var (admin, _) = await Admin();
+        string weak = "W/" + (await admin.GetAsync("/api/settings")).Headers.ETag!.Tag;
+        var put = new HttpRequestMessage(HttpMethod.Put, "/api/settings") { Content = JsonContent.Create(new { requirements = new { D = 5, E = 3, N = 2 } }) };
+        put.Headers.TryAddWithoutValidation("If-Match", weak);
+        Assert.Equal(HttpStatusCode.OK, (await admin.SendAsync(put)).StatusCode);
+        var stale = new HttpRequestMessage(HttpMethod.Put, "/api/settings") { Content = JsonContent.Create(new { bedConfig = new { bedCount = 61 } }) };
+        stale.Headers.TryAddWithoutValidation("If-Match", weak);
+        Assert.Equal(HttpStatusCode.Conflict, (await admin.SendAsync(stale)).StatusCode);
+    }
+
     [Fact]
     public async Task 員工名單_漏傳就拒絕_明文個資伺服器端加密_前端不能自封管理員()
     {

@@ -20,9 +20,10 @@ RUN case "$TARGETARCH" in \
 
 # aspnet 映像是 Debian（glibc）：OR-Tools 的原生函式庫需要 glibc，不能用 alpine（musl）
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim
-WORKDIR /app
-COPY --from=build /out/api ./api
-COPY --from=build /out/tools ./tools
+COPY --from=build /out/api /app/api
+COPY --from=build /out/tools /app/tools
+# 工作目錄 = API 的內容根目錄：appsettings.json 從這裡載入（否則日誌層級全是 Information，連 SignalR 網址裡的 access_token 都會被記下來）
+WORKDIR /app/api
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_HTTP_PORTS=8080 \
     DOTNET_gcServer=0

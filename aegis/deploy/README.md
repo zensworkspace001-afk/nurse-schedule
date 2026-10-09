@@ -18,6 +18,7 @@
 |---|---|
 | `docker-compose.yml` | 正式部署（映像 `pull_policy: never`：絕不嘗試連外） |
 | `docker-compose.ci.yml` | CI 覆寫：示範資料、SQL Server 開給測試、放寬登入頻率 |
+| `docker-compose.demo.yml` | 試用 / 展示覆寫：示範資料 |
 | `api.Dockerfile` / `web.Dockerfile` | 兩個自建映像（非 root；API 用 Debian 是因為 OR-Tools 需要 glibc） |
 | `nginx/` | Nginx 設定範本（TLS、WebSocket、CSP 等安全標頭、SPA） |
 | `.env.example` | 一般設定（網址、port、資源上限、SMTP） |
@@ -101,6 +102,31 @@ sudo ./backup/restore.sh backups/Aegis_20261101_023000.bak   # 會要求輸入�
 | 排班背景工作與人力試算快取 | 行程內佇列 / 快取 | 送工作的實例和查狀態的實例不同 → 查不到 | 工作狀態寫 SQL（或 Redis），並讓排班工作只在一台跑 |
 
 做法：compose 加一個 `redis` 服務（只在內部網路、`requirepass` 放 Docker secret），上面三項改接 Redis，Nginx 的 `upstream aegis_api` 列多台並對 `/hubs/` 開 `ip_hash`（SignalR 長輪詢需要黏著）。資料本身都在 SQL Server，不受影響。**單台主機的負載（一個病房、數十人）不需要做這一步。**
+
+## 在 Mac（Apple 晶片）上試用
+
+只供試用 / 展示（示範資料），不是正式部署。API 與前端用原生 arm64 映像，SQL Server（只有 x86 版）由 Rosetta 執行。
+
+```bash
+softwareupdate --install-rosetta --agree-to-license
+brew install colima docker docker-compose docker-buildx     # 依 brew 提示把 cli-plugins 加進 ~/.docker/config.json
+colima start --vm-type vz --vz-rosetta --cpu 4 --memory 5 --disk 40
+
+# 在 repo 根目錄：國定假日、人臉偵測模型、映像
+node aegis/scripts/fetch-holidays.mjs 2026 2027
+docker build --platform linux/arm64 -f aegis/deploy/api.Dockerfile -t aegis-api:local aegis
+docker build --platform linux/arm64 -f aegis/deploy/web.Dockerfile -t aegis-web:local .
+docker pull --platform linux/amd64 mcr.microsoft.com/mssql/server:2022-CU16-ubuntu-22.04
+
+cd aegis/deploy
+cp .env.example .env    # 改 AEGIS_VERSION=local、AEGIS_PLATFORM=linux/arm64、AEGIS_PUBLIC_URL=https://localhost:8443、
+                        #    AEGIS_HTTPS_PORT=8443、AEGIS_HTTP_PORT=8080、AEGIS_BIND=127.0.0.1、API_MEMORY=1536m
+openssl req -x509 -newkey rsa:2048 -nodes -days 825 -subj "/CN=localhost" \
+  -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -keyout certs/tls.key -out certs/tls.crt
+COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml ./install.sh --skip-load --generate-secrets --new-field-key
+```
+
+打開 https://localhost:8443（自簽憑證，瀏覽器會警告）：`admin` / `Admin1234`、`n001`–`n014` / `Demo1234`。之後的 `docker compose` 指令都要先 `export COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml`。停用：`docker compose down`（資料保留在 volume）、`colima stop`。
 
 ## 驗收（CI）
 

@@ -3,6 +3,10 @@
 
 server_tokens off;
 
+# 存取紀錄不記查詢字串：SignalR 的 WebSocket 把登入權杖放在 ?access_token=…，用 $request 會把權杖寫進紀錄
+log_format aegis '$remote_addr - [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent '
+                 'rt=$request_time urt=$upstream_response_time "$http_user_agent"';
+
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -17,6 +21,7 @@ upstream aegis_api {
 server {
     listen 8080;
     server_name _;
+    access_log /dev/stdout aegis;   # server 層設定才會取代映像預設（http 層、記完整網址）的那份
 
     location = /nginx-health {
         access_log off;
@@ -33,6 +38,7 @@ server {
     listen 8443 ssl;
     http2 on;
     server_name _;
+    access_log /dev/stdout aegis;
 
     ssl_certificate     /etc/nginx/certs/tls.crt;   # 伺服器憑證（含中繼 CA 串鏈）
     ssl_certificate_key /etc/nginx/certs/tls.key;

@@ -3,6 +3,8 @@ import { test, expect } from '@playwright/test';
 // Bug-hunting harness for the sphere-drop transition demo.
 // Checks: no console errors, transition fires, canvas gets cleaned up.
 test.describe('sphere-drop transition demo', () => {
+  // 地端映像不帶這個示範頁（它從 CDN 載入 cannon-es，隔離網路用不了）
+  test.skip(!!process.env.E2E_BASE_URL && process.env.E2E_BACKEND === 'aegis', '地端部署不含 sphere-drop 示範頁');
   let consoleErrors;
   let pageErrors;
 
