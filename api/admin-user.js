@@ -20,6 +20,7 @@ import { checkCsrf } from './_lib/csrf.js';
 import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
 import { clearPasswordHistory } from './_lib/passwordHistory.js';
 import { writeAccessLog, readAccessLogs, extractClientMeta } from './_lib/accessLog.js';
+import { buildStaffPublicProjection } from './_lib/staffProjection.js';
 
 if (!admin.apps.length) {
   let serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -281,15 +282,8 @@ export default async function handler(req, res) {
         const nextList = list.filter((_, i) => i !== idx);
         tx.update(staffRef, { staffData: nextList });
 
-        // 3. 重算 StaffPublic 投影（與 src/api/database.js 的 buildStaffPublicProjection 同步）
-        const publicList = nextList.map((s) => ({
-          staff_id: s.staff_id,
-          name: s.name,
-          level: s.level,
-          is_leader: !!s.is_leader,
-          is_active: s.is_active !== false,
-          avatar_thumb: s.avatar_thumb || null,
-        }));
+        // 3. 重算 StaffPublic 投影（共用 api/_lib/staffProjection.js）
+        const publicList = buildStaffPublicProjection(nextList);
         tx.set(publicRef, { staffData: publicList });
 
         // 4. 刪除 StaffPrivate

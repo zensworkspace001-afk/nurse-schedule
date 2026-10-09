@@ -8,7 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "lint": "eslint .",
+    "lint": "eslint . && node scripts/check-projection-single-source.js",
     "preview": "vite preview",
     "electron:build": "vite build && electron-builder",
     "test:e2e": "playwright test",

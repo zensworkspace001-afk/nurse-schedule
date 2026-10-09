@@ -15,6 +15,7 @@
 //   node --env-file=.env.local scripts/restore-staff-from-private.js --commit # 實際寫回
 
 import admin from 'firebase-admin';
+import { buildStaffPublicProjection } from '../api/_lib/staffProjection.js';
 
 const COMMIT = process.argv.includes('--commit');
 
@@ -42,17 +43,6 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-
-function buildStaffPublicProjection(fullList) {
-  return fullList.map((s) => ({
-    staff_id: s.staff_id,
-    name: s.name,
-    level: s.level,
-    is_leader: !!s.is_leader,
-    is_active: s.is_active !== false,
-    avatar_thumb: s.avatar_thumb || null,
-  }));
-}
 
 async function main() {
   console.log(COMMIT ? '🔥 COMMIT 模式：將實際寫回雲端' : '🧪 DRY-RUN 模式：僅檢查不寫入');

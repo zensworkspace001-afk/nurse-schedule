@@ -16,6 +16,7 @@
 //   FIREBASE_SERVICE_ACCOUNT  或  (FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY)
 
 import admin from 'firebase-admin';
+import { toStaffPublic } from '../api/_lib/staffProjection.js';
 
 const COMMIT = process.argv.includes('--commit');
 
@@ -51,18 +52,6 @@ if (!admin.apps.length) {
 
 const db = admin.firestore();
 
-// 與 src/api/database.js 的 buildStaffPublicProjection 完全一致
-function buildStaffPublic(s) {
-  return {
-    staff_id: s.staff_id,
-    name: s.name,
-    level: s.level,
-    is_leader: !!s.is_leader,
-    is_active: s.is_active !== false,
-    avatar_thumb: s.avatar_thumb || null,
-  };
-}
-
 async function main() {
   console.log(COMMIT ? '🔥 COMMIT 模式：將寫入 Firestore' : '🧪 DRY-RUN 模式：僅檢查不寫入');
   console.log('—'.repeat(60));
@@ -78,7 +67,7 @@ async function main() {
     console.log('⚠️ staffData 為空陣列；仍會建立空的 StaffPublic doc。');
   }
 
-  const publicList = fullStaffData.map(buildStaffPublic);
+  const publicList = fullStaffData.map(toStaffPublic);
   console.log(`即將寫入 NurseApp/StaffPublic (${publicList.length} 筆)：`);
   publicList.slice(0, 5).forEach((s) => console.log('  -', s));
   if (publicList.length > 5) console.log(`  ...其餘 ${publicList.length - 5} 筆省略`);
