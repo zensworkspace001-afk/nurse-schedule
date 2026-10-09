@@ -1,20 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
+import React, { useState } from 'react';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
-import { Loader, Ban, CalendarOff, Clock, Lock, ClipboardList, Lightbulb, PartyPopper, Eye, Bell, Settings, X, Hand, Info, AlertTriangle, CheckCircle, RefreshCw, Camera } from 'lucide-react';
-import { auth, db } from '../api/database';
+import { Loader, Ban, CalendarOff, Clock, ClipboardList, Settings, X, Hand, CheckCircle, Camera } from 'lucide-react';
+import { auth } from '../api/database';
 import AvatarEditModal from './AvatarEditModal';
 import LeaveWishPicker from './LeaveWishPicker';
 import './StaffDashboard.css';
 
 // ============================================================================
-// 2. StaffDashboard (員工自助介面 - 顯示已認領班表與協調機制 + 修改密碼功能)
+// 2. StaffDashboard (員工自助介面 - 檢視自己的班表、預假、修改密碼與頭貼)
 // ============================================================================
 // myStaffRow：員工自己的完整 row（含 leave_status / is_pregnant_or_nursing 等敏感欄位）。
 //             由 App.jsx 從 StaffPrivate/{id} 訂閱後傳入。
 //             staffData 現在只含同事的精簡公開投影（staff_id, name, level, is_leader, is_active），
 //             不再含上述敏感欄位 — 故所有「自己的」狀態檢查都改用 myStaffRow。
-const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear = 2026, targetMonth = 2, assignMode = 'claim', currentSchedule, staffData = [], leaveWish = null }) => {
+const StaffDashboard = ({ currentUser, myStaffRow, targetYear = 2026, targetMonth = 2, currentSchedule, leaveWish = null }) => {
 
   // ★★★ 修正 1：所有的 Hooks (useState) 必須絕對置頂，不能被任何 if return 阻斷 ★★★
   const [showPwdModal, setShowPwdModal] = useState(false);
@@ -28,108 +27,6 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
     setClosingPwdModal(true);
     setTimeout(() => { setShowPwdModal(false); setClosingPwdModal(false); }, 300);
   };
-
-  const [currentStep, setCurrentStep] = useState(1);
-  const [selectedShiftType, setSelectedShiftType] = useState('ALL');
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [aiSlots, setAiSlots] = useState([]);
-  const [previewSchedule, setPreviewSchedule] = useState({});
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isExiting, setIsExiting] = useState(false);
-  // ★ 新增：嚴格判定該名員工是否已經存在於本月班表中
-  const hasClaimed = currentSchedule && Object.keys(currentSchedule).includes(currentUser.id);
-  // ★★★ 修正：改為監聽 SelectionTurn/latest，避免年月不一致導致讀到舊資料 ★★★
-  const [activeTurn, setActiveTurn] = useState(null);
-  useEffect(() => {
-      let fallbackUnsub = null;
-      const latestRef = doc(db, "SelectionTurn", "latest");
-      const unsub = onSnapshot(latestRef, (docSnap) => {
-          if (docSnap.exists()) {
-              if (fallbackUnsub) { fallbackUnsub(); fallbackUnsub = null; }
-              setActiveTurn(docSnap.data());
-          } else {
-              // fallback：若 latest 不存在，嘗試讀取原始年月文件
-              const turnRef = doc(db, "SelectionTurn", `${targetYear}_${targetMonth}`);
-              fallbackUnsub = onSnapshot(turnRef, (fallbackSnap) => {
-                  setActiveTurn(fallbackSnap.exists() ? fallbackSnap.data() : null);
-              });
-          }
-      });
-      return () => { unsub(); if (fallbackUnsub) fallbackUnsub(); };
-  }, [targetYear, targetMonth]);
-
-  // ★★★ 修正 2：useEffect 也必須置頂 ★★★
-  useEffect(() => {
-    if (!currentSchedule || Object.keys(currentSchedule).length === 0) { setAiSlots([]); return; }
-    const daysInMonth = new Date(targetYear, targetMonth, 0).getDate();
-
-    const allSlots = Object.keys(currentSchedule).sort((a, b) => {
-        if (a.startsWith('D') && !b.startsWith('D')) return -1;
-        if (!a.startsWith('D') && b.startsWith('D')) return 1;
-        return a.localeCompare(b);
-    });
-
-    const WORKING = new Set(['D', 'E', 'N', '支援']);
-
-    const formattedSlots = allSlots.map(slotId => {
-        const slotData = currentSchedule[slotId];
-        const pattern = [];
-        const shiftCounts = { D: 0, E: 0, N: 0 };
-
-        // 邊讀邊套用七休一：第 7 天連上自動轉 OFF，避免舊班表卡死
-        let streak = 0;
-        for (let d = 1; d <= daysInMonth; d++) {
-            const cell = slotData[d];
-            let type = (typeof cell === 'object') ? cell.type : (cell || 'OFF');
-            if (WORKING.has(type)) {
-                if (streak >= 6) { type = 'OFF'; streak = 0; }
-                else streak++;
-            } else {
-                streak = 0;
-            }
-            pattern.push(type);
-            if (['D', 'E', 'N'].includes(type)) shiftCounts[type]++;
-        }
-
-        let mainShift = 'D';
-        if (shiftCounts.E > shiftCounts.D && shiftCounts.E > shiftCounts.N) mainShift = 'E';
-        if (shiftCounts.N > shiftCounts.D && shiftCounts.N > shiftCounts.E) mainShift = 'N';
-
-        let title = "混合班表";
-        if (shiftCounts.D >= 10) title = "白班為主";
-        else if (shiftCounts.E >= 10) title = "小夜為主";
-        else if (shiftCounts.N >= 10) title = "大夜為主";
-
-        const isClaimed = !slotId.startsWith('D');
-        const claimantStaff = isClaimed ? staffData.find(s => s.staff_id === slotId) : null;
-        const claimantName = isClaimed ? (claimantStaff?.name || slotId) : null;
-        const claimantAvatar = claimantStaff?.avatar_thumb || null;
-
-        return { id: slotId, title: isClaimed ? `${title}` : `${title} (${slotId})`, shift: mainShift, pattern: pattern, isClaimed: isClaimed, claimantName, claimantAvatar };
-    });
-    setAiSlots(formattedSlots);
-  }, [currentSchedule, targetYear, targetMonth, staffData]);
-
-// 計算上個月底的「連續上班天數」，用來銜接本月 1 號的七休一防呆
-  const getPrevMonthStreak = () => {
-    if (!currentUser || !currentUser.id) return 0;
-    if (!myStaffRow || !myStaffRow.prevMonthLeave) return 0;
-    const staff = myStaffRow;
-
-    // prevMonthLeave 陣列紀錄上個月最後 7 天的「休假狀態」
-    // 💡 狀態對應：true = 有休假 (UI打勾)，false = 有上班 (UI未打勾)
-    const leaves = staff.prevMonthLeave;
-    let streak = 0;
-
-    // 從陣列尾端 (i=6，代表上個月最後一天) 往前倒推檢查
-    for (let i = 6; i >= 0; i--) {
-      if (leaves[i] !== false) break; // 只有明確 false（上班）才繼續，true 或 undefined 都停止
-      streak++;
-    }
-
-    return streak;
-  };
-  const prevStreak = getPrevMonthStreak();
 
   const handlePasswordSubmit = async (e) => {
       e.preventDefault();
@@ -312,7 +209,7 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       );
   }
 
-  // 防呆 3: 長假/特殊狀態檢查 (僅產假與長假會被擋；實習生仍可選班，只是不能選 E/N)
+  // 防呆 3: 長假/特殊狀態檢查（產假與長假本月不排班）
   if (currentStaffInfo && (currentStaffInfo.leave_status === 'Maternal' || currentStaffInfo.leave_status === 'OnLeave')) {
       const statusMap = { Maternal: '產假/育嬰假', OnLeave: '長假' };
       const statusName = statusMap[currentStaffInfo.leave_status];
@@ -330,369 +227,42 @@ const StaffDashboard = ({ currentUser, myStaffRow, onConfirmSchedule, targetYear
       );
   }
 
-  // 防呆 3.5: 直接指派（CP-SAT）的月份 — 不開放認領、不看輪次，只能檢視自己的班表。
-  //          放在 4-pre / 4 之前，避免顯示「班表已被同仁認領完畢」「尚未輪到您」等認領用語。
-  if (assignMode === 'direct' && currentSchedule && Object.keys(currentSchedule).length > 0) {
-      const myData = currentSchedule[currentUser.id];
-      return (
-          <>
-              {avatarModalElement}
-              {pwdModalElement}
-              <div className="dashboard__guard">
-                  {dashboardHeader}
-                  {leaveWishElement}
-                  {myData ? (
-                      <div className="dashboard__claimed-banner">
-                          <h3 className="dashboard__claimed-title"><CheckCircle size={18} /> 您 {targetYear} 年 {targetMonth} 月的班表已排定</h3>
-                          <p className="dashboard__claimed-desc">本月班表由護理長直接指派，不需認領。</p>
-                          {renderMyCalendar(myData)}
-                          <p className="dashboard__claimed-note">如需調整班別，請與護理長聯繫。</p>
-                      </div>
-                  ) : (
-                      <>
-                          <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
-                          <h2 className="dashboard__guard-title--locked">本月班表已排定</h2>
-                          <div className="dashboard__guard-info">
-                              <strong>{targetYear} 年 {targetMonth} 月</strong> 的班表由護理長直接指派，您本月沒有排入班次。<br/><br/>
-                              如有疑問請聯絡護理長。
-                          </div>
-                      </>
-                  )}
-              </div>
-          </>
-      );
-  }
-
-  // 防呆 4-pre: 班表已被認領完畢，但本人未獲得班次（例如新加入員工、人比班次多）
-  // 條件：本人沒認領 + 班表確實有資料（claimedSlots > 0）+ 沒有任何 D 空缺剩下
-  const claimedCount   = aiSlots.filter(opt => opt.isClaimed).length;
-  const unclaimedCount = aiSlots.filter(opt => !opt.isClaimed).length;
-  if (!hasClaimed && claimedCount > 0 && unclaimedCount === 0) {
-      return (
-          <>
-              {avatarModalElement}
-              {pwdModalElement}
-              <div className="dashboard__guard">
-                  {dashboardHeader}
-                  {leaveWishElement}
-                  <div className="dashboard__guard-icon"><PartyPopper size={48} /></div>
-                  <h2 className="dashboard__guard-title--locked">本月排班已完成</h2>
-                  <div className="dashboard__guard-info">
-                      非常抱歉，<strong>{targetYear} 年 {targetMonth} 月</strong> 的班表已被同仁全數認領完畢。<br/><br/>
-                      您本月未獲得班次，系統會優先在下個月安排您選班。<br/>
-                      如有疑問請聯絡護理長。
-                  </div>
-                  <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
-              </div>
-          </>
-      );
-  }
-
-  // 防呆 4: AI 接力選班引擎鎖定 (最核心！)
-  // 若引擎有指定人 (active_staff_id 有值)，且那個人不是我，我就不能選！
-  // ★ 但已經認領過的員工不受此限制，允許他們查看自己的班表
-  const activeStaffIdSafe = activeTurn?.active_staff_id ? String(activeTurn.active_staff_id).trim().toUpperCase() : null;
-  const currentUserIdSafe = currentUser?.id ? String(currentUser.id).trim().toUpperCase() : null;
-
-  if (!hasClaimed && activeStaffIdSafe && currentUserIdSafe && activeStaffIdSafe !== currentUserIdSafe) {
-      const activeStaffName = staffData.find(s => String(s.staff_id).trim().toUpperCase() === activeStaffIdSafe)?.name || activeTurn.active_staff_id;
-      return (
-          <>
-              {avatarModalElement}
-              {pwdModalElement}
-              <div className="dashboard__guard">
-                  {dashboardHeader}
-                  {leaveWishElement}
-                  <div className="dashboard__guard-icon dashboard__guard-icon--pulse"><Clock size={48} /></div>
-                  <h2 className="dashboard__guard-title--locked">尚未輪到您選班</h2>
-                  <div className="dashboard__guard-info">
-                      目前的 <strong>優先發球權</strong> 在 <span className="dashboard__guard-highlight">{activeStaffName}</span> 手上。<br/><br/>
-                      為確保最需要的人能優先挑選好班，請等待 AI 引擎發送您的專屬換棒 Email 通知！
-                  </div>
-                  <button onClick={() => window.location.reload()} className="dashboard__guard-refresh-btn"><RefreshCw size={14} /> 重新整理確認狀態</button>
-              </div>
-          </>
-      );
-  }
-
-  const checkCompliance = (pattern) => {
-    // ★★★ 新增：3. 提前攔截！檢查母性保護 (懷孕/哺乳禁止夜班) ★★★
-      const isPregnant = myStaffRow?.is_pregnant_or_nursing === true || myStaffRow?.is_pregnant_or_nursing === 'True' || myStaffRow?.is_pregnant_or_nursing === 'true';
-
-      if (isPregnant) {
-          for (let i = 0; i < pattern.length; i++) {
-              if (pattern[i] === 'E' || pattern[i] === 'N') {
-                  return { valid: false, reason: `違反母性保護 (含有夜間班別)` };
-              }
-          }
-      }
-      // 1. 檢查七休一
-      //    只有實際出勤 (D/E/N/支援) 才算「連續上班」；
-      //    休假/空班類 (OFF/RG/RC/空班/事假/病假/特休) 一律重置 streak。
-      const WORKING_SHIFTS = new Set(['D', 'E', 'N', '支援']);
-      let currentStreak = prevStreak;
-      for (let i = 0; i < pattern.length; i++) {
-          const shift = pattern[i];
-          if (WORKING_SHIFTS.has(shift)) currentStreak++;
-          else currentStreak = 0;
-          if (currentStreak > 6) {
-              // 訊息要把上月底帶過來的天數講清楚，避免員工看本月 pattern 只算到 6
-              // 天卻看到 "連上 7 天"，以為系統算錯。
-              const carryover = prevStreak > 0 ? `（含上月底連續 ${prevStreak} 天）` : '';
-              return { valid: false, reason: `違反七休一：第 ${i+1} 天累計連上 ${currentStreak} 天${carryover}` };
-          }
-      }
-
-      // 2. 檢查輪班間隔 (必須包在這個函式裡面！)
-      const isForbiddenSeq = (a, b) => (a==='E'&&b==='D') || (a==='N'&&b==='D') || (a==='N'&&b==='E');
-      for (let i = 0; i < pattern.length - 1; i++) {
-          if (isForbiddenSeq(pattern[i], pattern[i+1])) {
-              return { valid: false, reason: `第${i+1}天 ${pattern[i]} 接 ${pattern[i+1]} 輪班間隔不足` };
-          }
-      }
-
-      // 如果都沒違規，才回傳 true
-      return { valid: true };
-  };
-
-
-  // ★ 未認領的員工：只顯示未被選走的班表；已認領的員工：可查看全部
-  // ★ 實習生 (leave_status === 'Student') 不可選小夜 (E) / 大夜 (N)
-  const isStudent = currentStaffInfo?.leave_status === 'Student';
-  let visibleSlots = hasClaimed ? aiSlots : aiSlots.filter(opt => !opt.isClaimed);
-  if (isStudent) visibleSlots = visibleSlots.filter(opt => opt.shift !== 'E' && opt.shift !== 'N');
-  const filteredOptions = selectedShiftType === 'ALL' ? visibleSlots : visibleSlots.filter(opt => opt.shift === selectedShiftType);
-
-  const handleSelectType = (type) => { setIsProcessing(true); setTimeout(() => { setSelectedShiftType(type); setCurrentStep(2); setIsProcessing(false); }, 300); };
-  const handleSelectOption = (opt) => { setSelectedOption(opt.id); const map = {}; opt.pattern.forEach((s, i) => map[i+1] = { type: s, time: '' }); setPreviewSchedule(map); setCurrentStep(3); };
-const handleFinalSubmit = async () => { // 🌟 1. 加上 async
-    if (isProcessing) return;
-    if (hasClaimed) {
-        alert("⚠️ 您已經認領過班表，無法重複認領！");
-        return;
-    }
-
-    const choice = aiSlots.find(opt => opt.id === selectedOption);
-    if (!choice || choice.isClaimed) {
-        alert("⚠️ 此班表已被他人搶先選擇並鎖住！\n請返回重新選擇。");
-        setCurrentStep(2);
-        return;
-    }
-
-    // 🌟 2. 啟動鎖定狀態，防止員工亂點
-    setIsProcessing(true);
-
-    // 🌟 3. 加上 await，強制等待主程式 (存檔 + AI算分數 + 寄信) 跑完！
-    await onConfirmSchedule({
-        staffId: currentUser.id,
-        staffName: currentUser.name,
-        shiftType: selectedShiftType === 'ALL' ? 'D' : selectedShiftType,
-        chosenSchedule: { id: choice.id, title: choice.title },
-        fullMonthData: previewSchedule
-    });
-
-    // 🌟 4. 全部跑完才解鎖並進入成功畫面
-    setIsProcessing(false);
-    setCurrentStep(4);
-  };
-  const getShiftColor = (shift) => { if (shift === 'D') return '#FFD93D'; if (shift === 'E') return '#FF6B9D'; if (shift === 'N') return '#4D96FF'; return '#f0f0f0'; };
-  const firstDayOfWeek = new Date(targetYear, targetMonth - 1, 1).getDay();
-
+  // 主畫面：本月班表（護理長以 CP-SAT 直接指派後發布，員工只能檢視）
+  const hasSchedule = currentSchedule && Object.keys(currentSchedule).length > 0;
+  const myData = hasSchedule ? currentSchedule[currentUser.id] : null;
   return (
-    <div className="dashboard">
-
-      {avatarModalElement}
-      {pwdModalElement}
-
-      <div className="dashboard__stepper">
-          {['班別選擇', '認領班表', '確認預覽', '完成'].map((label, idx) => (
-              <div key={idx} className={`dashboard__step ${currentStep >= idx+1 ? 'dashboard__step--active' : ''}`}>{idx+1}. {label}</div>
-          ))}
-      </div>
-
-      {currentStep === 1 && (
-        <div className="dashboard__step1">
-          <div className="dashboard__header-row">
-             <h2 className="dashboard__greeting">
-               <button
-                 type="button"
-                 onClick={() => setShowAvatarEdit(true)}
-                 className="dashboard__avatar-btn"
-                 title="點擊更換頭貼"
-                 aria-label="編輯頭貼"
-               >
-                 {myStaffRow?.avatar ? (
-                   <img src={myStaffRow.avatar} alt="頭貼" className="dashboard__greeting-avatar" />
-                 ) : (
-                   <span className="dashboard__avatar-fallback">
-                     <Hand size={22} />
-                   </span>
-                 )}
-                 <span className="dashboard__avatar-cam"><Camera size={12} /></span>
-               </button>
-               嗨，{currentUser.name}
-             </h2>
-              <button onClick={() => setShowPwdModal(true)} className="dashboard__pwd-btn"><Settings size={14} /> 修改密碼</button>
-          </div>
-
-          <h3 className="dashboard__month-subtitle">
-            目前開放認領月份：<span className="dashboard__month-highlight">{targetYear}年 {targetMonth}月</span>
-          </h3>
-
-          {leaveWishElement}
-
-          <div className="dashboard__streak-info">
-              <Info size={14} /> 系統偵測：您上個月底已連續上班 <strong>{prevStreak}</strong> 天。
-              {prevStreak >= 6 && <div className="dashboard__streak-warning"><AlertTriangle size={14} /> 警告：您已達連六上限，本月 1 號必須排休！</div>}
-          </div>
-
-          {!currentSchedule || Object.keys(currentSchedule).length === 0 ? (
-              <div className="dashboard__no-schedule"><AlertTriangle size={16} /> 管理員尚未發布此月份 ({targetMonth}月) 的班表，請稍後再來。</div>
-          ) : hasClaimed ? (
-              // ★ 已經認領過的畫面：顯示完成狀態 + 自己的班表月曆
-              <div className="dashboard__claimed-banner">
-                  <h3 className="dashboard__claimed-title"><CheckCircle size={18} /> 您已完成 {targetMonth} 月的認領！</h3>
-                  <p className="dashboard__claimed-desc">您的排班已成功鎖定。選好的班表不能再被選一次。</p>
-
-                  {/* 我的班表月曆 */}
-                  {renderMyCalendar(currentSchedule[currentUser.id])}
-
-                  <p className="dashboard__claimed-note">如需修改，請聯繫護理長在後台將您「拔除釋出」，您才能重新選擇。</p>
-                  <button onClick={() => setCurrentStep(2)} className="dashboard__claimed-view-btn"><Eye size={14} /> 進入查看所有人認領狀況</button>
-              </div>
-          ) : (
-              // ★ 尚未認領的畫面：顯示閃爍提醒與選擇按鈕
-              <>
-                <div className="dashboard__unclaimed-alert">
-                    <Bell size={16} /> 提醒：您尚未認領 {targetMonth} 月的班表，請盡速於下方選擇！
-                </div>
-                <p className="dashboard__shift-prompt">請選擇您下個月希望認領的班別類型：</p>
-
-                <div className="dashboard__shift-buttons">
-                  <button onClick={() => handleSelectType('ALL')} disabled={isProcessing}
-                      className={`dashboard__shift-btn dashboard__shift-btn--all ${isProcessing ? 'dashboard__shift-btn--disabled' : ''}`}>
-                      全部顯示
-                  </button>
-                  {[{t:'D',l:'白班'}, {t:'E',l:'小夜'}, {t:'N',l:'大夜'}].map(i => (
-                      <button key={i.t} onClick={() => handleSelectType(i.t)} disabled={isProcessing}
-                          className={`dashboard__shift-btn ${isProcessing ? 'dashboard__shift-btn--disabled' : ''}`}
-                          style={{ background: getShiftColor(i.t) }}>
-                          {i.l}
-                      </button>
-                  ))}
-                </div>
-              </>
-          )}
-        </div>
-      )}
-
-      {currentStep === 2 && (
-        <div>
-          <button onClick={() => setCurrentStep(1)} className="dashboard__back-btn">← 返回</button>
-          <h2 className="dashboard__step2-title"><ClipboardList size={20} /> 選擇整月方案 ({targetYear}年{targetMonth}月)</h2>
-          <div className="dashboard__step2-hint"><Lightbulb size={14} /> 提示：灰底並標示「鎖頭」的班表代表已被其他人選走。若您極需該班表，請私下與該同仁協調。</div>
-          {hasClaimed && <div className="dashboard__claimed-readonly"><Lock size={14} /> 您已完成認領，目前僅供檢視狀態，無法再選擇其他班表。</div>}
-          <div className="dashboard__options-grid">
-            {filteredOptions.length === 0 ? (
-              <div className="dashboard__options-empty"><h3>無符合條件的推薦方案 😕</h3></div>
-            ) : (
-              filteredOptions.map(opt => {
-                const check = checkCompliance(opt.pattern);
-                const isSelectable = !opt.isClaimed && check.valid && !hasClaimed; // ★ 加上 && !hasClaimed 徹底鎖死點擊;
-                const shiftColors = { 'D': '#FFD93D', 'E': '#FF6B9D', 'N': '#4D96FF', 'RG': '#2ecc71', 'RC': '#d5f5e3', 'OFF': '#d5f5e3', '空班': '#d5f5e3' };
-
-                const cardClass = [
-                    'dashboard__shift-card',
-                    selectedOption === opt.id ? 'dashboard__shift-card--selected' : '',
-                    opt.isClaimed ? 'dashboard__shift-card--claimed' : '',
-                    !opt.isClaimed && !check.valid ? 'dashboard__shift-card--invalid' : ''
-                ].filter(Boolean).join(' ');
-
-                return (
-                    <div key={opt.id} onClick={() => isSelectable && handleSelectOption(opt)}
-                        className={cardClass}
-                        style={{ cursor: isSelectable ? 'pointer' : 'not-allowed' }}>
-                        <div className="dashboard__shift-card-header">
-                            <div>
-                                <div className={`dashboard__shift-card-title ${opt.isClaimed ? 'dashboard__shift-card-title--claimed' : ''}`}>{opt.title}</div>
-                                {opt.isClaimed && (
-                                  <div className="dashboard__shift-card-locked">
-                                    <Lock size={12} />
-                                    {opt.claimantAvatar ? (
-                                      <img src={opt.claimantAvatar} alt="" className="dashboard__shift-card-avatar" />
-                                    ) : (
-                                      <span className="dashboard__shift-card-avatar dashboard__shift-card-avatar--fallback">
-                                        {(opt.claimantName || '?').trim().charAt(0).toUpperCase()}
-                                      </span>
-                                    )}
-                                    已被 {opt.claimantName} 選擇 (請員工間自主協調)
-                                  </div>
-                                )}
-                            </div>
-                            {!opt.isClaimed && !check.valid && <div className="dashboard__shift-card-warning"><AlertTriangle size={12} /> {check.reason}</div>}
-                        </div>
-                        <div className={`dashboard__mini-calendar ${opt.isClaimed ? 'dashboard__mini-calendar--greyed' : ''}`}>
-                            {['日','一','二','三','四','五','六'].map(d => <div key={d} className="dashboard__mini-calendar-weekday">{d}</div>)}
-                            {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`empty-${i}`} />)}
-                            {opt.pattern.map((s, i) => {
-                              const isLight = ['RG','RC','OFF','空班'].includes(s);
-                              return (
-                                <div key={i} title={`${i+1}號: ${s}`}
-                                    className={`dashboard__mini-calendar-cell ${isLight ? 'dashboard__mini-calendar-cell--light' : 'dashboard__mini-calendar-cell--dark'}`}
-                                    style={{ background: shiftColors[s] || '#edf2f7' }}>
-                                       {i+1}
-                                </div>
-                              );
-                            })}
-                        </div>
-                    </div>
-                );
-            }))}
-          </div>
-        </div>
-      )}
-
-      {currentStep === 3 && (
-        <div>
-          <button onClick={() => setCurrentStep(2)} className="dashboard__back-btn">← 重選</button>
-          <h2 className="dashboard__step3-title">確認您的班表 ({targetYear}年{targetMonth}月)</h2>
-          <div className="dashboard__preview-grid">
-              {['日','一','二','三','四','五','六'].map(d=><div key={d} className="dashboard__preview-weekday">{d}</div>)}
-              {Array.from({ length: firstDayOfWeek }).map((_, i) => <div key={`e-${i}`} />)}
-              {Object.keys(previewSchedule).map(d => {
-                  const cell = previewSchedule[d];
-                  const type = (typeof cell === 'object') ? cell.type : cell;
-                  const shiftColors = { 'D': '#FFD93D', 'E': '#FF6B9D', 'N': '#4D96FF', 'RG': '#2ecc71', 'RC': '#d5f5e3', 'OFF': '#E8E8E8', '空班': '#E8E8E8', '支援': '#D4AC0D' };
-                  const bgColor = shiftColors[type] || '#fff';
-                  const isDarkBg = ['D', 'E', 'N', 'RG', '支援'].includes(type);
-                  return (
-                      <div key={d} className={`dashboard__preview-cell ${!isDarkBg ? 'dashboard__preview-cell--light' : ''}`} style={{ background: bgColor }}>
-                          <div className={`dashboard__preview-day ${isDarkBg ? 'dashboard__preview-day--dark' : 'dashboard__preview-day--light'}`}>{d}</div>
-                          <div className={`dashboard__preview-type ${isDarkBg ? 'dashboard__preview-type--dark' : 'dashboard__preview-type--light'}`}>{type}</div>
+      <>
+          {avatarModalElement}
+          {pwdModalElement}
+          <div className="dashboard__guard">
+              {dashboardHeader}
+              {leaveWishElement}
+              {!hasSchedule ? (
+                  <>
+                      <div className="dashboard__guard-icon"><Clock size={48} /></div>
+                      <h2 className="dashboard__guard-title--locked">班表尚未發布</h2>
+                      <div className="dashboard__guard-info">
+                          護理長尚未發布 <strong>{targetYear} 年 {targetMonth} 月</strong> 的班表，發布後會顯示在這裡。
                       </div>
-                  )
-              })}
+                  </>
+              ) : myData ? (
+                  <div className="dashboard__claimed-banner">
+                      <h3 className="dashboard__claimed-title"><CheckCircle size={18} /> 您 {targetYear} 年 {targetMonth} 月的班表</h3>
+                      {renderMyCalendar(myData)}
+                      <p className="dashboard__claimed-note">如需調整班別，請與護理長聯繫。</p>
+                  </div>
+              ) : (
+                  <>
+                      <div className="dashboard__guard-icon"><CalendarOff size={48} /></div>
+                      <h2 className="dashboard__guard-title--locked">本月沒有排入班次</h2>
+                      <div className="dashboard__guard-info">
+                          <strong>{targetYear} 年 {targetMonth} 月</strong> 的班表已發布，您本月沒有排入班次。<br/><br/>
+                          如有疑問請聯絡護理長。
+                      </div>
+                  </>
+              )}
           </div>
-          <div className="dashboard__confirm-area">
-            <button
-    onClick={handleFinalSubmit}
-    disabled={isProcessing}
-    className={`dashboard__confirm-btn ${isProcessing ? 'dashboard__confirm-btn--processing' : 'dashboard__confirm-btn--active'}`}
->
-    {isProcessing ? <><Loader size={14} className="dashboard__spin" /> 正在交棒給下一位 (約需10秒)...</> : '確認認領'}
-</button>
-          </div>
-        </div>
-      )}
-
-      {currentStep === 4 && (
-        <div className={`dashboard__success${isExiting ? ' dashboard__success--exiting' : ''}`}>
-          <h2 className="dashboard__success-title"><PartyPopper size={24} /> 認領成功！</h2>
-          <p className="dashboard__success-text">您的班表已成功送出，系統已更新。<br/>(您選擇的月份：{targetYear}年 {targetMonth}月)</p>
-          <button onClick={() => { setIsExiting(true); setTimeout(() => window.location.reload(), 500); }} className="dashboard__success-btn">回首頁</button>
-        </div>
-      )}
-    </div>
+      </>
   );
 };
 

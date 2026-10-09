@@ -197,7 +197,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 // 個資法 §8 + 醫療法 §72 + 護理人員法 §28 跨境傳輸保護：
           // 送至 Google Gemini (US) 前剝離員工姓名 — 工號 staff_id 作為內部假名，
           // CSV 第 2 欄「姓名」資料列洗成空（保留標題列以維持 AI 對欄位的理解）。
-          // 對照 api/auto-relay.js:278-289 已套用相同策略。
           const anonymizeCsvForAI = (csv) => {
               if (!csv || typeof csv !== 'string') return csv;
               const lines = csv.split(/\r\n|\n/);

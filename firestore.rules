@@ -90,7 +90,7 @@ service cloud.firestore {
     // ============================================================
     // 3. Schedules/{yearMonth} — 完整月班表（含 事假/病假/特休 原始類型）
     //    讀取：僅管理員（員工看的是 SchedulesPublic 遮罩版）
-    //    寫入：僅管理員（員工認領班次走 /api/claim-schedule，後端用 Admin SDK 寫入）
+    //    寫入：僅管理員（班表由 CP-SAT 直接指派後發布；舊的員工認領 /api/claim-schedule 已移除）
     //
     //    為什麼把 read 收緊：原本員工可讀完整 finalizedSchedule，等於可看到
     //    同事哪幾天請病假/事假/特休 — 違反 PDPA §6（醫療/健康屬特種個資）。
@@ -106,7 +106,7 @@ service cloud.firestore {
     // 3a. SchedulesPublic/{yearMonth} — 員工看的遮罩版
     //    內容固定為 { finalizedSchedule: {...} }，且 cell 中的 事假/病假/特休
     //    一律遮成 'OFF'。Admin SDK 寫入時會由 saveMonthlySchedule /
-    //    updateStaffSchedule / claim-schedule 同步維護。
+    //    updateStaffSchedule 同步維護。
     // ============================================================
     match /SchedulesPublic/{yearMonth} {
       allow read: if isAuthenticated();

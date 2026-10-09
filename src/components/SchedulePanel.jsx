@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sparkles, Loader, FolderArchive, Rocket, Trash2, RotateCcw, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
+import { Sparkles, Loader, Trash2, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
 import { auth } from '../api/database';
-import { backupScheduleToArchive, saveLeaveWishSettings } from '../api/database';
+import { saveLeaveWishSettings } from '../api/database';
 import { generateCpsatSchedule } from '../api/scheduleEngine';
 import { computeDailyRequirements, legalDailyFloor } from '../constants';
 import './SchedulePanel.css';
 
 // ============================================================================
-// 總班表顯示面板 (精簡版：移除認領清單，專注於 AI 排班工作桌)
+// 排班工作桌：CP-SAT 直接指派排班 → 檢視 / 手動微調草稿 → 儲存並發布
 // ============================================================================
 const SchedulePanel = ({
     onSaveSchedule, schedule, setSchedule, staffData, requirements, bedConfig,
@@ -15,7 +15,7 @@ const SchedulePanel = ({
     shiftOptions, setShiftOptions, setFinalizedSchedule, // ★ 接收參數
     leaveWish, // 預假設定（同月份時 CP-SAT 沿用當時的每日人力）
     // ★★★ 在這裡補上 finalizedSchedule 與 setFinalizedSchedule 的接收 ★★★
-    finalizedSchedule, setHistoryYear, setHistoryMonth, setHistorySchedule, historyYear, historyMonth, historySchedule, onManualRefresh, publicHolidays
+    finalizedSchedule, onManualRefresh,
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]);
   const [geminiInput, setGeminiInput] = useState('');
@@ -23,25 +23,11 @@ const SchedulePanel = ({
   const [processing, setProcessing] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
   // ★ 新增一個控制客製化視窗的狀態
-  const [showOverwriteModal, setShowOverwriteModal] = useState(false);
-  const [isBackingUp, setIsBackingUp] = useState(false);
-  const [customAiInstruction, setCustomAiInstruction] = useState('');
-  const [showInstructionModal, setShowInstructionModal] = useState(false);
   const [showAddOption, setShowAddOption] = useState(false);
   const [newOption, setNewOption] = useState({ code: '', name: '', color: '#cccccc' });
   const [justGenerated, setJustGenerated] = useState(false);
-  const [closingModal, setClosingModal] = useState(null); // 'instruction' | 'overwrite' | null
-  const [processingFadeOut, setProcessingFadeOut] = useState(false);
+  const [processingFadeOut] = useState(false);
 
-  // 淡出關閉 modal 的共用 helper
-  const closeModalWithAnimation = (which) => {
-    setClosingModal(which);
-    setTimeout(() => {
-      if (which === 'instruction') setShowInstructionModal(false);
-      if (which === 'overwrite') setShowOverwriteModal(false);
-      setClosingModal(null);
-    }, 300);
-  };
 
   const messagesEndRef = useRef(null);
 
@@ -91,79 +77,6 @@ const SchedulePanel = ({
   };
 
 
-// --- ★ 升級版的 AI 生成邏輯 ---
-// 1. 點擊「生成 AI 班表」時，第一步先跳出要求詢問視窗
-  const handleGeminiSolveClick = () => {
-      setShowInstructionModal(true);
-  };
-
-  // 1.5 當使用者在詢問視窗輸入完要求，按下「確認並繼續」時的邏輯
-  const handleConfirmInstruction = () => {
-      setClosingModal('instruction');
-      setTimeout(() => {
-        setShowInstructionModal(false);
-        setClosingModal(null);
-        // 接著檢查畫面上是不是已經有舊班表了？
-        if (schedule && Object.keys(schedule).length > 0) {
-            setShowOverwriteModal(true);
-        } else {
-            executeGeminiSolve();
-        }
-      }, 300);
-  };
-
-// 2. 選項 A：先封存至伺服器歷史區，再重新生成
-  const handleArchiveThenGenerate = async () => {
-      const targetSchedule = finalizedSchedule || schedule;
-
-      if (targetSchedule && Object.keys(targetSchedule).length > 0) {
-          setIsBackingUp(true);
-
-          try {
-              // ★ 動作 1：將原本躺在「歷史區」的班表，精準備份到 archive_reports/YYYY_M
-              if (historySchedule && Object.keys(historySchedule).length > 0) {
-                  await backupScheduleToArchive(
-                      historyYear,
-                      historyMonth,
-                      historySchedule,
-                      "歷史區舊班表被覆蓋前自動歸檔"
-                  );
-              }
-
-              // ★ 動作 2：將「目前工作桌」的班表也備份一份到對應的月份
-              await backupScheduleToArchive(
-                  selectedYear,
-                  selectedMonth,
-                  targetSchedule,
-                  "重新生成 AI 班表前自動備份"
-              );
-
-              // ★ 動作 3：將目前工作桌的班表，移動並「覆蓋」掉歷史區原本躺著的班表
-              if (setHistoryYear) setHistoryYear(selectedYear);
-              if (setHistoryMonth) setHistoryMonth(selectedMonth);
-              if (setHistorySchedule) setHistorySchedule(targetSchedule);
-
-              if (import.meta.env.DEV) console.log("✅ 舊班表已成功歸檔至 archive_reports，並完成歷史區替換！");
-
-          } catch (error) {
-              console.error("伺服器備份失敗:", error);
-              alert("❌ 備份至伺服器失敗，請確認網路！\n(錯誤：" + error.message + ")");
-              setIsBackingUp(false);
-              return;
-          }
-
-          setIsBackingUp(false);
-      }
-
-      // 3. 確定伺服器備份成功後，關閉視窗並開始生成全新 AI 班表
-      setClosingModal('overwrite');
-      setTimeout(() => { setShowOverwriteModal(false); setClosingModal(null); executeGeminiSolve(); }, 300);
-  };
-  const handleDirectOverwrite = () => {
-      setClosingModal('overwrite');
-      setTimeout(() => { setShowOverwriteModal(false); setClosingModal(null); executeGeminiSolve(); }, 300);
-  };
-  // 👆 ★★★ 補上這段就修復了！ ★★★ 👆
 
   // ============================================================================
   // CP-SAT 直接指派排班（Cloud Run 排班引擎：main1.py + cpsat_service.py）
@@ -281,204 +194,6 @@ const SchedulePanel = ({
     }
   };
 
-  // 4. 真正的 AI 呼叫核心 (原來的 handleGeminiSolve 邏輯移到這裡)
-  const executeGeminiSolve = async () => {
-    // ★★★ 新增：自動計算本月的週末與國定假日 ★★★
-    const weekends = [];
-    const natHolidays = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-        const date = new Date(selectedYear, selectedMonth - 1, d);
-        const dayOfWeek = date.getDay();
-        const dateStr = `${selectedYear}${String(selectedMonth).padStart(2, '0')}${String(d).padStart(2, '0')}`;
-
-        if (dayOfWeek === 0 || dayOfWeek === 6) weekends.push(d);
-        if (publicHolidays.includes(dateStr)) natHolidays.push(d);
-    }
-
-    const calendarContext = `
-[本月曆法資訊]
-- 週末 (六日) 日期：${weekends.join(', ')} 號
-- 國定假日 日期：${natHolidays.length > 0 ? natHolidays.join(', ') + ' 號' : '無'}
-    `;
-    setShowGemini(true);
-    setProcessing(true);
-    const dailyNeeded = (requirements.D || 0) + (requirements.E || 0) + (requirements.N || 0);
-    const totalShiftsNeeded = dailyNeeded * daysInMonth;
-    let estimatedCount = dailyNeeded > 0 ? Math.ceil(totalShiftsNeeded / 22) : 10;
-    estimatedCount += 2;
-
-    setGeminiMessages([{ role: 'assistant', content: `🤖 根據人力需求 (${dailyNeeded}人/日)，正在為 ${selectedMonth}月 生成 ${estimatedCount} 份匿名班表...` }]);
-
-    let currentPrompt = `
-[角色定義]
-你是一個高階排班演算法引擎，採用「目標規劃法 (Goal Programming)」邏輯。你精通台灣勞動基準法 (Taiwan Labor Standards Act) 與護理人員排班規則。
-${calendarContext}
-[使用者額外指令]
-${customAiInstruction ? `請特別注意以下要求: "${customAiInstruction}"` : "無額外特殊要求，請依照一般最佳化原則排班。"}
-[任務目標]
-為 ${selectedYear}年${selectedMonth}月 (共 ${daysInMonth} 天) 的護理團隊規劃班表。
-目標是將目標函數 Z 的總罰分降至最低： Minimize Z = (W1 * 工作量偏差) + (W2 * 偏好偏差) + (W3 * 班別公平性偏差)。
-
-[輸入資料：員工與限制]
-2. 班別定義: D (07-16), E (15-00), N (23-08)
-- 休假班: **RG (例假), RC (休假)**。
-- 所有休假必須明確標示為 RG 或 RC。
-3. 每日人力需求: 早班(D)至少 ${requirements.D} 人, 小夜(E)至少 ${requirements.E} 人, 大夜(N)至少 ${requirements.N} 人。
-
-[硬性約束 (Hard Constraints) - 必須完全遵守，違反即失敗]
-高優先級別-**每個護理人員班表僅能出現一種班別，也就是說第一天出現白班，接下來的排班除休假日外也僅可以出現白班。**
-- **🚨 護病比天條**: 任何一天的 D、E、N 班人數，【絕對不可】低於上述的每日人力需求！
-1. **法規底線**:
-   - 任何員工不得連續工作超過 6 天 (勞基法「七休一」)。
-   - 輪班間隔必須 >= 11 小時 (例如: 今天 E 班 24:00 下班，明天最早只能接 E 班，不能接 D 班)。
-   - 每 7 天週期內，至少要有 1 個 RG (例假) 和 1 個 RC (休假)。
-   - RG (例假) 之間間隔不得超過 6 天。
-   - 4週內總計至少應有 8 天休假 (4個 RG + 4個 RC)。
-2. **24小時無縫覆蓋**: 任何時段護理站都不能空班。
-3. **工時制度**:
-   - "Standard" (單週): 每日 8 小時，每週工時 <= 40。
-   - "BiWeekly" (雙週變形): 每日可達 10 小時，雙週總工時 <= 80。
-4. **夜班限制**: 禁止連續大夜班 (N) 超過44 天 (避免過勞)。
-
-[軟性目標 (Soft Goals) - 盡力達成，做不到則計入罰分]
-1. **Goal 1 (工作量公平性)**: 每人每月總班數應介於 22-24 班之間。偏差值越小越好。
-2. **Goal 2 (個人偏好)**: 盡量滿足員工「假日休假」與「連續休假」。(若違反，每錯一個罰 10 分)。
-
-[輸出格式 JSON - 極度重要]
-為了追求極致的運算速度，請絕對不要輸出複雜的 JSON 物件！
-請只輸出一個包含 ${estimatedCount} 個字串的陣列 (Array)。
-每個字串代表一個人的整月班表，以「逗號」分隔，剛好 ${daysInMonth} 個班別。
-
-格式範例:
-{
-  "patterns": [
-    "D,D,D,D,D,RG,RC,D,D,D,D,E,E,OFF,OFF...",
-    "E,E,E,E,OFF,RC,E,E,E,E,D,D,RG,OFF,OFF..."
-  ],
-  "summary": "已生成符合勞基法的高效排班陣列。"
-}
-`;
-    let attempts = 0; const MAX_RETRIES = 5; let isSuccess = false;
-
-    while (attempts < MAX_RETRIES && !isSuccess) {
-        try {
-            attempts++;
-            setLoadingStatus(attempts === 1 ? "🧠 AI 正在計算最佳排班陣列..." : `♻️ 第 ${attempts} 次嘗試...`);
-            const token = await auth.currentUser.getIdToken();
-            const response = await fetch('/api/gemini', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json',
-                           'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ prompt: currentPrompt })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || "伺服器連線失敗");
-            }
-
-            const data = await response.json();
-            if (!data.text) throw new Error('AI 回應異常');
-            // 魯棒性清洗：移除 thinking 標籤、markdown 程式碼區塊
-            let text = data.text
-                .replace(/<thought>[\s\S]*?<\/thought>/gi, '')
-                .replace(/```json/gi, '').replace(/```/g, '')
-                .trim();
-            // 嘗試精確匹配含 "patterns" 的 JSON 物件
-            const patternsMatch = text.match(/\{[^{}]*"patterns"\s*:\s*\[[\s\S]*?\][^{}]*\}/);
-            const jsonMatch = patternsMatch || text.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) throw new Error("JSON 格式錯誤，AI 未回傳有效 JSON");
-            const parsed = JSON.parse(jsonMatch[0]);
-
-            if (parsed.patterns && Array.isArray(parsed.patterns)) {
-                const virtualSchedule = {};
-
-                // 七休一 後處理：任何「第 7 天連續上班」自動改為 OFF，
-                // 避免 AI 偶爾輸出 7+ 連上的 pattern 讓員工 dashboard 全鎖死。
-                const WORKING_SHIFTS = new Set(['D', 'E', 'N', '支援']);
-
-                parsed.patterns.forEach((patternStr, index) => {
-                    const virtualId = `D${String(index + 1).padStart(3, '0')}`;
-                    const shifts = patternStr.split(',').map(s => s.trim());
-
-                    virtualSchedule[virtualId] = {};
-
-                    let streak = 0;
-                    shifts.forEach((shiftType, dIndex) => {
-                        const dayNum = dIndex + 1;
-                        if (dayNum > daysInMonth) return;
-
-                        let finalType = shiftType;
-                        if (WORKING_SHIFTS.has(finalType)) {
-                            if (streak >= 6) {
-                                finalType = 'OFF';
-                                streak = 0;
-                            } else {
-                                streak++;
-                            }
-                        } else {
-                            streak = 0;
-                        }
-                        virtualSchedule[virtualId][dayNum] = { type: finalType, time: '' };
-                    });
-                });
-                // =========================================================
-                // ★★★ 新增：護病比 (每日人力需求) 嚴格把關攔截網 ★★★
-                let isRatioValid = true;
-                let errorMsg = "";
-
-                for (let d = 1; d <= daysInMonth; d++) {
-                    let countD = 0, countE = 0, countN = 0;
-                    Object.values(virtualSchedule).forEach(staff => {
-                        const type = staff[d]?.type;
-                        if (type === 'D') countD++;
-                        if (type === 'E') countE++;
-                        if (type === 'N') countN++;
-                    });
-
-                    // 只要有一天的人數小於首頁設定的需求，立刻判定為「不合格廢品」
-                    if (countD < (requirements.D || 0) || countE < (requirements.E || 0) || countN < (requirements.N || 0)) {
-                        isRatioValid = false;
-                        errorMsg = `第 ${d} 天人力不足 (法定需 D${requirements.D} E${requirements.E} N${requirements.N} / AI卻只排了 D${countD} E${countE} N${countN})`;
-                        break; // 抓到一天違規就不用看了，直接跳出迴圈
-                    }
-                }
-
-                if (!isRatioValid) {
-                    // 故意丟出錯誤，這會讓系統直接跳到 catch 區塊，並自動啟動下一次 attempt 重試！
-                    throw new Error(`護病比未達標 (${errorMsg})，正強制 AI 重新洗牌運算...`);
-                }
-                // =========================================================
-
-                setGeminiMessages(prev => [...prev, { role: 'assistant', content: `✅ **排班成功 (全新產生)**\n\n已為您配置 ${Object.keys(virtualSchedule).length} 位人力！` }]);
-                isSuccess = true;
-
-                setJustGenerated(true);
-                onGenerateSchedule(virtualSchedule);
-                setTimeout(() => setJustGenerated(false), 3000);
-
-
-            } else {
-                throw new Error("AI 未回傳正確的 patterns 陣列");
-            }
-        } catch (e) {
-            console.error(e);
-            setGeminiMessages(prev => [...prev, { role: 'assistant', content: `⚠️ 第 ${attempts} 次嘗試失敗：${e.message}` }]);
-            if (attempts >= MAX_RETRIES) {
-                setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 已重試 5 次仍無法生成合規班表，請調整條件後再試。" }]);
-                break;
-            }
-        }
-    }
-    // 淡出 loading overlay
-    setProcessingFadeOut(true);
-    setTimeout(() => {
-      setProcessing(false);
-      setProcessingFadeOut(false);
-      setLoadingStatus('');
-    }, 400);
-  };
 
   const handleUserChat = async () => {
       if (!geminiInput.trim()) return;
@@ -588,80 +303,6 @@ const handleCellChange = (staffId, day, newValue) => {
           <div className="schedule-panel__loading-status">{loadingStatus}</div>
         </div>
       )}
-{/* ★★★ 新增的：AI 需求詢問視窗 (Modal) ★★★ */}
-      {showInstructionModal && (
-        <div
-            className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--instruction${closingModal === 'instruction' ? ' schedule-panel__modal-backdrop--closing' : ''}`}
-            onClick={(e) => { if (e.target === e.currentTarget) closeModalWithAnimation('instruction'); }}
-            role="button"
-            tabIndex={-1}
-            aria-label="點空白處取消"
-        >
-            <div className={`schedule-panel__modal-box${closingModal === 'instruction' ? ' schedule-panel__modal-box--closing' : ''}`}>
-                <h3 className="schedule-panel__modal-title schedule-panel__modal-title--instruction">
-                    ✨ 告訴 AI 您的特殊要求
-                </h3>
-                <p className="schedule-panel__modal-desc">
-                    除了遵守勞基法與基本人力外，您本月還有什麼特別想交代的嗎？<br/>
-                    <span className="schedule-panel__modal-hint">(例如：「請盡量讓 N001 都在週末休假」、「大夜班盡量安排給年資高的人」)</span>
-                </p>
-
-                <textarea
-                    value={customAiInstruction}
-                    onChange={(e) => setCustomAiInstruction(e.target.value)}
-                    placeholder="請輸入您的特殊要求 (若無特殊要求，可直接留空並點擊繼續)..."
-                    className="schedule-panel__modal-textarea"
-                />
-
-                <div className="schedule-panel__modal-actions">
-                    <button onClick={() => closeModalWithAnimation('instruction')} className="schedule-panel__btn schedule-panel__btn--cancel">
-                        取消
-                    </button>
-                    <button onClick={handleConfirmInstruction} className="schedule-panel__btn schedule-panel__btn--confirm">
-                        確認並繼續 <Rocket size={14} />
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
-      {/* ★★★ 需求詢問視窗結束 ★★★ */}
-      {/* ★★★ 2. 全新加入的：客製化覆蓋警告視窗 (Modal) ★★★ */}
-      {showOverwriteModal && (
-        <div
-            className={`schedule-panel__modal-backdrop schedule-panel__modal-backdrop--overwrite${closingModal === 'overwrite' ? ' schedule-panel__modal-backdrop--closing' : ''}`}
-            onClick={(e) => { if (e.target === e.currentTarget) closeModalWithAnimation('overwrite'); }}
-            role="button"
-            tabIndex={-1}
-            aria-label="點空白處取消"
-        >
-            <div className={`schedule-panel__modal-box${closingModal === 'overwrite' ? ' schedule-panel__modal-box--closing' : ''}`}>
-                <h3 className="schedule-panel__modal-title schedule-panel__modal-title--overwrite">
-                    ⚠️ 畫面上已經有班表資料！
-                </h3>
-                <p className="schedule-panel__modal-desc schedule-panel__modal-desc--overwrite">
-                    為避免「新舊班表疊加」導致人數暴增（產生多餘的幽靈空缺），系統必須清除目前的畫面。<br/><br/>
-                    請問您希望如何處理目前的舊班表？
-                </p>
-
-                <div className="schedule-panel__modal-actions schedule-panel__modal-actions--column">
-                <button onClick={handleArchiveThenGenerate} disabled={isBackingUp} className="schedule-panel__btn schedule-panel__btn--archive">
-                <span>{isBackingUp ? <><Loader size={14} className="schedule-panel__spin" /> 正在備份至伺服器...</> : <><FolderArchive size={14} /> 儲存至伺服器備份後重新生成</>}</span>
-                <span>→</span>
-                </button>
-
-                    <button onClick={handleDirectOverwrite} className="schedule-panel__btn schedule-panel__btn--danger">
-                        <span><Trash2 size={14} /> 直接清除畫面並覆蓋</span>
-                        <span>→</span>
-                    </button>
-
-                    <button onClick={() => closeModalWithAnimation('overwrite')} className="schedule-panel__btn schedule-panel__btn--keep">
-                        取消，保留目前畫面
-                    </button>
-                </div>
-            </div>
-        </div>
-      )}
-      {/* ★★★ Modal 結束 ★★★ */}
 
       {/* 3. 頂部工具列 */}
       <div className="schedule-panel__toolbar">
@@ -694,9 +335,6 @@ const handleCellChange = (staffId, day, newValue) => {
              <RefreshCw size={14} /> 手動同步
            </button>
            <button onClick={() => setShowAddOption(!showAddOption)} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--options"><Plus size={14} /> 選項</button>
-
-           {/* ★ 確保這裡綁定的是 handleGeminiSolveClick */}
-           <button id="gemini-trigger-btn" onClick={handleGeminiSolveClick} disabled={processing} className="schedule-panel__toolbar-btn schedule-panel__toolbar-btn--generate">{processing ? <Loader size={16} className="schedule-panel__spin" /> : <><Sparkles size={16} /> 生成 AI 班表</>}</button>
 
            {/* SA 模擬退火排班（獨立微服務 main1.py）— 與 Gemini 並列、互補 */}
            <button

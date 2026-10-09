@@ -6,7 +6,7 @@ import { doc, getDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
 import { signOut, onAuthStateChanged } from "firebase/auth";
 import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive, subscribeToAnnouncement } from './api/database';
-import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks, hasVirtualSlots } from './constants';
+import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
 import ManagerInterface from './components/ManagerInterface';
@@ -349,8 +349,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       if (data.publishedDate) {
         publishedDateLoadedRef.current = true;
         setPublishedDate(prev => {
-          if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month
-              && prev.assignMode === data.publishedDate.assignMode) return prev;
+          if (prev.year === data.publishedDate.year && prev.month === data.publishedDate.month) return prev;
           return data.publishedDate;
         });
       }
@@ -587,120 +586,6 @@ const handleLogout = () => {
     cover.remove();
   }, 1500);
 };
-// ★ 核心功能 1：寄送 Email 的共用小幫手
-  const sendSystemEmail = async (toEmail, subject, htmlContent) => {
-      try {
-          const idToken = await auth.currentUser?.getIdToken();
-          await fetch('/api/sendEmail', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${idToken}`
-              },
-              body: JSON.stringify({ to: toEmail, subject, html: htmlContent })
-          });
-      } catch (error) {
-          console.error("Email 發送失敗:", error);
-      }
-  };
-
-  // ★ 核心功能 2：AI 動態決策下一位優先選班者
-  const calculateAndNotifyNextStaff = async (currentSchedule, statsData, currentYear, currentMonth, finishedStaffId = null, resetRelay = false) => {
-      try {
-          const token = await auth.currentUser.getIdToken();
-          const response = await fetch('/api/auto-relay', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                  year: currentYear,
-                  month: currentMonth,
-                  currentSchedule,
-                  statsData,
-                  finishedStaffId,
-                  resetRelay
-              })
-          });
-
-          const data = await response.json();
-          if (!response.ok) {
-              throw new Error(data.error || 'AI 接力 API 異常');
-          }
-          
-          if (import.meta.env.DEV) console.log("AI 接力成功:", data);
-
-      } catch (error) {
-          console.error("AI 決策接力失敗:", error);
-          // 通知管理員接力失敗，避免靜默卡住
-          try {
-              const adminEmail = staffData.find(s => s.staff_id === 'admin')?.email || 'admin@hospital.com';
-              await sendSystemEmail(adminEmail, `⚠️ ${currentMonth}月 AI接力選班失敗`, `<h3>報告護理長：</h3><p>AI自動接力選班引擎發生錯誤，請登入系統手動啟動接力或指定下一位選班人員。</p><p><strong>錯誤訊息：</strong>${error.message || error}</p>`);
-          } catch (emailErr) {
-              console.error("通知管理員失敗:", emailErr);
-          }
-          throw error;
-      }
-  };
-// ★★★ 員工認領班表：透過 /api/claim-schedule 走後端 transaction，
-//      避免 firestore.rules 無法精準擋住「員工把同事的 cell 一起改掉」的垂直越權。
-  const handleStaffScheduleUpdate = async (result) => {
-    const targetVirtualId = result.chosenSchedule?.id;
-    if (!targetVirtualId) {
-      alert("❌ 無法判斷您要認領的班表（缺少 virtualSlotId）。");
-      return;
-    }
-
-    try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error('登入逾期，請重新登入');
-
-      const response = await fetch('/api/claim-schedule', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          year: publishedDate.year,
-          month: publishedDate.month,
-          virtualSlotId: targetVirtualId,
-        }),
-      });
-      const data = await response.json();
-
-      if (response.status === 409) {
-        // 後端 transaction 偵測到搶單或重複認領
-        alert(`⚠️ ${data.error || '此班表已被別人選走'}\n系統將為您重新整理畫面。`);
-        window.location.reload();
-        return;
-      }
-      if (!response.ok) {
-        throw new Error(data.error || '認領失敗');
-      }
-
-      // 用後端回傳的最新 finalizedSchedule 同步本地畫面（onSnapshot 也會跟著更新，這裡是 optimistic）
-      if (data.finalizedSchedule) {
-        setFinalizedSchedule(data.finalizedSchedule);
-      }
-
-      // 呼叫 AI 接力，標記本人已完成並通知下一位
-      try {
-        await calculateAndNotifyNextStaff(
-          data.finalizedSchedule || {},
-          healthStats,
-          publishedDate.year,
-          publishedDate.month,
-          result.staffId,
-        );
-      } catch (e) {
-        console.error("交棒失敗:", e);
-      }
-
-      alert(`✅ 認領成功！\n員工 ${result.staffName} 已確認班表，系統正自動計算並通知下一位同仁。`);
-    } catch (error) {
-      console.error("認領失敗:", error);
-      alert(`❌ 認領失敗：${error.message}`);
-    }
-  } // <-- 這是 handleStaffScheduleUpdate 的結尾
 
   // 🔄 手動強制同步最新雲端班表
   const handleManualRefresh = async () => {
@@ -737,10 +622,8 @@ const handleSaveAndPublish = async () => {
     
     const newFinalized = JSON.parse(JSON.stringify(schedule));
 
-    // 沒有 D 開頭虛擬空缺 = CP-SAT 直接指派（全部是真實工號）→ 不開放認領、不啟動接力。
-    // assignMode 每次都明確寫入，避免 merge 留下上一次發布的舊值。
-    const assignMode = hasVirtualSlots(newFinalized) ? 'claim' : 'direct';
-    const newPubDate = { year: selectedYear, month: selectedMonth, assignMode };
+    // 班表由 CP-SAT 直接指派到每位員工，發布後員工只能檢視（認領流程已移除）
+    const newPubDate = { year: selectedYear, month: selectedMonth };
     setPublishedDate(newPubDate);
     localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
 
@@ -761,22 +644,11 @@ const handleSaveAndPublish = async () => {
         });
     } catch(e) {
         console.error("發布至雲端失敗:", e);
-    }
-    
-    if (assignMode === 'direct') {
-        alert(`✅ 班表已發布（直接指派）！\n員工登入後可檢視自己 [${selectedYear}年${selectedMonth}月] 的班表，不需認領。`);
-    } else {
-        alert(`✅ 班表已鎖定並發布！\n員工登入後將看到 [${selectedYear}年${selectedMonth}月] 的班表。\n\n🚀 系統正在背景啟動 AI 接力選班...`);
+        alert(`❌ 發布失敗：${e.message || e}\n班表沒有存到雲端，請檢查網路後再按一次「儲存並發布」。`);
+        return;
     }
 
-    // ★★★ 發布後自動啟動第一棒 AI 接力選班 ★★★
-    // 直接指派也照樣呼叫：resetRelay 會清掉本月舊的輪次 / 進度，
-    // auto-relay 讀到 Settings.publishedDate.assignMode === 'direct' 後就停在那裡，不挑人、不寄信。
-    try {
-        await calculateAndNotifyNextStaff(newFinalized, healthStats, selectedYear, selectedMonth, null, true);
-    } catch (e) {
-        console.error("發布後自動接力啟動失敗:", e);
-    }
+    alert(`✅ 班表已發布！\n員工登入後可檢視自己 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };
 
 // ★★★ 安全升級：串接 Firebase Auth 進行管理員密碼修改 ★★★
@@ -1015,7 +887,6 @@ const handleSaveAndPublish = async () => {
             accumulatedReports={accumulatedReports} // 👈 補上這行
             setAccumulatedReports={setAccumulatedReports} // 👈 補上這行，讓面板可以清空記憶
             onManualRefresh={handleManualRefresh}  
-            calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
             baseSalary={baseSalary} setBaseSalary={setBaseSalary}
             baseSalaryEnc={baseSalaryEnc} setBaseSalaryEnc={setBaseSalaryEnc}
             levelBonus={levelBonus} setLevelBonus={setLevelBonus}
@@ -1028,10 +899,7 @@ const handleSaveAndPublish = async () => {
             myStaffRow={myStaffRow}
             targetYear={publishedDate.year}
             targetMonth={publishedDate.month}
-            assignMode={publishedDate.assignMode}
             currentSchedule={finalizedSchedule}
-            onConfirmSchedule={handleStaffScheduleUpdate}
-            staffData={staffData}
             leaveWish={leaveWish}
           />
         )}
