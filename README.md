@@ -1,6 +1,6 @@
 # nurse-schedule
 
-> 台灣某醫院護理排班系統。React + Vite 前端 + Firebase Firestore + 多後端路徑
+> React + Vite 前端 + Firebase Firestore + 多後端路徑
 > (Vercel Node 正式 / Laravel PHP 本機 sandbox)+ Python SA 排班引擎(Render)。
 
 ---
