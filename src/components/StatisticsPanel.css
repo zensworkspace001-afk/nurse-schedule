@@ -534,6 +534,7 @@
 
 .statistics__chat-messages {
   flex: 1;
+  max-height: 420px;        /* 沒有高度上限時「捲到最新訊息」無效，新回覆會長到畫面外 */
   overflow-y: auto;
   margin-bottom: 12px;
   padding-right: 5px;

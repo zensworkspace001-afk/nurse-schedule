@@ -123,25 +123,7 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // ============================================================
-    // 5. SelectionTurn/{yearMonth} — 目前輪到誰選班
-    //    讀取：所有已登入使用者 (前端需要知道目前輪到誰)
-    //    寫入：僅管理員 (啟動接力) 或後端 Admin SDK (Cron/AI)
-    // ============================================================
-    match /SelectionTurn/{yearMonth} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
-
-    // ============================================================
-    // 6. SelectionProgress/{yearMonth} — 已完成選班的員工清單
-    //    讀取：所有已登入使用者
-    //    寫入：僅管理員或後端 Admin SDK
-    // ============================================================
-    match /SelectionProgress/{yearMonth} {
-      allow read: if isAuthenticated();
-      allow write: if isAdmin();
-    }
+    // （5. SelectionTurn / 6. SelectionProgress 隨認領流程移除，2026-10；沒有規則 = 預設拒絕）
 
     // ============================================================
     // 7. AI_Decision_Logs — AI 決策紀錄
