@@ -1,0 +1,32 @@
+# 神盾計畫（Project Aegis）階段一基準測試：C# 排班引擎（aegis/）必須與 Python 正式引擎逐次求解完全一致。
+# 黃金樣本在同一台機器上現場產生（不進 git）：OR-Tools 原生程式庫因平台而異，同機產生 / 比對才有意義。
+# 只在引擎相關檔案變動時跑（約 10–15 分鐘）。
+name: Aegis baseline
+
+on:
+  push:
+    branches: [main]
+    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'requirements.txt', '.github/workflows/aegis.yml']
+  pull_request:
+    branches: [main]
+    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'requirements.txt', '.github/workflows/aegis.yml']
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: 產生 Python 黃金樣本
+        run: python -u aegis/baseline/make_golden.py
+      - name: C# 引擎比對
+        working-directory: aegis
+        run: dotnet test --logger "console;verbosity=detailed"
