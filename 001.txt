@@ -1,3 +1,0 @@
-git add .
-git commit -m "new func add on defect repair"
-git push origin main

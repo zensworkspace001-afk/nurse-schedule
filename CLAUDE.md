@@ -341,13 +341,9 @@ Vercel auto-deploys on push to `main`. `vercel.json` configures the daily cron a
 
 `.vercelignore` excludes `main1.py`, `cpsat_service.py`, `requirements.txt`, `Dockerfile`, `.dockerignore`, `.gcloudignore`, `CPSAT_DEPLOY.md`, and `php-backend/` from the Vercel build context. Without this, Vercel auto-detects `requirements.txt` or `php-backend/composer.json` and tries to install Python/PHP toolchains, which is irrelevant work that slows down the frontend deploy. Keep the files in git so Render/Railway/PHP hosts can pull them.
 
-### Legacy `server/` and `my-app/` Directories
+### Removed scratch files
 
-The `server/` folder contains a legacy local Express dev server (port 3001) backed by a JSON file (`db.json`). This is **not used in production** — it predates the Vercel serverless + Firebase architecture. Ignore it for new development.
-
-Likewise, `my-app/` is an unrelated scratch/sandbox directory with its own `node_modules` and configs. Ignore it for any work on the nurse-schedule app.
-
-Various **root-level scratch artifacts** are experiments unrelated to the app and safe to ignore: loose Python (`1.PY`, `coppy.py`, `gooo.py`), `consequence.ipynb`, `yolov8n.pt` (a stray YOLO model, unrelated to the in-browser BlazeFace avatar check), `ui-template/` + the design `.zip`, `markdown.md`, `001.txt`, and `demo_out.log`. The real Python services are only `main1.py` (SA microservice) and `local_test/` (test harness).
+The old scratch/sandbox files (`server/`, `my-app/`, `1.PY`, `main.py`, `consequence.ipynb`, `yolov8n.pt`, `ui-template/` + design `.zip`, `markdown.md`, `001.txt`, `.qoder/`, `src/backup.js`, `src/App.css`) were deleted in 2026-10. The real Python services are only `main1.py` + `cpsat_service.py` (scheduling microservice) and `local_test/` (engine source + test harness). **`1.PY` and `src/backup.js` contained a hard-coded Gemini API key and this repo is public** — that key must be revoked in Google AI Studio (deleting the files doesn't remove it from git history). `.gitignore` covers `__pycache__/` — never commit `.pyc`.
 
 ### `labor-law-compliance/` — Standalone Compliance-Checker Sub-Project
 
