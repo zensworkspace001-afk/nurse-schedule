@@ -11,6 +11,7 @@ import StatisticsPanel from './StatisticsPanel';
 import AccessLogPanel from './AccessLogPanel';
 import ComplianceDashboard from './ComplianceDashboard';
 import LeaveWishPanel from './LeaveWishPanel';
+import ErrorBoundary from './ErrorBoundary';
 
 const ManagerInterface = ({
   currentUser, announcement,
@@ -204,6 +205,7 @@ const ManagerInterface = ({
       </div>
 
       <div className="manager__content-area" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <ErrorBoundary scope="panel" resetKey={location.pathname}>
           <Routes>
               <Route path="/" element={<Navigate to="/leave-wishes" replace />} />
               {/* 舊的「護病比 / 人力需求」分頁已併入「人力與預假」 */}
@@ -303,6 +305,7 @@ const ManagerInterface = ({
 
               <Route path="/audit" element={<AccessLogPanel />} />
           </Routes>
+          </ErrorBoundary>
       </div>
     </div>
   );

@@ -6,6 +6,7 @@ import LiquidTogglePreview from './pages/LiquidTogglePreview.jsx'
 import ProfileWizardPreview from './pages/ProfileWizardPreview.jsx'
 import ActivatePage from './components/ActivatePage.jsx'
 import PrivacyNoticePage from './components/PrivacyNoticePage.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import './index.css' // 如果原本有這行
 
 // /dev/* 預覽路由只在 dev 模式存在；production build 時 import.meta.env.DEV
@@ -16,6 +17,7 @@ const devRoutes = import.meta.env.DEV
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
+    <ErrorBoundary>
     <BrowserRouter>
       <Routes>
         <Route path="/liquid-toggle" element={<LiquidTogglePreview />} />
@@ -25,5 +27,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <Route path="*" element={<App />} />
       </Routes>
     </BrowserRouter>
+    </ErrorBoundary>
   </React.StrictMode>,
 )
