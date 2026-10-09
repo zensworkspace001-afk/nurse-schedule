@@ -92,7 +92,7 @@
   padding: 0.5rem;
   display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;        /* 分頁永遠一列；寬度不夠時縮內距、藏圖示（見下方斷點） */
   box-shadow: inset 0 1px 6px rgba(0, 0, 0, 0.06);
   z-index: 2;
 }
@@ -136,8 +136,26 @@
   transition: color 0.3s ease;
   position: relative;
   z-index: 2;
-  min-width: 120px;
+  min-width: 0;
+  white-space: nowrap;      /* 「人力與預假」等 5 字標籤在 770–1150px 會被擠成兩行 */
   gap: 6px;
+}
+
+/* 桌面分頁列：8 個分頁在中等寬度放不下 → 逐步縮內距 / 字級，最後藏圖示 */
+@media screen and (min-width: 769px) and (max-width: 1280px) {
+  .manager__tab {
+    padding: 0.7rem 0.5rem;
+    font-size: 0.92rem;
+  }
+}
+
+@media screen and (min-width: 769px) and (max-width: 1100px) {
+  .manager__tabs { gap: 0.25rem; }
+  .manager__tab {
+    padding: 0.65rem 0.35rem;
+    font-size: 0.85rem;
+  }
+  .manager__tab svg { display: none; }
 }
 
 .manager__tab:hover:not(.manager__tab--active) {
