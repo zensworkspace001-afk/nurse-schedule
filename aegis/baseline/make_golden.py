@@ -79,7 +79,7 @@ cp_model.CpSolver.wall_time = property(lambda self: self.response_proto.determin
 # 案例
 # ------------------------------------------------------------
 def staff14(levels=None):
-    rows = [dict(s, is_active=True) for s in copy.deepcopy(SAMPLE_STAFF)]
+    rows = [{**s, "is_active": True} for s in copy.deepcopy(SAMPLE_STAFF)]
     for r in rows:
         if levels and r["staff_id"] in levels:
             r["level"], r["is_leader"] = levels[r["staff_id"]]
@@ -91,30 +91,30 @@ SENIOR_MIX = {"N001": ("N3", True), "N003": ("N2", False), "N005": ("N4", False)
 
 CASES = {
     # 1) 現行測試資料（14 人、孕婦 + 實習生 + 雙週 1 人），完整排班流程（零權重起點 → 完整模型），含預假
-    "sample14_generate": dict(kind="generate", year=2026, month=8, reqs={"D": 3, "E": 2, "N": 2},
-                              staff=staff14(SENIOR_MIX), wishes={"N004": [3, 4, 5, 6], "N010": [10, 11, 17, 18]},
-                              time_limit=80.0),   # 預假釘死後零權重起點較難找：單執行緒給足時間才走得到完整模型
+    "sample14_generate": {"kind": "generate", "year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2},
+                              "staff": staff14(SENIOR_MIX), "wishes": {"N004": [3, 4, 5, 6], "N010": [10, 11, 17, 18]},
+                              "time_limit": 80.0},   # 預假釘死後零權重起點較難找：單執行緒給足時間才走得到完整模型
     # 2) 人力剛好：D3/E2/N2 的最少人數 12（試算測試的已知結果）
-    "tight12_generate": dict(kind="generate", year=2026, month=8, reqs={"D": 3, "E": 2, "N": 2},
-                             staff=staff14(SENIOR_MIX)[:12], wishes={}, time_limit=30.0),
+    "tight12_generate": {"kind": "generate", "year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2},
+                             "staff": staff14(SENIOR_MIX)[:12], "wishes": {}, "time_limit": 30.0},
     # 3) 雙週人員多（4 位）— 覆蓋雙週 ≤ 10 天與 weekly_staffing_shortfall 的雙週分支
-    "biweekly_generate": dict(kind="generate", year=2026, month=9, reqs={"D": 3, "E": 2, "N": 2},
-                              staff=[dict(s, special_status="BiWeekly") if s["staff_id"] in ("N004", "N006", "N008", "N011") else s
-                                     for s in staff14(SENIOR_MIX)], wishes={"N006": [1, 2, 3, 4]}, time_limit=80.0),
+    "biweekly_generate": {"kind": "generate", "year": 2026, "month": 9, "reqs": {"D": 3, "E": 2, "N": 2},
+                              "staff": [{**s, "special_status": "BiWeekly"} if s["staff_id"] in ("N004", "N006", "N008", "N011") else s
+                                     for s in staff14(SENIOR_MIX)], "wishes": {"N006": [1, 2, 3, 4]}, "time_limit": 80.0},
     # 4) 孕哺 / 實習多（4 位只能上白班）
-    "protected_generate": dict(kind="generate", year=2026, month=10, reqs={"D": 4, "E": 2, "N": 2},
-                               staff=[dict(s, is_pregnant_or_nursing=True) if s["staff_id"] in ("N012", "N014") else s
-                                      for s in staff14(SENIOR_MIX)], wishes={}, time_limit=30.0),
+    "protected_generate": {"kind": "generate", "year": 2026, "month": 10, "reqs": {"D": 4, "E": 2, "N": 2},
+                               "staff": [{**s, "is_pregnant_or_nursing": True} if s["staff_id"] in ("N012", "N014") else s
+                                      for s in staff14(SENIOR_MIX)], "wishes": {}, "time_limit": 30.0},
     # 5) 資深不足：只有 1 位資深 → 必然有資深缺口（senior 階段的最小化）
-    "senior_short_generate": dict(kind="generate", year=2026, month=8, reqs={"D": 3, "E": 2, "N": 2},
-                                  staff=staff14({"N001": ("N3", False)}), wishes={}, time_limit=30.0),
+    "senior_short_generate": {"kind": "generate", "year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2},
+                                  "staff": staff14({"N001": ("N3", False)}), "wishes": {}, "time_limit": 30.0},
     # 6) 預假可行性檢查（全部預假當硬約束的純可行性模型）
-    "sample14_wishcheck": dict(kind="wishcheck", year=2026, month=8, reqs={"D": 3, "E": 2, "N": 2},
-                               staff=staff14(SENIOR_MIX), wishes={"N004": [3, 4, 5, 6], "N005": [3, 4, 5, 6],
-                                                                  "N010": [10, 11, 17, 18]}, time_limit=20.0),
+    "sample14_wishcheck": {"kind": "wishcheck", "year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2},
+                               "staff": staff14(SENIOR_MIX), "wishes": {"N004": [3, 4, 5, 6], "N005": [3, 4, 5, 6],
+                                                                  "N010": [10, 11, 17, 18]}, "time_limit": 20.0},
     # 7) 人力試算（不設 deadline，每個人數 check_time 秒）
-    "sample14_staffing": dict(kind="staffing", year=2026, month=8, reqs={"D": 3, "E": 2, "N": 2},
-                              staff=staff14(SENIOR_MIX), wishes={}, time_limit=10.0),
+    "sample14_staffing": {"kind": "staffing", "year": 2026, "month": 8, "reqs": {"D": 3, "E": 2, "N": 2},
+                              "staff": staff14(SENIOR_MIX), "wishes": {}, "time_limit": 10.0},
 }
 
 
@@ -135,11 +135,11 @@ def run_generate(c):
     prob = svc._problem(year, month, staff, reqs, wishes)
     zero = cps.Problem(year, month, staff, reqs, {i: {"high": set(), "normal": set()} for i in ids},
                        backward_weight=0, mix2_weight=0, mix3_weight=0)
-    f = cps.solve_cpsat(zero, {k: 0.0 for k in cps.FEATURES}, {i: 1.0 for i in ids}, 0.0,
+    f = cps.solve_cpsat(zero, dict.fromkeys(cps.FEATURES, 0.0), dict.fromkeys(ids, 1.0), 0.0,
                         time_limit=c["time_limit"] * 0.6, workers=1, extra=pin if wishes else None)
     if f["schedule"] is None:
         return {"stage": "zero", "zero": f}
-    r = cps.solve_cpsat(prob, svc.GEN_WEIGHTS, {i: 1.0 for i in ids}, 1.0, time_limit=c["time_limit"],
+    r = cps.solve_cpsat(prob, svc.GEN_WEIGHTS, dict.fromkeys(ids, 1.0), 1.0, time_limit=c["time_limit"],
                         workers=1, extra=pin if wishes else None, hint=f["schedule"], hint_trusted=True)
     S = r["schedule"]
     out = {"stage": "full", "zero_status": f["status"], "status": r["status"], "objective": r.get("objective"),

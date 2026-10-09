@@ -6,10 +6,10 @@ name: Aegis baseline
 on:
   push:
     branches: [main]
-    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'requirements.txt', '.github/workflows/aegis.yml']
+    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'aegis/baseline/requirements.lock', '.github/workflows/aegis.yml']
   pull_request:
     branches: [main]
-    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'requirements.txt', '.github/workflows/aegis.yml']
+    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'aegis/baseline/requirements.lock', '.github/workflows/aegis.yml']
 
 jobs:
   baseline:
@@ -21,7 +21,9 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt
+          cache-dependency-path: aegis/baseline/requirements.lock
+      # 只裝預先編譯好的 wheel（不跑套件的安裝腳本）、所有版本與雜湊鎖定
+      - run: pip install --only-binary :all: --require-hashes -r aegis/baseline/requirements.lock
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'

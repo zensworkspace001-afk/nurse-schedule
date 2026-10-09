@@ -44,7 +44,10 @@ public sealed class BaselineTests(ITestOutputHelper output)
             Assert.True(pyModel.Equals(cs.Model), $"第 {i} 次求解的模型不同：{DescribeDiff(pyModel, cs.Model)}");
 
             double pyDet = py[i].GetProperty("params").GetProperty("max_deterministic_time").GetDouble();
-            Assert.Contains($"max_deterministic_time:{pyDet.ToString("R", CultureInfo.InvariantCulture)} ", cs.Parameters + " ");
+            // 比數值、不比字串：同一個 double 在不同平台可能印成不同位數（Linux CI 上就遇過）
+            var m = System.Text.RegularExpressions.Regex.Match(cs.Parameters, @"max_deterministic_time:(\S+)");
+            Assert.True(m.Success, $"第 {i} 次求解沒有設定決定性時間：{cs.Parameters}");
+            Assert.Equal(pyDet, double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture));
 
             string pySt = py[i].GetProperty("status").GetString()!;
             string csSt = SolverRunner.StatusName(cs.Response.Status);
