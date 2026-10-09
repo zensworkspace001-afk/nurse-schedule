@@ -62,6 +62,7 @@ const blobFromTyped = (t) => {
 };
 const typedFromBlob = (b) => ({ mapValue: { fields: {
   ct: { stringValue: b.ct }, iv: { stringValue: b.iv }, tag: { stringValue: b.tag }, v: { integerValue: String(b.v) },
+  ...(b.kid ? { kid: { stringValue: b.kid } } : {}),
 } } });
 
 let token;
