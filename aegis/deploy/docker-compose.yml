@@ -112,7 +112,10 @@ services:
     volumes:
       - ./certs:/etc/nginx/certs:ro
     read_only: true
-    tmpfs: [/tmp, /etc/nginx/conf.d]
+    # 範本在啟動時展開到 conf.d/：tmpfs 要給 nginx 使用者（UID 101）寫，預設是 root 的
+    tmpfs:
+      - /tmp:uid=101,gid=101
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
     cap_drop: [ALL]
     healthcheck:
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]

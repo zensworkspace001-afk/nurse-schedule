@@ -10,7 +10,11 @@ WORKDIR /src
 COPY Aegis.sln ./
 COPY src/ src/
 # 指定 RID：OR-Tools 只帶目標平台的原生函式庫（不帶 osx / win，映像小一半）
-RUN case "$TARGETARCH" in amd64) RID=linux-x64 ;; arm64) RID=linux-arm64 ;; *) echo "不支援的架構：$TARGETARCH" >&2; exit 1 ;; esac \
+RUN case "$TARGETARCH" in \
+      amd64) RID=linux-x64 ;; \
+      arm64) RID=linux-arm64 ;; \
+      *) echo "不支援的架構：$TARGETARCH" >&2; exit 1 ;; \
+    esac \
  && dotnet publish src/Aegis.Api -c Release -r $RID --self-contained false -o /out/api \
  && dotnet publish src/Aegis.Migration -c Release -r $RID --self-contained false -o /out/tools
 

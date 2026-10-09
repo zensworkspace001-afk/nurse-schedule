@@ -88,7 +88,8 @@ chmod 444 certs/tls.crt
 echo "✓ $(openssl x509 -in certs/tls.crt -noout -subject)"
 
 mkdir -p backups   # 10001 = SQL Server 容器的 mssql 使用者
-if [[ $MAC == 0 ]]; then chown 10001:0 backups; chmod 770 backups; else chmod 777 backups; fi
+[[ $MAC == 1 ]] || chown 10001:0 backups   # macOS（Colima）以登入使用者的身分寫入，不用改擁有者
+chmod 770 backups
 
 if [[ -n "$(docker compose ps -q db 2>/dev/null)" ]]; then
   step "升級前備份"
