@@ -23,7 +23,7 @@ jobs:
           cache: pip
           cache-dependency-path: aegis/baseline/requirements.lock
       # 只裝預先編譯好的 wheel（不跑套件的安裝腳本）、所有版本與雜湊鎖定
-      - run: pip install --only-binary :all: --require-hashes -r aegis/baseline/requirements.lock
+      - run: 'pip install --only-binary :all: --require-hashes -r aegis/baseline/requirements.lock'
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
