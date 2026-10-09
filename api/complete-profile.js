@@ -24,6 +24,7 @@ import { encryptField } from './_lib/crypto.js';
 import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 import { validatePasswordStrength } from './_lib/activationToken.js';
 import { assertPasswordNotReused, recordPassword } from './_lib/passwordHistory.js';
+import { buildStaffPublicProjection } from '../shared/staffProjection.js';
 
 if (!admin.apps.length) {
   let pk = process.env.FIREBASE_PRIVATE_KEY;
@@ -354,16 +355,8 @@ export default async function handler(req, res) {
     //   1. NurseApp/Staff       — 完整名單 (admin 用)
     //   2. NurseApp/StaffPublic — 精簡公開投影 (同事看得到的部分)
     //   3. StaffPrivate/{id}    — 該員工自己的完整 row（頂層 collection；2 段路徑才是合法 doc）
-    // 與 src/api/database.js / scripts/migrate-staff-public.js / scripts/restore-staff-from-private.js
-    // 的 buildStaffPublicProjection 保持一致；avatar_thumb 加入後同事的班表卡片才有頭貼可顯示。
-    const publicList = staffData.map((s) => ({
-      staff_id: s.staff_id,
-      name: s.name,
-      level: s.level,
-      is_leader: !!s.is_leader,
-      is_active: s.is_active !== false,
-      avatar_thumb: s.avatar_thumb || null,
-    }));
+    // 投影欄位定義在 shared/staffProjection.js（與前端 / 腳本共用同一份）。
+    const publicList = buildStaffPublicProjection(staffData);
 
     const batch = admin.firestore().batch();
     batch.update(staffRef, { staffData });

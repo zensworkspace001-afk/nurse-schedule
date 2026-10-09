@@ -16,9 +16,9 @@
 | `POST /api/log-login` | `api/log-login.js` | ✅ 端到端（瀏覽器登入後 access_logs 寫入確認）|
 | `POST /api/complete-profile` | `api/complete-profile.js` | ✅ 端到端 first + update mode（瀏覽器新員工 PII 加密寫入）|
 | `POST /api/secure-field` | `api/secure-field.js` | ✅ 端到端（瀏覽器 admin 解密員工 PII 還原明文）|
-| `POST /api/claim-schedule` | ~~`api/claim-schedule.js`~~ | ⚪ Node 端已隨認領流程移除（2026-10），此 port 不再使用 |
+| `POST /api/claim-schedule` | ~~`api/claim-schedule.js`~~ | ⚪ Node 端已隨認領流程移除（2026-10），PHP port 也已刪除 |
 | `POST /api/auto-settle` | `api/auto-settle.js` | ✅ 4 種 cURL 情境（CSRF 擋 / cron 認證 / Time Tuner / 404）|
-| `POST /api/cron/check-timeout` | `api/cron/check-timeout.js` | ✅ HTTP 級實測（auth gate 全綠;真實 cron 觸發需上線後測）|
+| `POST /api/cron/check-timeout` | `api/cron/check-timeout.js` | ⚠️ 過時：PHP 版仍是舊的「逾時跳號 + auto-relay」，Node 版已改為只做個資保留期限掃除，上線前要重寫 |
 
 共用層：`FieldCrypto` (AES-256-GCM + Node 同款 `{t,v}` 信封)、`Sanitizer`、`Csrf`、
 `RateLimit` (Laravel cache)、`Firebase` (kreait 入口)、`ActivationToken`、`AccessLog`。

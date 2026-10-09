@@ -20,6 +20,7 @@ import { checkCsrf } from './_lib/csrf.js';
 import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
 import { clearPasswordHistory } from './_lib/passwordHistory.js';
 import { writeAccessLog, readAccessLogs, extractClientMeta } from './_lib/accessLog.js';
+import { buildStaffPublicProjection } from '../shared/staffProjection.js';
 
 if (!admin.apps.length) {
   let serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -83,7 +84,21 @@ async function sendActivationLink(baseUrl, { email, name, plainToken, isReset })
   });
   if (!r.ok) {
     const body = await r.json().catch(() => ({}));
-    throw new Error(body.error || `寄信回應 ${r.status}`);
+    const err = new Error(body.error || `寄信回應 ${r.status}`);
+    err.link = link;
+    throw err;
+  }
+}
+
+// 寄信失敗（Resend 金鑰過期 / 服務中斷）時不讓帳號卡死：把連結交回給管理員，由管理員親自轉交。
+// 連結本身就是一次性、有時效的 token，和信裡的內容相同。
+async function sendOrHandBack(baseUrl, opts) {
+  try {
+    await sendActivationLink(baseUrl, opts);
+    return null;
+  } catch (err) {
+    console.error(`寄送${opts.isReset ? '重設' : '啟用'}信失敗:`, err.message);
+    return err.link;
   }
 }
 
@@ -132,6 +147,7 @@ export default async function handler(req, res) {
       let existedCount = 0;
       let errorCount = 0;
       const errors = [];
+      const manualLinks = [];   // 寄信失敗、需由管理員親自轉交的啟用連結
 
       for (const staff of staffList) {
         const staffId = staff.staff_id;
@@ -157,9 +173,10 @@ export default async function handler(req, res) {
           const plainToken = await issueToken({
             uid: staffId, email: staff.email, purpose: 'activation',
           });
-          await sendActivationLink(baseUrl, {
+          const handBack = await sendOrHandBack(baseUrl, {
             email: staff.email, name: staff.name, plainToken, isReset: false,
           });
+          if (handBack) manualLinks.push({ staffId, name: staff.name, link: handBack });
           invitedCount++;
         } catch (authError) {
           if (
@@ -177,7 +194,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         message: '帳號同步作業完成',
-        result: { invitedCount, existedCount, errorCount, errors },
+        result: { invitedCount, existedCount, errorCount, errors, manualLinks },
       });
     } catch (error) {
       console.error('sync 失敗:', error);
@@ -201,17 +218,23 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: '該員工尚未設定 Email，無法寄送重設信' });
       }
 
+      // 帳號仍是 disabled（建立後從沒啟用成功，例如當初啟用信沒寄出）→ 發 activation token，
+      // 使用時才會一併解除 disabled；否則 reset token 設完密碼仍然登入不了。
+      // 離職員工已從 staffData 移除，上面就會擋下，不會被這條路重新啟用。
+      const purpose = userRecord.disabled ? 'activation' : 'reset';
       await revokeTokensForUid(userRecord.uid);
       const plainToken = await issueToken({
-        uid: userRecord.uid, email: staffRow.email, purpose: 'reset',
+        uid: userRecord.uid, email: staffRow.email, purpose,
       });
-      await sendActivationLink(baseUrl, {
-        email: staffRow.email, name: staffRow.name || staffId, plainToken, isReset: true,
+      const handBack = await sendOrHandBack(baseUrl, {
+        email: staffRow.email, name: staffRow.name || staffId, plainToken, isReset: purpose === 'reset',
       });
 
       return res.status(200).json({
-        message: `已寄送密碼重設信至 ${staffRow.email}`,
+        message: handBack ? '寄信失敗，請將連結親自交給員工' : `已寄送密碼重設信至 ${staffRow.email}`,
         email: staffRow.email,
+        purpose,
+        manualLink: handBack,
       });
     } catch (error) {
       console.error('reset 失敗:', error);
@@ -281,15 +304,8 @@ export default async function handler(req, res) {
         const nextList = list.filter((_, i) => i !== idx);
         tx.update(staffRef, { staffData: nextList });
 
-        // 3. 重算 StaffPublic 投影（與 src/api/database.js 的 buildStaffPublicProjection 同步）
-        const publicList = nextList.map((s) => ({
-          staff_id: s.staff_id,
-          name: s.name,
-          level: s.level,
-          is_leader: !!s.is_leader,
-          is_active: s.is_active !== false,
-          avatar_thumb: s.avatar_thumb || null,
-        }));
+        // 3. 重算 StaffPublic 投影（共用 shared/staffProjection.js）
+        const publicList = buildStaffPublicProjection(nextList);
         tx.set(publicRef, { staffData: publicList });
 
         // 4. 刪除 StaffPrivate

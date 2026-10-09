@@ -174,7 +174,12 @@ useEffect(() => {
               throw new Error(data.error || '寄送失敗');
           }
 
-          alert(`✅ 已寄送密碼重設信至 ${data.email || name + ' 的信箱'}。\n員工請點擊信中連結設定新密碼（24 小時內有效）。`);
+          if (data.manualLink) {
+              // 寄信服務失效：連結交回管理員，用 prompt 讓它可以直接複製
+              window.prompt(`⚠️ 重設信寄送失敗（寄信服務暫時無法使用）。\n請複製下方連結，親自交給 ${name}（僅限本人、一次性、有時效）：`, data.manualLink);
+          } else {
+              alert(`✅ 已寄送密碼重設信至 ${data.email || name + ' 的信箱'}。\n員工請點擊信中連結設定新密碼（連結有時效，僅能使用一次）。`);
+          }
       } catch (error) {
           console.error(error);
           alert(`❌ 寄送密碼重設信失敗：${error.message}`);
@@ -203,6 +208,10 @@ const handleSave = async () => {
         if(response.ok) {
             const r = data.result || {};
             alert(`✅ 員工資料已成功儲存！\n\n🔑 【系統後台報告】\n- 自動開通新帳號：${r.invitedCount ?? r.successCount ?? 0} 人\n- 既有帳號已略過：${r.existedCount ?? 0} 人\n- 發生錯誤：${r.errorCount ?? 0} 人`);
+            // 啟用信寄不出去的人：帳號已建立但仍停用，連結逐一交回管理員轉交
+            for (const m of r.manualLinks || []) {
+              window.prompt(`⚠️ ${m.name || m.staffId} 的啟用信寄送失敗。\n請複製下方連結，親自交給本人（一次性、有時效）：`, m.link);
+            }
         } else {
             alert(`⚠️ 資料已儲存，但建立登入帳號時發生錯誤：${data.error}`);
         }

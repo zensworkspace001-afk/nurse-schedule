@@ -7,7 +7,8 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   // server/ 是 legacy local Express dev server (CLAUDE.md 標明不再使用)
-  globalIgnores(['dist', 'dist-electron', 'server']),
+  // labor-law-compliance/ 是獨立子專案（自己的 git repo / eslint），本機有它的 dist 時不該被根目錄 lint 掃到
+  globalIgnores(['dist', 'dist-electron', 'server', 'labor-law-compliance']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

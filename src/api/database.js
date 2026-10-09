@@ -14,6 +14,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { reportFirestoreError, reportFirestoreHealthy } from './connectionStatus';
+import { buildStaffPublicProjection } from '../../shared/staffProjection.js';
 
 // 包裝 onSnapshot data callback：第一次成功就回報 healthy（讓 banner 自動消失）
 function wrapDataCb(source, cb) {
@@ -114,19 +115,8 @@ export const clearAnnouncement = async () => {
 // 違反 PDPA §6（特種個資 — 醫療/健康 — 包含懷孕、產假狀態）。
 // 拆成三個 doc 後：管理員仍從 Staff 讀完整；員工角色只讀同事的精簡 + 自己的私有。
 
-// 公開投影 — 同事間能看到的最小欄位集合，不含任何 PII / 健康 / 財務暗示資料
-// avatar_thumb 是 64x64 縮圖（員工在 AvatarEditModal 上傳時同步生成），用於班表卡片
-// 顯示同事頭貼；不放主圖 220x220 是因為 Firestore 單 doc 1 MiB 上限 — 100 人 × 25 KB 會爆。
-export const buildStaffPublicProjection = (fullStaffData = []) => {
-  return fullStaffData.map((s) => ({
-    staff_id: s.staff_id,
-    name: s.name,
-    level: s.level,
-    is_leader: !!s.is_leader,
-    is_active: s.is_active !== false, // 缺值預設 true
-    avatar_thumb: s.avatar_thumb || null,
-  }));
-};
+// 公開投影的唯一定義在 shared/staffProjection.js（前後端與腳本共用）；這裡轉出給既有的 import。
+export { buildStaffPublicProjection };
 
 // 管理員：訂閱完整 Staff doc（規則限定 admin）
 export const subscribeToStaff = (callback) => {

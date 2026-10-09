@@ -13,9 +13,11 @@
 //       一律回傳同一句通用訊息，不洩漏工號/信箱是否存在。
 //
 //   (C) action:'verify-reset-otp' — 忘記密碼第二步
-//       Body: { action:'verify-reset-otp', staffId, code }
-//       驗 OTP → 產暫時密碼、設為該帳號密碼、撤銷舊 session、標記 must_change_password
-//       → 回傳暫時密碼（顯示於畫面）。使用者用暫時密碼登入後會被強制改密。
+//       Body: { action:'verify-reset-otp', staffId, code, newPassword }
+//       驗 OTP → 檢查新密碼強度與歷史 → 直接設為該帳號密碼、撤銷舊 session → OTP 作廢。
+//       以前是回傳一組「暫時密碼」顯示在畫面上再強制改密 — 護理站公用電腦上容易被旁人看到，
+//       而且暫時密碼不進 password_history，使用者可以把它直接設成永久密碼。改為 OTP 驗過就讓本人
+//       當場設定新密碼，暫時密碼不再存在。
 //
 // 防濫用：CSRF + IP rate limit。(A)(C) 失敗不洩漏 token/帳號是否存在。
 import admin from 'firebase-admin';
@@ -30,7 +32,6 @@ import {
   issueResetOtp,
   verifyResetOtp,
   consumeResetOtp,
-  generateTempPassword,
   otpTtlMinutes,
 } from './_lib/resetOtp.js';
 import { assertPasswordNotReused, recordPassword } from './_lib/passwordHistory.js';
@@ -72,10 +73,10 @@ async function sendOtpEmail(baseUrl, { email, name, code }) {
   }
 }
 
-// 標記該員工 must_change_password=true（暫時密碼登入後強制改密）。
-// 用 transaction 寫 NurseApp/Staff 陣列 + StaffPrivate/{id}，避免並發重設互相覆寫。
-// StaffPublic 投影不含此欄位、也未動到投影欄位，故不需重建。
-async function setMustChangePassword(staffId) {
+// 清掉 must_change_password（舊流程發過暫時密碼的人，改用 OTP 設好新密碼後就不必再被強制改密）。
+// 用 transaction 寫 NurseApp/Staff 陣列 + StaffPrivate/{id}，避免並發重設互相覆寫；
+// 旗標本來就不是 true 時不寫。StaffPublic 投影不含此欄位，故不需重建。
+async function clearMustChangePassword(staffId) {
   const db = admin.firestore();
   const staffRef = db.doc('NurseApp/Staff');
   await db.runTransaction(async (tx) => {
@@ -86,8 +87,8 @@ async function setMustChangePassword(staffId) {
     const idx = list.findIndex(
       (s) => String(s.staff_id).toLowerCase() === String(staffId).toLowerCase(),
     );
-    if (idx === -1) return;
-    const row = { ...list[idx], must_change_password: true };
+    if (idx === -1 || list[idx].must_change_password !== true) return;
+    const row = { ...list[idx], must_change_password: false };
     const next = [...list];
     next[idx] = row;
     tx.update(staffRef, { staffData: next });
@@ -179,9 +180,16 @@ export default async function handler(req, res) {
 
     const staffId = String(req.body?.staffId || '').trim();
     const code = String(req.body?.code || '').trim();
+    const newPassword = req.body?.newPassword;
     if (!staffId || !/^\d{6}$/.test(code)) {
       return res.status(400).json({ error: '請輸入 6 位數字驗證碼' });
     }
+    if (newPassword === undefined) {
+      return res.status(400).json({ error: '重設流程已更新，請重新整理頁面後再試一次' });
+    }
+    // 強度先檢：格式不對不該消耗驗證碼的嘗試次數
+    const pwCheck = validatePasswordStrength(newPassword);
+    if (!pwCheck.ok) return res.status(400).json({ error: pwCheck.reason });
 
     let otp;
     try {
@@ -190,23 +198,28 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: err.message });
     }
 
-    const tempPassword = generateTempPassword();
     try {
-      await admin.auth().updateUser(otp.uid, { password: tempPassword });
+      await assertPasswordNotReused(otp.uid, newPassword);
+    } catch (err) {
+      // 驗證碼保留（沒有作廢），使用者換一組密碼再送即可
+      if (err.code === 'password-reused') return res.status(400).json({ error: err.message });
+      console.error('verify-reset-otp 檢查密碼歷史失敗:', err);
+      return res.status(500).json({ error: '伺服器處理失敗，請稍後再試' });
+    }
+
+    try {
+      await admin.auth().updateUser(otp.uid, { password: newPassword });
       // 撤銷舊 session：重設密碼的意義就是讓先前所有訪問權作廢
       await admin.auth().revokeRefreshTokens(otp.uid);
-      await setMustChangePassword(staffId);
+      await recordPassword(otp.uid, newPassword);
+      await clearMustChangePassword(staffId);
     } catch (err) {
-      console.error('verify-reset-otp 設定暫時密碼失敗:', err);
+      console.error('verify-reset-otp 設定新密碼失敗:', err);
       return res.status(500).json({ error: '伺服器處理失敗，請稍後再試' });
     }
     await consumeResetOtp(staffId); // 一次性
 
-    return res.status(200).json({
-      ok: true,
-      tempPassword,
-      message: '驗證成功，請用下方暫時密碼登入後立即修改。',
-    });
+    return res.status(200).json({ ok: true, message: '密碼已重設，請用新密碼登入。' });
   }
 
   // —— (A) 連結式啟用 / 重設（原流程）——

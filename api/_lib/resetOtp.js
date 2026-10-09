@@ -38,24 +38,6 @@ export function generateOtpCode() {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, '0');
 }
 
-// 暫時密碼：保證同時含大小寫英文與數字、共 10 碼，必過 validatePasswordStrength。
-// 排除易混淆字元（0/O/1/l/I）方便使用者手抄。
-export function generateTempPassword() {
-  const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
-  const lower = 'abcdefghijkmnpqrstuvwxyz';
-  const digits = '23456789';
-  const all = upper + lower + digits;
-  const pick = (set) => set[crypto.randomInt(set.length)];
-  const chars = [pick(upper), pick(lower), pick(digits)];
-  for (let i = 0; i < 7; i++) chars.push(pick(all));
-  // Fisher-Yates 洗牌（crypto 隨機），讓保證字元的位置不固定
-  for (let i = chars.length - 1; i > 0; i--) {
-    const j = crypto.randomInt(i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
-  }
-  return chars.join('');
-}
-
 // 為指定員工建立 OTP 並寫入 Firestore；回傳明文驗證碼（呼叫端寄信用）。
 export async function issueResetOtp({ uid, staffId, email }) {
   if (!uid || !staffId) throw new Error('issueResetOtp 需要 uid 與 staffId');

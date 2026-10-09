@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { X, Mail, KeyRound, Copy, Check, AlertCircle, ArrowRight } from 'lucide-react';
+import { X, Mail, KeyRound, Check, AlertCircle, ArrowRight } from 'lucide-react';
 import './ForgotPasswordModal.css';
 
 // 自助「忘記密碼」三步驟流程（毛玻璃 modal，掛在 LoginPanel 內）：
 //   step 'request' → 輸入工號 + 註冊信箱 → POST request-reset（後端核對後寄 6 位驗證碼）
-//   step 'verify'  → 輸入驗證碼 → POST verify-reset-otp → 取得暫時密碼
-//   step 'done'    → 顯示暫時密碼，可一鍵帶回登入表單（onFilled）
+//   step 'verify'  → 輸入驗證碼 + 新密碼 → POST verify-reset-otp → 後端直接設定新密碼
+//   step 'done'    → 完成，工號帶回登入表單（onFilled），用剛設的新密碼登入
+//
+// 不再發「暫時密碼」顯示在畫面上（公用電腦易被旁人看到），驗證碼通過就由本人當場設新密碼。
 //
 // 後端一律回通用訊息以防帳號列舉，所以 request 成功與否前端都前進到 verify 步驟。
 const ForgotPasswordModal = ({ onClose, onFilled }) => {
@@ -14,11 +16,11 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
   const [staffId, setStaffId] = useState('');
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [tempPassword, setTempPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [copied, setCopied] = useState(false);
 
   const close = () => {
     setClosing(true);
@@ -58,14 +60,20 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
   const handleVerify = async (e) => {
     e.preventDefault();
     setError('');
+    if (newPassword !== confirmPassword) {
+      setError('兩次輸入的新密碼不一致');
+      return;
+    }
     setBusy(true);
     try {
-      const data = await post({
+      await post({
         action: 'verify-reset-otp',
         staffId: staffId.trim(),
         code: code.trim(),
+        newPassword,
       });
-      setTempPassword(data.tempPassword);
+      setNewPassword('');
+      setConfirmPassword('');
       setStep('done');
     } catch (err) {
       setError(err.message);
@@ -74,18 +82,8 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
     }
   };
 
-  const copyTemp = async () => {
-    try {
-      await navigator.clipboard.writeText(tempPassword);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch {
-      /* 剪貼簿不可用時忽略，使用者仍可手動選取 */
-    }
-  };
-
-  const useItToLogin = () => {
-    if (onFilled) onFilled(staffId.trim(), tempPassword);
+  const backToLogin = () => {
+    if (onFilled) onFilled(staffId.trim());
     close();
   };
 
@@ -99,8 +97,8 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
         {/* 步驟指示 */}
         <div className="forgot-pw__steps">
           <span className={`forgot-pw__step ${step === 'request' ? 'is-active' : ''}`}>1 驗證身分</span>
-          <span className={`forgot-pw__step ${step === 'verify' ? 'is-active' : ''}`}>2 輸入驗證碼</span>
-          <span className={`forgot-pw__step ${step === 'done' ? 'is-active' : ''}`}>3 暫時密碼</span>
+          <span className={`forgot-pw__step ${step === 'verify' ? 'is-active' : ''}`}>2 設定新密碼</span>
+          <span className={`forgot-pw__step ${step === 'done' ? 'is-active' : ''}`}>3 完成</span>
         </div>
 
         {error && <div className="forgot-pw__msg forgot-pw__msg--error"><AlertCircle size={14} /> {error}</div>}
@@ -132,8 +130,18 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
               onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
               placeholder="6 位驗證碼" inputMode="numeric" maxLength={6} required
             />
-            <button type="submit" className="forgot-pw__btn" disabled={busy || code.length !== 6}>
-              {busy ? '驗證中…' : <><ArrowRight size={15} /> 驗證並取得暫時密碼</>}
+            <input
+              className="forgot-pw__input" type="password" value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="新密碼（至少 6 碼，含英文與數字）" autoComplete="new-password" required
+            />
+            <input
+              className="forgot-pw__input" type="password" value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="再輸入一次新密碼" autoComplete="new-password" required
+            />
+            <button type="submit" className="forgot-pw__btn" disabled={busy || code.length !== 6 || !newPassword}>
+              {busy ? '設定中…' : <><ArrowRight size={15} /> 驗證並設定新密碼</>}
             </button>
             <button type="button" className="forgot-pw__link" onClick={() => { setStep('request'); setError(''); setCode(''); }}>
               沒收到？重新申請
@@ -144,16 +152,10 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
         {step === 'done' && (
           <div className="forgot-pw__form">
             <div className="forgot-pw__msg forgot-pw__msg--info">
-              驗證成功！請複製下方暫時密碼登入，系統會要求您立即設定新密碼。
+              <Check size={14} /> 密碼已重設，其他裝置上的登入已全部登出。請用新密碼登入。
             </div>
-            <div className="forgot-pw__temp">
-              <code className="forgot-pw__temp-code">{tempPassword}</code>
-              <button type="button" className="forgot-pw__copy" onClick={copyTemp} aria-label="複製">
-                {copied ? <Check size={16} /> : <Copy size={16} />}
-              </button>
-            </div>
-            <button type="button" className="forgot-pw__btn" onClick={useItToLogin}>
-              帶入登入表單
+            <button type="button" className="forgot-pw__btn" onClick={backToLogin}>
+              回到登入
             </button>
           </div>
         )}

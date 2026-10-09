@@ -17,7 +17,7 @@
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
-import { encryptField, decryptField, isEncrypted } from './_lib/crypto.js';
+import { encryptField, decryptField, isEncrypted, currentKeyId } from './_lib/crypto.js';
 import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 
 const ADMIN_EMAIL = 'admin@hospital.com';
@@ -55,7 +55,7 @@ export default async function handler(req, res) {
       const probe = encryptField('healthcheck');
       const back = decryptField(probe);
       const ok = back === 'healthcheck';
-      return res.status(ok ? 200 : 503).json({ ok, service: 'secure-field' });
+      return res.status(ok ? 200 : 503).json({ ok, service: 'secure-field', keyId: currentKeyId() });
     } catch (err) {
       return res.status(503).json({ ok: false, service: 'secure-field', error: err.message });
     }
