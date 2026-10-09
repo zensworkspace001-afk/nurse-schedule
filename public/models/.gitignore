@@ -1,0 +1,3 @@
+# package.sh 下載的人臉偵測模型（BlazeFace）；只進地端前端映像，不進版控
+*
+!.gitignore

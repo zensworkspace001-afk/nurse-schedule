@@ -15,7 +15,7 @@ public static class DemoSeed
         using var scope = services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AegisDbContext>();
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordService>();
-        if (await db.Database.EnsureCreatedAsync()) await Views.CreateAsync(db);
+        await AegisDatabase.PrepareAsync(db);
         if (await db.Staff.AnyAsync()) { log.LogInformation("資料庫已有資料，不寫示範資料"); return; }
 
         string adminPw = Environment.GetEnvironmentVariable("AEGIS_DEMO_ADMIN_PW") ?? "Admin1234";

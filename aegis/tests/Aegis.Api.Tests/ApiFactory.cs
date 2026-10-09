@@ -3,7 +3,7 @@ using Aegis.Data;
 using Aegis.Engine;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
+using Aegis.Tests.Shared;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -11,12 +11,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Aegis.Api.Tests;
 
-// 整個 API 跑在記憶體裡：SQLite（共享記憶體資料庫）+ 測試用 JWT 金鑰 + 測試用欄位金鑰
+// 整個 API 跑在記憶體裡：SQLite 共享記憶體資料庫（CI 設 AEGIS_TEST_SQLSERVER 時改用真的 SQL Server）+ 測試用 JWT 金鑰 + 測試用欄位金鑰
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
     public static readonly string FieldKey = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());
-    private readonly string _cs = $"DataSource=file:aegis-{Guid.NewGuid():N}?mode=memory&cache=shared";
-    private readonly SqliteConnection _keepAlive;
+    private readonly TestDatabase _db = new(sharedCache: true);
 
     // Firebase 官方範例（github.com/firebase/scrypt README）：模擬「從 Firebase 遷移過來、密碼是舊雜湊」的帳號
     public const string LegacyPassword = "user1password";
@@ -25,14 +24,12 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     public ApiFactory()
     {
         Environment.SetEnvironmentVariable("FIELD_ENC_KEY", FieldKey);
-        _keepAlive = new SqliteConnection(_cs);
-        _keepAlive.Open();
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
-        builder.UseSetting("ConnectionStrings:Aegis", _cs);
-        builder.UseSetting("Aegis:DatabaseProvider", "Sqlite");
+        builder.UseSetting("ConnectionStrings:Aegis", _db.ConnectionString);
+        builder.UseSetting("Aegis:DatabaseProvider", _db.Provider);
         builder.UseSetting("Auth:JwtSigningKey", Convert.ToBase64String(Enumerable.Range(100, 32).Select(i => (byte)i).ToArray()));
         builder.UseSetting("Aegis:AuthPerMinute", "1000");
     }
@@ -41,8 +38,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         using var scope = Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AegisDbContext>();
-        if (!db.Database.EnsureCreated()) return;
-        Views.CreateAsync(db).GetAwaiter().GetResult();
+        if (db.Users.Any()) return;   // 已經種過
         var hasher = scope.ServiceProvider.GetRequiredService<IPasswordService>();
         db.LegacyHashConfig.Add(new LegacyHashConfig { SignerKey = "jxspr8Ki0RYycVU8zykbdLGjFQ3McFUH0uiiTvC8pVMXAn210wjLNmdZJzxUECKbm0QsEmYUSDzZvpjeJ9WmXA==",
                                                        SaltSeparator = "Bw==", Rounds = 8, MemoryCost = 14 });
@@ -83,6 +79,6 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
-        if (disposing) _keepAlive.Dispose();
+        if (disposing) _db.Dispose();
     }
 }

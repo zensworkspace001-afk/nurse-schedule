@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Mail;
 using Aegis.Api.Auth;
 using Aegis.Data;
+using Aegis.Security;
 using Microsoft.EntityFrameworkCore;
 
 namespace Aegis.Api.Services;
@@ -21,7 +22,7 @@ public sealed class SmtpEmailSender(IConfiguration cfg, ILogger<SmtpEmailSender>
         try
         {
             using var client = new SmtpClient(host, cfg.GetValue("Smtp:Port", 25)) { EnableSsl = cfg.GetValue("Smtp:EnableSsl", false) };
-            if (cfg["Smtp:User"] is { Length: > 0 } user) client.Credentials = new NetworkCredential(user, cfg["Smtp:Password"]);
+            if (cfg["Smtp:User"] is { Length: > 0 } user) client.Credentials = new NetworkCredential(user, cfg["Smtp:Password"] ?? Secrets.Get("SMTP_PASSWORD"));
             using var msg = new MailMessage(cfg["Smtp:From"] ?? "nurse-schedule@localhost", to, subject, html) { IsBodyHtml = true };
             await client.SendMailAsync(msg, ct);
             return true;

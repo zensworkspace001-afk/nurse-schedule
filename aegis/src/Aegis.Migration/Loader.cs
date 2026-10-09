@@ -38,7 +38,7 @@ public sealed class MigrationLoader(AegisDbContext db, IFieldCrypto? crypto) : I
 {
     public async Task<MigrationReport> LoadAsync(MigrationPlan plan, bool commit, CancellationToken ct = default)
     {
-        if (await db.Database.EnsureCreatedAsync(ct)) await Views.CreateAsync(db, ct);
+        await AegisDatabase.PrepareAsync(db, ct);   // SQL Server：套用 migrations；SQLite：建表
         if (await db.Staff.AnyAsync(ct))
             throw new InvalidOperationException("目標資料庫已經有員工資料：匯入只接受空資料庫（避免和既有資料混在一起）");
 

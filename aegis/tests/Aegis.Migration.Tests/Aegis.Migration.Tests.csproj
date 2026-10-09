@@ -25,4 +25,8 @@
     <ProjectReference Include="..\..\src\Aegis.Migration\Aegis.Migration.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\TestDatabase.cs" Link="Shared\TestDatabase.cs" />
+  </ItemGroup>
+
 </Project>

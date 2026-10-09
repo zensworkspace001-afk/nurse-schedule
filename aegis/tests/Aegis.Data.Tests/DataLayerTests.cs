@@ -2,25 +2,18 @@ using Aegis.Data;
 using Aegis.Engine;
 using Aegis.Scheduling;
 using Aegis.Security;
-using Microsoft.Data.Sqlite;
+using Aegis.Tests.Shared;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
 namespace Aegis.Data.Tests;
 
-// SQLite 記憶體資料庫：驗證資料層邏輯（SQL Server 專屬的 rowversion / migration 在有 SQL Server 的環境另外驗）
-public sealed class SqliteDb : IDisposable
+// 預設 SQLite 記憶體資料庫；CI 設 AEGIS_TEST_SQLSERVER 時同一批測試改在真的 SQL Server（走 migrations）上再跑一次
+public sealed class TestDb : IDisposable
 {
-    private readonly SqliteConnection _conn = new("DataSource=:memory:");
-    public SqliteDb()
-    {
-        _conn.Open();
-        using var db = New();
-        db.Database.EnsureCreated();
-        Views.CreateAsync(db).GetAwaiter().GetResult();
-    }
-    public AegisDbContext New() => new(new DbContextOptionsBuilder<AegisDbContext>().UseSqlite(_conn).Options);
-    public void Dispose() => _conn.Dispose();
+    private readonly TestDatabase _db = new();
+    public AegisDbContext New() => _db.New();
+    public void Dispose() => _db.Dispose();
 
     // = local_test/run_demo.py SAMPLE_STAFF（N002 孕婦、N003 雙週、N009 實習生）
     public void SeedSampleStaff()
@@ -42,7 +35,7 @@ public sealed class SqliteDb : IDisposable
 
 public sealed class DataLayerTests : IDisposable
 {
-    private readonly SqliteDb _db = new();
+    private readonly TestDb _db = new();
     public void Dispose() => _db.Dispose();
 
     private static readonly string TestKey = Convert.ToBase64String(Enumerable.Range(0, 32).Select(i => (byte)i).ToArray());

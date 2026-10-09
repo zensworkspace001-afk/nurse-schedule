@@ -49,7 +49,7 @@ public sealed class StaticFieldKeyProvider : IFieldKeyProvider
 
     public StaticFieldKeyProvider(string currentB64, string? previousB64 = null)
     {
-        if (string.IsNullOrWhiteSpace(currentB64)) throw new CryptographicException("FIELD_ENC_KEY 環境變數未設定，無法執行欄位加密");
+        if (string.IsNullOrWhiteSpace(currentB64)) throw new CryptographicException("FIELD_ENC_KEY 未設定（環境變數或 Docker secret field_enc_key），無法執行欄位加密");
         var ring = new List<FieldKey> { FieldKey.FromBase64(currentB64, "FIELD_ENC_KEY") };
         foreach (var old in (previousB64 ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
@@ -60,8 +60,7 @@ public sealed class StaticFieldKeyProvider : IFieldKeyProvider
         All = ring;
     }
 
-    public static StaticFieldKeyProvider FromEnvironment() => new(
-        Environment.GetEnvironmentVariable("FIELD_ENC_KEY") ?? "", Environment.GetEnvironmentVariable("FIELD_ENC_KEYS_PREVIOUS"));
+    public static StaticFieldKeyProvider FromEnvironment() => new(Secrets.Get("FIELD_ENC_KEY") ?? "", Secrets.Get("FIELD_ENC_KEYS_PREVIOUS"));
 }
 
 public interface IFieldCrypto

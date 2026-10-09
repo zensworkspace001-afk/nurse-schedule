@@ -1,0 +1,22 @@
+# CI 專用覆寫（.github/workflows/ci.yml 的 e2e-aegis-docker）：
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.ci.yml
+# - migrator 順便寫入示範資料（admin + N001–N014，正式環境不允許：需要 Aegis__AllowDemoSeed）
+# - SQL Server 開在 127.0.0.1:1433，讓資料層 / ETL / API 測試以 AEGIS_TEST_SQLSERVER 連真的 SQL Server
+# - 登入頻率上限放寬（e2e 會從同一個 IP 登入很多次）
+services:
+  db:
+    pull_policy: missing
+    ports: ["127.0.0.1:1433:1433"]
+    networks: [data, ci]   # data 是 internal 網路，不能對主機開 port
+  migrator:
+    command: ["--migrate", "--seed-demo"]
+    environment:
+      Aegis__AllowDemoSeed: "true"
+      AEGIS_DEMO_ADMIN_PW: ${AEGIS_DEMO_ADMIN_PW:?}
+      AEGIS_DEMO_STAFF_PW: ${AEGIS_DEMO_STAFF_PW:?}
+  api:
+    environment:
+      Aegis__AuthPerMinute: "300"
+
+networks:
+  ci: {}

@@ -1,0 +1,8 @@
+# 每個有自己 add_header 的 location 都要 include 這份 —— Nginx 的 add_header 不會從外層繼承
+add_header Strict-Transport-Security "max-age=31536000" always;
+add_header X-Content-Type-Options "nosniff" always;
+add_header X-Frame-Options "DENY" always;
+add_header Referrer-Policy "same-origin" always;
+add_header Permissions-Policy "camera=(), microphone=(), geolocation=()" always;
+# 隔離網路版：所有資源都來自本站。wss 明列是為了舊版 Safari（'self' 不一定涵蓋 WebSocket）
+add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' wss://$host:${AEGIS_HTTPS_PORT}; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'" always;

@@ -195,3 +195,28 @@ E2E_BACKEND=aegis TEST_STAFF_ID=n004 TEST_STAFF_PW=Demo1234 TEST_ADMIN_ID=admin 
   - 自己改密碼時要驗目前密碼（等同 Firebase 的 reauthenticate）；
   - 公告可以匿名讀取，登入頁才顯示得出來；
   - 沒有 refresh cookie 時回 204，不再回 401 讓瀏覽器 console 出現紅字。
+
+## 階段五：Docker 化與地端部署（`deploy/`）
+
+部署、打包、安裝、匯入、備份與擴充的完整說明見 **[`deploy/README.md`](deploy/README.md)**。重點：
+
+- **四個服務**：`web`（Nginx，HTTPS 用廠內 CA 憑證）→ `api` → `db`（SQL Server 2022 Express，只在內部網路），加上一次性的 `migrator`。
+- **離線交付**：`package.sh` 在可連網機器把三個映像 `docker save` 成 tarball，附 SHA-256；`install.sh` 在隔離網路主機驗證、載入、檢查設定並啟動。
+- **資料庫結構**：改用 EF Core Migrations（`src/Aegis.Data/Migrations/`）。正式環境由 `migrator`（`Aegis.Api --migrate`）以 sa 套用，再建立 / 同步只有讀寫權限的 `aegis_app` 帳號給 API 用。SQLite（測試、開發）仍用 `EnsureCreated`。改了實體要加 migration，否則 `MigrationsUpToDateTests` 會失敗：
+
+  ```bash
+  cd aegis && dotnet tool restore
+  dotnet tool run dotnet-ef migrations add <名稱> -p src/Aegis.Data -s src/Aegis.Data -o Migrations
+  ```
+
+- **機密**：一律走 `Aegis.Security.Secrets`，依序讀環境變數 → `<名稱>_FILE` → `/run/secrets/<名稱小寫>`（Docker secret）。
+- **反向代理**：API 只信任 `Aegis:TrustedProxies`（compose 內部子網段）送來的 `X-Forwarded-For` / `-Proto`。頻率限制因此以真實來源 IP 計算，refresh cookie 也會標 `Secure`。
+- **`/health`**：同時檢查資料庫連線，以及結構是否為最新；有待套用的 migration 時回 503。容器內用 `--healthcheck` 自我檢查（映像沒有 curl）。
+- **人臉偵測模型**：`package.sh` 下載 BlazeFace 到前端映像，以 `VITE_BLAZEFACE_MODEL_URL` 指向本機路徑，隔離網路下也能使用。
+- **測試改連 SQL Server**：資料層、ETL、API 測試設了 `AEGIS_TEST_SQLSERVER`（sa 連線字串）時，每個測試開一個用完即丟的 SQL Server 資料庫並走 migrations；沒設就照舊用 SQLite（`tests/Shared/TestDatabase.cs`）。
+- **CI**：`e2e-aegis-docker` job 照正式流程部署，再跑這些驗證：
+  - 經 Nginx HTTPS 跑地端 e2e；
+  - 在 SQL Server 上跑資料層、ETL、API 測試；
+  - 用映像裡的匯入工具匯入樣本；
+  - 備份與還原演練。
+- **Redis**：先不加。單一 API 實例時，SignalR、頻率限制、排班工作都在行程內，結果正確。要擴成多台時該改哪些，見 `deploy/README.md` §7。
