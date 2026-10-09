@@ -7,9 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   // server/ 是 legacy local Express dev server (CLAUDE.md 標明不再使用)
-  // skills/、.qoder/ 是 Claude Code 工具相關檔案 (非專案程式碼)
-  // src/backup.js 是 App.jsx 的歷史備份 (有重複宣告，僅作 git history 追溯用)
-  globalIgnores(['dist', 'dist-electron', 'server', 'skills', '.qoder', 'src/backup.js']),
+  globalIgnores(['dist', 'dist-electron', 'server']),
   {
     files: ['**/*.{js,jsx}'],
     extends: [

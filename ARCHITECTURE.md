@@ -390,7 +390,7 @@ Laragon 內建 Apache + mod_php + auto-vhost,Junction 一個資料夾自動產 v
 - **Firestore 操作**(讀、單 doc 寫、多 doc 原子寫入)在 PHP 全部驗過
 - **Laragon Apache 接 PHP** 設好,`http://nurse-php.test` 24/7 可用
 - **MySQL access_logs 後端**可選 + 雲端 SSL 自動判斷
-- **SA 引擎**升級反映「main.py 新模型」5 條規則
+- **SA 引擎**升級反映「main.py 新模型」(草稿已刪,規則在 main1.py)5 條規則
 - 本機 `local_test/` 與 `main1.py` 同步,並寫了 SA 收斂行為基準報告
 - 文件:`CLAUDE.md`、`php-backend/README.md`、`local_test/README.md`、`CPSAT_DEPLOY.md`、`ARCHITECTURE.md`(本檔)
 
@@ -455,19 +455,6 @@ Laragon 內建 Apache + mod_php + auto-vhost,Junction 一個資料夾自動產 v
 
 ---
 
-## 可清理的 scratch 檔案(根目錄)
+## 已清理的 scratch 檔案(根目錄)
 
-以下都是早期實驗 / 草稿,**與目前系統無關,可以刪**:
-
-| 檔 | 用途 | 處置 |
-|---|---|---|
-| `main.py` | 你的 CP-SAT 新規則草稿,已 port 進 main1.py | 可刪或留作筆記 |
-| `1.PY`、`coppy.py`、`gooo.py` | loose Python 草稿 | 可刪 |
-| `consequence.ipynb` | Jupyter notebook 草稿 | 可刪 |
-| `yolov8n.pt` | 跟專案無關的 YOLO 模型 | 可刪 |
-| `markdown.md`、`001.txt`、`demo_out.log` | 文字草稿 | 可刪 |
-| `ui-template/` + `flat-ui-template-*.zip` | UI 設計範例 | 可刪 |
-| `my-app/` | 跟此專案無關的 scratch React | 可刪 |
-| `server/` | 早期 local Express 嘗試,被 Vercel 取代 | 可刪 |
-
-> 全刪可省 ~50 MB 倉庫大小,清掉 git status 雜訊。要刪跟我說一聲,我幫你一次處理。
+早期實驗 / 草稿已於 2026-10 移除:`main.py`、`1.PY`、`consequence.ipynb`、`yolov8n.pt`、`markdown.md`、`001.txt`、`ui-template/` + 設計 `.zip`、`my-app/`、`.qoder/`、`skills`、`src/App.css`、`src/backup.js`、誤 commit 的 `__pycache__/`、兩份含員工資料的 `scripts/migration-realign-backup-*.json`(移到本機 `~/nurse-schedule-backups/`)。`server/` 早已不在。
