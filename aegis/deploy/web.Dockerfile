@@ -2,7 +2,8 @@
 # 前端（VITE_BACKEND=aegis）+ Nginx。建置脈絡 = repo 根目錄（見 docker-compose.yml）
 #   國定假日（public/holidays/）與人臉偵測模型（public/models/blazeface/）由 package.sh 在可連網機器上先下載
 
-FROM node:20-bookworm-slim AS build
+# 產出的是靜態檔，與架構無關 → 一律在本機架構上建置
+FROM --platform=$BUILDPLATFORM node:20-bookworm-slim AS build
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --ignore-scripts --no-audit --no-fund
@@ -12,7 +13,9 @@ COPY src/ src/
 COPY public/ public/
 ENV VITE_BACKEND=aegis
 # 有下載模型才指過去；沒有的話前端照舊走 tfhub（隔離網路下人臉檢查會失敗，但只是提示、不擋上傳）
-RUN if [ -f public/models/blazeface/model.json ]; then export VITE_BLAZEFACE_MODEL_URL=/models/blazeface/model.json; fi \
+RUN if [ -f public/models/blazeface/model.json ]; then \
+      export VITE_BLAZEFACE_MODEL_URL=/models/blazeface/model.json; \
+    fi \
  && npm run build \
  && rm -f dist/sphere-drop.html
 

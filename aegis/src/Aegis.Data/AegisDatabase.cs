@@ -32,11 +32,14 @@ public static partial class AegisDatabase
         if (string.IsNullOrEmpty(password)) throw new ArgumentException("缺少 API 資料庫帳號的密碼（Docker secret db_app_password）");
         // CREATE LOGIN 不收參數 → 動態 SQL；密碼用 REPLACE 跳脫單引號（QUOTENAME 超過 128 字會回 NULL，不能用）
         string sql = $"""
+            -- EXEC(...) 的字串只能接變數與字面值（不能放 DB_NAME() 這類函式）→ 先組進 @sql 再 sp_executesql
             DECLARE @lit nvarchar(max) = N'N''' + REPLACE(@pw, N'''', N'''''') + N'''';
+            DECLARE @sql nvarchar(max);
             IF NOT EXISTS (SELECT 1 FROM sys.server_principals WHERE name = N'{login}')
-                EXEC(N'CREATE LOGIN [{login}] WITH PASSWORD = ' + @lit + N', CHECK_POLICY = ON, DEFAULT_DATABASE = [' + DB_NAME() + N']');
+                SET @sql = N'CREATE LOGIN [{login}] WITH PASSWORD = ' + @lit + N', CHECK_POLICY = ON, DEFAULT_DATABASE = ' + QUOTENAME(DB_NAME());
             ELSE
-                EXEC(N'ALTER LOGIN [{login}] WITH PASSWORD = ' + @lit);
+                SET @sql = N'ALTER LOGIN [{login}] WITH PASSWORD = ' + @lit;
+            EXEC sp_executesql @sql;
             IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = N'{login}')
                 EXEC(N'CREATE USER [{login}] FOR LOGIN [{login}]');
             ELSE   -- 備份還原到另一台 SQL Server 後，資料庫使用者和新建的登入帳號 SID 不同（孤立使用者）→ 重新對應

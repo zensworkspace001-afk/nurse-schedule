@@ -4,6 +4,7 @@
 #   sudo ./install.sh --generate-secrets                第一次安裝：產生 sa / API 帳號密碼與 JWT 金鑰
 #   sudo ./install.sh --generate-secrets --new-field-key  全新安裝、沒有要遷移的舊資料時才用（見 secrets/README.md）
 #   --skip-load   不載入 images/（映像已在本機，例如 CI）
+# macOS（Colima / Docker Desktop）只供試用：不需要 root，檔案擁有者改用寬鬆權限讓容器讀得到
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -20,9 +21,15 @@ done
 step() { printf '\n== %s\n' "$*"; }
 die() { echo "✗ $*" >&2; exit 1; }
 sha256() { if command -v sha256sum >/dev/null; then sha256sum "$@"; else shasum -a 256 "$@"; fi; }
-env_val() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+env_val() { local key="$1"; grep -E "^${key}=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+set_env() { local key="$1" val="$2"; sed -i.bak "s#^${key}=.*#${key}=${val}#" .env && rm -f .env.bak; }   # GNU / BSD sed 都能用
 
-[[ "$(id -u)" == 0 ]] || die "請用 root 執行（sudo ./install.sh）：要設定機密檔與憑證的擁有者"
+MAC=0; [[ "$(uname -s)" == Darwin ]] && MAC=1
+if [[ $MAC == 1 ]]; then
+  echo "⚠ macOS：只供試用 / 展示（檔案權限放寬、不是正式部署）"
+else
+  [[ "$(id -u)" == 0 ]] || die "請用 root 執行（sudo ./install.sh）：要設定機密檔與憑證的擁有者"
+fi
 command -v docker >/dev/null || die "找不到 docker"
 docker compose version >/dev/null 2>&1 || die "需要 Docker Compose v2（docker compose）"
 command -v openssl >/dev/null || die "找不到 openssl"
@@ -41,11 +48,11 @@ fi
 step "設定檔 .env"
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  [[ -f VERSION ]] && sed -i "s/^AEGIS_VERSION=.*/AEGIS_VERSION=$(cat VERSION)/" .env
+  [[ -f VERSION ]] && set_env AEGIS_VERSION "$(cat VERSION)"
   chmod 600 .env
   die "已從 .env.example 建立 .env：請修改 AEGIS_PUBLIC_URL 等設定後再執行一次"
 fi
-if [[ -f VERSION ]]; then sed -i "s/^AEGIS_VERSION=.*/AEGIS_VERSION=$(cat VERSION)/" .env; fi
+if [[ -f VERSION ]]; then set_env AEGIS_VERSION "$(cat VERSION)"; fi
 echo "版本 $(env_val AEGIS_VERSION)，網址 $(env_val AEGIS_PUBLIC_URL)"
 
 step "機密 secrets/"
@@ -65,7 +72,8 @@ done
 ((${#missing[@]} == 0)) || die "缺少機密：${missing[*]}（見 secrets/README.md；密碼與 JWT 金鑰可用 --generate-secrets 產生）"
 for name in field_enc_keys_previous smtp_password; do [[ -f "secrets/$name" ]] || : > "secrets/$name"; done
 [[ "$(openssl base64 -d -A <<< "$(cat secrets/field_enc_key)" 2>/dev/null | wc -c | tr -d ' ')" == 32 ]] || die "secrets/field_enc_key 必須是 base64 編碼的 32 bytes"
-chown -R root:root secrets; chmod 700 secrets; find secrets -type f -exec chmod 444 {} +   # 資料夾只有 root 能進；檔案讓容器裡的非 root 使用者讀
+if [[ $MAC == 0 ]]; then chown -R root:root secrets; chmod 700 secrets; fi   # 資料夾只有 root 能進
+find secrets -type f -exec chmod 444 {} +                                     # 檔案讓容器裡的非 root 使用者讀
 echo "✓ 機密齊全"
 
 step "HTTPS 憑證 certs/"
@@ -75,10 +83,12 @@ key_pub="$(openssl pkey -in certs/tls.key -pubout | sha256)"
 [[ "$crt_pub" == "$key_pub" ]] || die "certs/tls.crt 與 certs/tls.key 不成對"
 openssl x509 -in certs/tls.crt -noout -checkend 0 >/dev/null || die "憑證已過期：$(openssl x509 -in certs/tls.crt -noout -enddate)"
 openssl x509 -in certs/tls.crt -noout -checkend 2592000 >/dev/null || echo "⚠ 憑證 30 天內到期：$(openssl x509 -in certs/tls.crt -noout -enddate)"
-chown 101:101 certs/tls.key; chmod 400 certs/tls.key; chmod 444 certs/tls.crt   # 101 = nginx-unprivileged 的使用者
+if [[ $MAC == 0 ]]; then chown 101:101 certs/tls.key; chmod 400 certs/tls.key; else chmod 444 certs/tls.key; fi   # 101 = nginx-unprivileged 的使用者
+chmod 444 certs/tls.crt
 echo "✓ $(openssl x509 -in certs/tls.crt -noout -subject)"
 
-mkdir -p backups; chown 10001:0 backups; chmod 770 backups   # 10001 = SQL Server 容器的 mssql 使用者
+mkdir -p backups   # 10001 = SQL Server 容器的 mssql 使用者
+if [[ $MAC == 0 ]]; then chown 10001:0 backups; chmod 770 backups; else chmod 777 backups; fi
 
 if [[ -n "$(docker compose ps -q db 2>/dev/null)" ]]; then
   step "升級前備份"

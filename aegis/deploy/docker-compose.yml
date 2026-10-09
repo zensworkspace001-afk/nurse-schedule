@@ -18,7 +18,7 @@ services:
     <<: *hardening
     image: mcr.microsoft.com/mssql/server:${MSSQL_TAG:-2022-CU16-ubuntu-22.04}
     pull_policy: never
-    platform: linux/amd64
+    platform: linux/amd64   # SQL Server 只有 x86-64 映像（Apple 晶片上由 Rosetta 執行）
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: Express
@@ -47,7 +47,7 @@ services:
   migrator:
     image: aegis-api:${AEGIS_VERSION:?請在 .env 設定 AEGIS_VERSION}
     pull_policy: never
-    platform: linux/amd64
+    platform: ${AEGIS_PLATFORM:-linux/amd64}
     build:
       context: ..
       dockerfile: deploy/api.Dockerfile
@@ -66,7 +66,7 @@ services:
     <<: *hardening
     image: aegis-api:${AEGIS_VERSION}
     pull_policy: never
-    platform: linux/amd64
+    platform: ${AEGIS_PLATFORM:-linux/amd64}
     environment:
       Aegis__Db__Host: db
       Aegis__Db__Name: ${AEGIS_DB_NAME:-Aegis}
@@ -100,7 +100,7 @@ services:
     <<: *hardening
     image: aegis-web:${AEGIS_VERSION}
     pull_policy: never
-    platform: linux/amd64
+    platform: ${AEGIS_PLATFORM:-linux/amd64}
     build:
       context: ../..
       dockerfile: aegis/deploy/web.Dockerfile

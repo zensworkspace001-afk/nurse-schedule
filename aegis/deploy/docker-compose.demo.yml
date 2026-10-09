@@ -1,0 +1,11 @@
+# 試用 / 展示：migrator 順便寫入示範資料（admin / Admin1234、n001–n014 / Demo1234），只在資料庫是空的時候寫
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.demo.yml
+# 不要用在正式環境（示範帳號的密碼是公開的）
+services:
+  migrator:
+    command: ["--migrate", "--seed-demo"]
+    environment:
+      Aegis__AllowDemoSeed: "true"
+  api:
+    environment:
+      Aegis__AuthPerMinute: "300"

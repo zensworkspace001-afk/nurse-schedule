@@ -3,13 +3,16 @@
 #   docker build -f deploy/api.Dockerfile -t aegis-api:<版本> aegis/
 # 同一個映像三種用法：API 服務（預設）、--migrate（一次性的 aegis-migrator）、dotnet /app/tools/Aegis.Migration.dll（正式匯入）
 
-FROM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS build
+# 建置在本機架構上跑（不模擬），交叉編譯成目標架構：--platform linux/amd64（正式主機）或 linux/arm64（Apple 晶片試用）
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS build
+ARG TARGETARCH
 WORKDIR /src
 COPY Aegis.sln ./
 COPY src/ src/
-# linux-x64：OR-Tools 只帶這一個平台的原生函式庫（不帶 osx / win，映像小一半）
-RUN dotnet publish src/Aegis.Api -c Release -r linux-x64 --self-contained false -o /out/api \
- && dotnet publish src/Aegis.Migration -c Release -r linux-x64 --self-contained false -o /out/tools
+# 指定 RID：OR-Tools 只帶目標平台的原生函式庫（不帶 osx / win，映像小一半）
+RUN case "$TARGETARCH" in amd64) RID=linux-x64 ;; arm64) RID=linux-arm64 ;; *) echo "不支援的架構：$TARGETARCH" >&2; exit 1 ;; esac \
+ && dotnet publish src/Aegis.Api -c Release -r $RID --self-contained false -o /out/api \
+ && dotnet publish src/Aegis.Migration -c Release -r $RID --self-contained false -o /out/tools
 
 # aspnet 映像是 Debian（glibc）：OR-Tools 的原生函式庫需要 glibc，不能用 alpine（musl）
 FROM mcr.microsoft.com/dotnet/aspnet:8.0-bookworm-slim

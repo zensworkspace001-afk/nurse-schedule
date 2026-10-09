@@ -26,10 +26,10 @@ step "人臉偵測模型（BlazeFace，Apache-2.0）"
 MODEL_DIR=public/models/blazeface
 MODEL_URL=https://tfhub.dev/tensorflow/tfjs-model/blazeface/1/default/1
 mkdir -p "$MODEL_DIR"
-curl -fsSL "$MODEL_URL/model.json?tfjs-format=file" -o "$MODEL_DIR/model.json"
+curl -fsSL --proto =https --proto-redir =https "$MODEL_URL/model.json?tfjs-format=file" -o "$MODEL_DIR/model.json"
 for shard in $(node -e 'const m=require(process.argv[1]);for(const g of m.weightsManifest)for(const p of g.paths)console.log(p)' "$ROOT/$MODEL_DIR/model.json"); do
   [[ "$shard" =~ ^[A-Za-z0-9._-]+$ ]] || { echo "模型檔名不合預期：$shard" >&2; exit 1; }
-  curl -fsSL "$MODEL_URL/$shard?tfjs-format=file" -o "$MODEL_DIR/$shard"
+  curl -fsSL --proto =https --proto-redir =https "$MODEL_URL/$shard?tfjs-format=file" -o "$MODEL_DIR/$shard"
 done
 
 step "建置映像（版本 $VERSION）"

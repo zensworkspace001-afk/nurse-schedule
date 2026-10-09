@@ -5,7 +5,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-env_val() { grep -E "^$1=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
+env_val() { local key="$1"; grep -E "^${key}=" .env 2>/dev/null | tail -1 | cut -d= -f2- || true; }
 DB="$(env_val AEGIS_DB_NAME)"; DB="${DB:-Aegis}"
 KEEP="$(env_val BACKUP_RETENTION_DAYS)"; KEEP="${KEEP:-7}"
 [[ "$DB" =~ ^[A-Za-z0-9_]+$ ]] || { echo "AEGIS_DB_NAME 只能是英數字與底線：$DB" >&2; exit 1; }
