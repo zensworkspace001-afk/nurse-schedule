@@ -72,7 +72,9 @@ def _baseline_solve(self, model, solution_callback=None):
 
 
 cp_model.CpSolver.solve = _baseline_solve
-cp_model.CpSolver.wall_time = property(lambda self: self.response_proto.deterministic_time)
+# 取到小數 6 位：求解器回報的 deterministic_time 在最後一個位元可能有雜訊（CI 上遇過 1 ULP 的差），
+# 它會被拿去扣下一階段的時間預算 → 兩邊都先取整，比對才穩定（C# SolverRunner 做一樣的事）
+cp_model.CpSolver.wall_time = property(lambda self: round(self.response_proto.deterministic_time, 6))
 
 
 # ------------------------------------------------------------

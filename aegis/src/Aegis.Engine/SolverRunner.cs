@@ -33,7 +33,8 @@ public sealed class SolverRunner(DeterminismMode mode, ISolveObserver? observer 
         var status = solver.Solve(m, null);
         var resp = solver.Response;
         observer?.OnSolved(m, prm, resp);
-        double spent = mode == DeterminismMode.Baseline ? resp.DeterministicTime : resp.WallTime;
+        // Baseline：決定性時間取到小數 6 位（與 make_golden.py 相同）— 回報值最後一個位元有雜訊，會被拿去扣下一階段的預算
+        double spent = mode == DeterminismMode.Baseline ? Math.Round(resp.DeterministicTime, 6) : resp.WallTime;
         return new SolveCall(status, resp, spent);
     }
 

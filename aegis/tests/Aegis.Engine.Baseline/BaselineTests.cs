@@ -47,7 +47,7 @@ public sealed class BaselineTests(ITestOutputHelper output)
             // 比數值、不比字串：同一個 double 在不同平台可能印成不同位數（Linux CI 上就遇過）
             var m = System.Text.RegularExpressions.Regex.Match(cs.Parameters, @"max_deterministic_time:(\S+)");
             Assert.True(m.Success, $"第 {i} 次求解沒有設定決定性時間：{cs.Parameters}");
-            Assert.Equal(pyDet, double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture));
+            Assert.Equal(pyDet, double.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture), 9);   // 容許浮點最後幾位；模型 / 解仍要完全相同
 
             string pySt = py[i].GetProperty("status").GetString()!;
             string csSt = SolverRunner.StatusName(cs.Response.Status);
