@@ -55,3 +55,59 @@ CI：`.github/workflows/aegis.yml`。改到 `model.py` 或 `aegis/` 時，會在
 ```bash
 cd aegis && dotnet test tests/Aegis.Scheduling.Tests   # 約 9 分鐘；有實際秒數的時間預算，只在本機跑（CI 的 2 vCPU 會因速度誤判）
 ```
+
+## 階段二：資料層與跨語言加密遷移
+
+| 專案 | 內容 |
+|---|---|
+| `src/Aegis.Security` | `FieldCrypto`：AES-256-GCM，與 `api/_lib/crypto.js` 雙向互通（同一把 `FIELD_ENC_KEY`、kid 金鑰環、錯誤訊息一字不差）。<br>`JsEnvelope`：`{t,v}` 信封，與 `JSON.stringify` 逐位元組相同。<br>`Scrypt`：RFC 7914 自行實作，用於密碼歷史。<br>`FirebaseScrypt`：Firebase 改良版 scrypt，讓舊密碼遷移後照樣能登入（方案 A）。 |
+| `src/Aegis.Data` | EF Core 8 實體 + `AegisDbContext`。三份員工文件合併成 `Staff` + `StaffSensitive` + `StaffAvatar`；`StaffPublic` / `SchedulesPublic` 改成檢視表 `vStaffPublic` / `vSchedulePublic`。<br>`SqlScheduleDataStore` 是階段一 `IScheduleDataStore` 的 SQL 版，預假提交在交易內重算每日人數，並用 `Version` 樂觀鎖。 |
+| `src/Aegis.Migration` | ETL 命令列工具（見下方）。 |
+
+### ETL：在可連網的機器匯出 → 帶進隔離網路 → 匯入
+
+```bash
+cd aegis
+dotnet run --project src/Aegis.Migration -- dryrun-live --include-auth     # 唯讀匯出 → 記憶體試跑 → 只印對帳報告，不落地
+dotnet run --project src/Aegis.Migration -- export --out snapshot.json --include-auth   # 產生 snapshot.json + .sha256
+# —— 用加密隨身碟帶進隔離網路 ——
+FIELD_ENC_KEY=... dotnet run --project src/Aegis.Migration -- import --in snapshot.json --provider sqlserver --connection "<cs>"            # 試跑
+FIELD_ENC_KEY=... dotnet run --project src/Aegis.Migration -- import --in snapshot.json --provider sqlserver --connection "<cs>" --commit   # 寫入
+echo '<密碼>' | dotnet run --project src/Aegis.Migration -- check-password --uid n001     # 方案 A 驗收：真實帳號的 Firebase 雜湊
+```
+
+**匯入流程：**
+
+- 先驗快照的 SHA-256，檔案在搬運途中被改動就拒絕。
+- 只接受空的資料庫。
+- 全部在單一交易內寫入。
+
+**報告內容：**
+
+- 每張表的來源數與寫入數對帳；
+- 所有加密欄位能否用目前金鑰解開；
+- 哪些明文個資已加密後才匯入；
+- 刻意不遷移的資料（舊認領流程、暫存 token、可由檢視表重建的公開投影）；
+- 三份員工資料之間的不一致。
+
+**2026-10-09 對正式資料的試跑結果：**
+
+- 15 張表全部對帳相符，包括 `ScheduleCell` 14,980 列、`AccessLog` 1,486 列。
+- N035 的三個個資欄位是明文，正式匯入時會加密。
+- 三份員工資料彼此一致，沒有漂移。
+- 37 個登入帳號都有密碼雜湊；N001 與 admin 的真實密碼都通過 Firebase 雜湊驗證。
+
+### 測試
+
+```bash
+dotnet test tests/Aegis.Security.Tests    # 與 Node 雙向對照（需要 node）+ RFC 7914 / Firebase 官方向量
+dotnet test tests/Aegis.Data.Tests        # SQLite：檢視表、加密欄位、樂觀鎖、業務層接 SQL
+dotnet test tests/Aegis.Migration.Tests   # 轉換、快照雜湊、試跑回滾、正式匯入對帳
+```
+
+**本機沒有 Docker，以下兩項尚未驗證**，要等到有 SQL Server 的環境（階段五的 docker-compose）：
+
+- SQL Server 專屬的 `rowversion`；
+- 實際的 SQL Server 匯入。
+
+資料層邏輯目前都是用 SQLite 驗證的。

@@ -6,10 +6,10 @@ name: Aegis baseline
 on:
   push:
     branches: [main]
-    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'aegis/baseline/requirements.lock', '.github/workflows/aegis.yml']
+    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'aegis/baseline/requirements.lock', 'api/_lib/crypto.js', 'api/_lib/passwordHistory.js', '.github/workflows/aegis.yml']
   pull_request:
     branches: [main]
-    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'aegis/baseline/requirements.lock', '.github/workflows/aegis.yml']
+    paths: ['aegis/**', 'local_test/hybrid/model.py', 'cpsat_service.py', 'local_test/run_demo.py', 'aegis/baseline/requirements.lock', 'api/_lib/crypto.js', 'api/_lib/passwordHistory.js', '.github/workflows/aegis.yml']
 
 jobs:
   baseline:
@@ -27,6 +27,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '8.0.x'
+      - name: 欄位加密 / 密碼雜湊 Node ↔ C# 對照（階段二）
+        working-directory: aegis
+        run: dotnet test tests/Aegis.Security.Tests --logger "console;verbosity=normal"
+      - name: 資料層與 ETL（SQLite）
+        working-directory: aegis
+        run: dotnet test tests/Aegis.Data.Tests && dotnet test tests/Aegis.Migration.Tests
       - name: 產生 Python 黃金樣本
         run: python -u aegis/baseline/make_golden.py
       - name: C# 引擎比對
