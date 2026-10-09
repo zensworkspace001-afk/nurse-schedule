@@ -11,10 +11,11 @@ import react from '@vitejs/plugin-react'
  *
  * 已 port 到 PHP 的端點（2026-06）：
  *   sendEmail / activate-account / log-login / complete-profile /
- *   secure-field / claim-schedule / auto-settle / cron/check-timeout
+ *   secure-field / auto-settle / cron/check-timeout
  *
  * 還沒 port（仍走 Vercel）：
- *   gemini / auto-relay / analyze-excel / admin-user
+ *   gemini / analyze-excel / admin-user
+ *   （claim-schedule / auto-relay 隨認領流程移除，2026-10）
  */
 const PORTED_PATHS = [
   '/api/sendEmail',
@@ -22,7 +23,6 @@ const PORTED_PATHS = [
   '/api/log-login',
   '/api/complete-profile',
   '/api/secure-field',
-  '/api/claim-schedule',
   '/api/auto-settle',
   '/api/cron/check-timeout',
 ]

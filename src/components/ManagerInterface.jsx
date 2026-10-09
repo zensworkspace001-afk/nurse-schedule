@@ -22,7 +22,7 @@ const ManagerInterface = ({
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule,
   finalizedSchedule,
-  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh, calculateAndNotifyNextStaff,
+  setFinalizedSchedule,healthStats, onUpdateHealthStats,historyYear, historyMonth, setHistoryYear, setHistoryMonth, historySchedule, setHistorySchedule,onPushToHistory,accumulatedReports, setAccumulatedReports, onManualRefresh,
   baseSalary, setBaseSalary,
   baseSalaryEnc, setBaseSalaryEnc,
   levelBonus, setLevelBonus,
@@ -33,7 +33,7 @@ const ManagerInterface = ({
     { id: 'staff', path: '/staff', label: '員工管理', icon: Users },
     { id: 'leave-wishes', path: '/leave-wishes', label: '人力與預假', icon: CalendarHeart },
     { id: 'schedule', path: '/schedule', label: '排班工作桌', icon: CalendarCog },
-    { id: 'publish', path: '/publish', label: '發布與認領', icon: Megaphone },
+    { id: 'publish', path: '/publish', label: '發布班表', icon: Megaphone },
     { id: 'review', path: '/review', label: '結算與歷史', icon: ClipboardCheck },
     { id: 'compliance', path: '/compliance', label: '法遵警示', icon: Scale },
     { id: 'statistics', path: '/statistics', label: '統計報表', icon: BarChart3 },
@@ -257,9 +257,6 @@ const ManagerInterface = ({
                    finalizedSchedule={finalizedSchedule}
                    setFinalizedSchedule={setFinalizedSchedule}
                    onPushToHistory={onPushToHistory}
-                   calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
-                   healthStats={healthStats}
-                   publishedDate={publishedDate}
                 />
               } />
 

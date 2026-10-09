@@ -1,5 +1,4 @@
 import admin from 'firebase-admin';
-import { isDirectAssignedMonth } from '../_lib/assignMode.js';
 
 // 1. 初始化 Firebase Admin (讓後端有最高權限讀寫資料庫)
 if (!admin.apps.length) {
@@ -33,116 +32,12 @@ export default async function handler(req, res) {
         console.log("🤖 [巡邏機器人] 啟動巡邏...");
 
         // ==========================================
-        // ★ 0. 個資法保留期限掃除：access_logs + AI_Decision_Logs + archive_reports + pending_activation
-        //    每天執行一次，把過期紀錄刪掉。Vercel Hobby plan 12 個 function 上限，
-        //    無法拆獨立 cron，併在這支裡跑。
+        // ★ 個資法保留期限掃除：access_logs + AI_Decision_Logs + archive_reports + pending_activation
+        //    每天執行一次，把過期紀錄刪掉。（檔名沿用 check-timeout：vercel.json 的 cron 路徑與前端健康檢查都指向它）
         // ==========================================
         await runRetentionSweep();
-
-        // 動態取得當前年月（Vercel Cron 每日執行）
-        const now = new Date();
-        const currentYear = now.getFullYear();
-        const currentMonth = now.getMonth() + 1;
-        
-        // 3. 去雷達 (SelectionTurn) 看現在輪到誰
-        const turnRef = db.collection('SelectionTurn').doc(`${currentYear}_${currentMonth}`);
-        const turnSnap = await turnRef.get();
-        
-        if (!turnSnap.exists || !turnSnap.data().active_staff_id) {
-            return res.status(200).json({ message: "目前無人排隊，引擎待機中。" });
-        }
-
-        const turnData = turnSnap.data();
-        const activeStaffId = turnData.active_staff_id;
-
-        // ★ 直接指派（CP-SAT）的月份不開放認領：殘留的輪次直接清掉，不判逾時、不跳過、不寄信。
-        if (await isDirectAssignedMonth(db, currentYear, currentMonth)) {
-            const clearTurn = { active_staff_id: null, year: currentYear, month: currentMonth, updatedAt: admin.firestore.FieldValue.serverTimestamp() };
-            await turnRef.set(clearTurn);
-            await db.collection('SelectionTurn').doc('latest').set(clearTurn);
-            return res.status(200).json({ message: `${currentYear}/${currentMonth} 為直接指派班表，已清除殘留輪次。` });
-        }
-
-        // ★ 防呆：若 active_staff_id 早已出現在 SelectionProgress.submitted_staff，
-        //   代表這位員工其實已經選完了，turn 沒被清是上游 bug 殘留。
-        //   不該誤判為「逾時」、不該強制跳過、更不該再發一輪信。直接歸位即可。
-        const progressDoc = await db.collection('SelectionProgress').doc(`${currentYear}_${currentMonth}`).get();
-        const submittedStaff = progressDoc.exists ? (progressDoc.data().submitted_staff || []) : [];
-        const normalized = String(activeStaffId || '').trim().toUpperCase();
-        const alreadySubmitted = submittedStaff.some(sid => String(sid || '').trim().toUpperCase() === normalized);
-        if (alreadySubmitted) {
-            await turnRef.set({ active_staff_id: null, year: currentYear, month: currentMonth, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-            await db.collection('SelectionTurn').doc('latest').set({ active_staff_id: null, year: currentYear, month: currentMonth, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-            console.log(`🧹 ${activeStaffId} 已在 submitted_staff 名單中，turn 殘留為上游 bug，已自動清空，不觸發跳過信。`);
-            return res.status(200).json({ message: `${activeStaffId} 已選完但 turn 未被清空，已歸位。` });
-        }
-
-        // 4. 計算卡住的時間 (有沒有超過 24 小時？)
-        const lastUpdated = turnData.updatedAt.toDate();
-        const hoursDiff = (new Date() - lastUpdated) / (1000 * 60 * 60);
-
-        if (hoursDiff < 24) {
-            return res.status(200).json({ message: `目前輪到 ${activeStaffId}，才過了 ${hoursDiff.toFixed(1)} 小時，繼續等待。` });
-        }
-
-        console.log(`🚨 警告：${activeStaffId} 已逾時 ${hoursDiff.toFixed(1)} 小時！執行強制跳過...`);
-
-        // ==========================================
-        // ★ 5. 觸發 Agentic 動作：剝奪權力並交棒！
-        // ==========================================
-        
-        // A. 將逾時者打入冷宮 (加入已送出清單)
-        const progressRef = db.collection('SelectionProgress').doc(`${currentYear}_${currentMonth}`);
-        await progressRef.set({
-            submitted_staff: admin.firestore.FieldValue.arrayUnion(activeStaffId)
-        }, { merge: true });
-
-        // B. 清空雷達
-        await turnRef.set({ active_staff_id: null, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-
-        // C. 呼叫自動接力引擎，選出下一位
-        const baseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL || 'nurse-schedule-bachelor.vercel.app';
-        
-        // 抓取目前班表與統計數據 (為了給 AI 決策)
-        const scheduleSnap = await db.collection('Schedules').doc(`${currentYear}_${currentMonth}`).get();
-        const currentSchedule = scheduleSnap.exists ? (scheduleSnap.data().finalizedSchedule || {}) : {};
-        
-        // 這裡我們不帶 statsData，讓 API 自己去算或使用預設 (或者我們也可以從 NurseApp/Staff 抓)
-        
-        const relayRes = await fetch(`https://${baseUrl}/api/auto-relay`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.CRON_SECRET}`
-            },
-            body: JSON.stringify({ 
-                year: currentYear, 
-                month: currentMonth, 
-                currentSchedule 
-            })
-        });
-
-        const relayData = await relayRes.json();
-
-        // D. 通知管理員已強制跳過
-        const adminEmail = "zensworkspace001@gmail.com"; 
-        await fetch(`https://${baseUrl}/api/sendEmail`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${process.env.CRON_SECRET}`
-            },
-            body: JSON.stringify({ 
-                to: adminEmail, 
-                subject: `🚨 AI 系統回報：已強制跳過逾時員工 ${activeStaffId}`, 
-                html: `<p>護理長您好：</p><p>員工 <b>${activeStaffId}</b> 已經超過 24 小時未選班。<br/>系統已自動將其跳過，並已自動啟動 AI 接力將發球權交給下一位同仁：<b>${relayData.selected_staff_id || '尋找中'}</b>。</p>` 
-            })
-        });
-
-        return res.status(200).json({ 
-            success: true, 
-            message: `已成功跳過 ${activeStaffId} 並自動交棒給 ${relayData.selected_staff_id}。` 
-        });
+        // 認領流程（輪流選班 / 逾時強制交棒）已移除：班表改由 CP-SAT 直接指派，這支 cron 只剩保留期限掃除
+        return res.status(200).json({ success: true, message: '保留期限掃除完成' });
 
     } catch (error) {
         console.error("巡邏機器人發生錯誤:", error);

@@ -1,18 +1,14 @@
 import React from 'react';
 import { Megaphone, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
 import { updateStaffSchedule } from '../api/database';
-import { isDirectAssigned } from '../constants';
 import './PublishPanel.css';
 
 const PublishPanel = ({
     staffData, violations, scheduleRisks,
     selectedYear, selectedMonth, shiftOptions,
     finalizedSchedule, setFinalizedSchedule, onPushToHistory,
-    calculateAndNotifyNextStaff, healthStats, publishedDate,
 }) => {
-    // 直接指派（CP-SAT）的月份不開放認領：拔除釋出會把人轉回 Dxxx 空缺並重啟接力，所以一併隱藏。
-    // 要調整請直接改格子，或回排班工作桌重排後再發布。
-    const isDirect = isDirectAssigned(publishedDate, selectedYear, selectedMonth);
+    // 班表由 CP-SAT 直接指派；要調整請直接改格子，或回排班工作桌重排後再發布
     const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
     const daysArray = Array.from({length: daysInMonth}, (_,i)=>i+1);
 
@@ -61,81 +57,6 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         return { score, deductions };
     };
 
-// ★★★ 核心邏輯 1：單點拔除名字，轉回待認領 ★★★
-    // 👉 加上 async
-    const handleUnassignSingleStaff = async (staffId) => {
-        const staffName = (staffData || []).find(s => s.staff_id === staffId)?.name || staffId;
-        if (!window.confirm(`⚠️ 確定要拔除「${staffName}」的班表嗎？\n\n這將把此排班轉為「待認領 (Dxxx)」空缺，\n員工介面會立刻同步釋出，供其他人重新選擇。`)) return;
-
-        const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
-
-        let vIndex = 1; let newVirtualId = '';
-        while (true) {
-            newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
-            if (!newSchedule[newVirtualId]) break;
-            vIndex++;
-        }
-
-        newSchedule[newVirtualId] = newSchedule[staffId];
-        delete newSchedule[staffId];
-
-        const previousSchedule = finalizedSchedule;
-        setFinalizedSchedule(newSchedule);
-
-        // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
-        try {
-            await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
-            // 🔁 重新啟動 AI 接力：auto-relay 會自動把幽靈 submittedList 清乾淨並挑下一位
-            if (typeof calculateAndNotifyNextStaff === 'function') {
-                try {
-                    await calculateAndNotifyNextStaff(newSchedule, healthStats, selectedYear, selectedMonth);
-                } catch (relayErr) {
-                    console.error("拔除後重啟接力失敗:", relayErr);
-                }
-            }
-        } catch (error) {
-            console.error("拔除失敗:", error);
-            setFinalizedSchedule(previousSchedule);
-            alert("❌ 雲端同步失敗，已還原變更！請檢查網路連線！");
-        }
-    };
-
-    // ★★★ 核心邏輯 2：一鍵拔除所有人 ★★★
-    // 👉 加上 async
-    const handleUnassignAll = async () => {
-        if (!window.confirm(`⚠️ 確定要【拔除所有人】的班表嗎？\n\n這會將目前畫面上所有已認領的班表，全部退回「待認領 (Dxxx)」狀態！\n員工必須重新登入選擇。`)) return;
-
-        const newSchedule = {};
-        let vIndex = 1;
-
-        Object.keys(finalizedSchedule).sort().forEach(rowId => {
-            const newVirtualId = `D${String(vIndex).padStart(3, '0')}`;
-            newSchedule[newVirtualId] = finalizedSchedule[rowId];
-            vIndex++;
-        });
-
-        const previousSchedule = finalizedSchedule;
-        setFinalizedSchedule(newSchedule);
-
-        // 🌟 ★★★ 關鍵修復：強制把拔除後的結果寫入 Firebase 雲端！ ★★★ 🌟
-        try {
-            await updateStaffSchedule(selectedYear, selectedMonth, newSchedule);
-            // 🔁 全部拔除相當於重新開放接力：走 resetRelay 完全清空 SelectionProgress
-            if (typeof calculateAndNotifyNextStaff === 'function') {
-                try {
-                    await calculateAndNotifyNextStaff(newSchedule, healthStats, selectedYear, selectedMonth, null, true);
-                } catch (relayErr) {
-                    console.error("拔除後重啟接力失敗:", relayErr);
-                }
-            }
-            alert("✅ 所有人員已成功拔除並同步至雲端！");
-        } catch (error) {
-            console.error("拔除失敗:", error);
-            setFinalizedSchedule(previousSchedule);
-            alert("❌ 雲端同步失敗，已還原變更！請檢查網路連線！");
-        }
-    };
-
     const getScoreClass = (score) => {
         if (score >= 90) return 'publish__score--good';
         if (score >= 75) return 'publish__score--warn';
@@ -148,12 +69,11 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
         {/* ▼▼▼ 這是全新替換的頂部區塊 (包含 Push 封存按鈕) ▼▼▼ */}
         <div className="publish__header">
              <div className="publish__header-left">
-                 <h2 className="publish__header-title"><Megaphone size={20} /> {isDirect ? '當前發布班表（直接指派）' : '當前發布與認領動態'}</h2>
+                 <h2 className="publish__header-title"><Megaphone size={20} /> 當前發布班表</h2>
                  <span className="publish__header-badge">{selectedYear}年 {selectedMonth}月</span>
              </div>
 
            <div className="publish__header-actions">
-                 {!isDirect && <button onClick={handleUnassignAll} className="publish__btn publish__btn--unassign-all"><AlertTriangle size={14} /> 全部拔除釋出</button>}
                  <button onClick={onPushToHistory} className="publish__btn publish__btn--archive">
                      <ArrowRight size={14} /> 結算並封存至歷史區
                  </button>
@@ -213,12 +133,6 @@ const newSchedule = JSON.parse(JSON.stringify(finalizedSchedule));
                                                   <div className="publish__staff-id">{rowId}</div>
                                               </div>
                                           </div>
-                                          {/* ★ 拔除名字按鈕 */}
-                                          {!isVirtual && !isDirect && (
-                                              <button onClick={() => handleUnassignSingleStaff(rowId)} className="publish__btn--unassign">
-                                                  拔除釋出
-                                              </button>
-                                          )}
                                       </td>
                                       <td className={`publish__td-health ${getScoreClass(score)}`} title={deductions.join('\n')}>{score}</td>
                                      {daysArray.map(d => {

@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarHeart, Calculator, Lock, Unlock, Loader, AlertTriangle, CheckCircle, Users } from 'lucide-react';
 import { saveLeaveWishSettings, subscribeToLeaveWishCounts, subscribeToLeaveWishEntries } from '../api/database';
 import { estimateStaffing } from '../api/scheduleEngine';
-import { isDirectAssigned, legalDailyFloor, RATIO_STANDARDS } from '../constants';
+import { isPublishedMonth, legalDailyFloor, RATIO_STANDARDS } from '../constants';
 import RequirementsPanel from './RequirementsPanel';
 import './LeaveWishPanel.css';
 
@@ -85,9 +85,9 @@ const LeaveWishPanel = ({ staffData = [], requirements, setRequirements, bedConf
 
   const handleOpen = async () => {
     if (!estimate?.ok || quota < 1 || belowFloor.length) return;
-    // 已發布直接指派班表的月份再開放預假：新登記的預假不會出現在已發布的班表上
-    if (isDirectAssigned(publishedDate, year, month) && !window.confirm(
-      `⚠️ ${year}/${month} 的班表已經發布（直接指派）。\n\n重新開放後新登記的預假不會反映在已發布的班表上，` +
+    // 已發布班表的月份再開放預假：新登記的預假不會出現在已發布的班表上
+    if (isPublishedMonth(publishedDate, year, month) && !window.confirm(
+      `⚠️ ${year}/${month} 的班表已經發布。\n\n重新開放後新登記的預假不會反映在已發布的班表上，` +
       `截止後必須回「排班工作桌」重新排班並發布。\n\n確定要重新開放嗎？`)) return;
     if (isOpenElsewhere && !window.confirm(`目前 ${leaveWish.year}/${leaveWish.month} 的預假仍在開放中，要改為開放 ${year}/${month} 嗎？\n（原月份會自動截止，已登記的資料保留）`)) return;
     setSaving(true);
