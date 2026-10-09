@@ -1,13 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText } from 'lucide-react';
-import { doc, collection, query, orderBy, limit, getDocs, onSnapshot, setDoc, arrayUnion } from 'firebase/firestore';
-import { auth, db, clearArchiveReports } from '../api/database';
+import { auth, clearArchiveReports } from '../api/database';
 import { RATIO_STANDARDS } from '../constants';
 import './StatisticsPanel.css';
 
 const StatisticsPanel = ({
-    staffData, priorityConfig, setPriorityConfig, healthStats = [],
-    accumulatedReports, setAccumulatedReports, calculateAndNotifyNextStaff, bedConfig,
+    staffData, priorityConfig, healthStats = [],
+    accumulatedReports, setAccumulatedReports, bedConfig,
     schedule, finalizedSchedule, selectedYear, selectedMonth
 }) => {
   // =========================================================
@@ -114,73 +112,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
   const ratioResult = calculateSelectedRatio(); // ★ 改呼叫新的函式
   // =========================================================
 
-// ★★★ 1. 把 AI 決策歷史的邏輯插在這裡 ★★★
-  const [decisionLogs, setDecisionLogs] = useState([]);
-
-  const fetchDecisionLogs = async () => {
-      try {
-          const q = query(collection(db, "AI_Decision_Logs"), orderBy("timestamp", "desc"), limit(5));
-          const snap = await getDocs(q);
-          setDecisionLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-      } catch (e) {
-          console.error("讀取 AI 日誌失敗:", e);
-      }
-  };
-
-  useEffect(() => {
-      fetchDecisionLogs();
-  }, []);
-  // 👇👇👇 ★★★ 1. 把你的「雷達監聽與跳過邏輯」貼在這裡 ★★★ 👇👇👇
-  const [activeTurn, setActiveTurn] = useState(null);
-
-  // 📡 即時監聽「目前輪到誰選班」（改用 latest 指標，與員工端一致）
-  useEffect(() => {
-      const latestRef = doc(db, "SelectionTurn", "latest");
-      const unsub = onSnapshot(latestRef, (docSnap) => {
-          if (docSnap.exists()) {
-              setActiveTurn(docSnap.data());
-          } else {
-              setActiveTurn(null);
-          }
-      });
-      return () => unsub();
-  }, [selectedYear, selectedMonth]);
-
-  // ⏭️ 強制跳過目前卡住的員工
-  const handleForceSkip = async () => {
-      if (!activeTurn?.active_staff_id) return;
-
-      const targetStaffId = activeTurn.active_staff_id;
-      const targetName = staffData.find(s => s.staff_id === targetStaffId)?.name || targetStaffId;
-
-      if (!window.confirm(`🚨 確定要「強制跳過」 ${targetName} 嗎？\n\n這將剝奪他本回合的優先選班權，並立刻讓 AI 尋找下一位遞補者寄發 Email！`)) return;
-
-      try {
-          // 1. 將該名員工打入冷宮 (加入已送出黑名單)
-          const progressRef = doc(db, "SelectionProgress", `${selectedYear}_${selectedMonth}`);
-          await setDoc(progressRef, {
-              submitted_staff: arrayUnion(targetStaffId)
-          }, { merge: true });
-
-          // 2. 清除雷達畫面（同步更新 latest 指標）
-          const turnRef = doc(db, "SelectionTurn", `${selectedYear}_${selectedMonth}`);
-          const latestRef = doc(db, "SelectionTurn", "latest");
-          const clearData = { active_staff_id: null, updatedAt: new Date() };
-          await Promise.all([
-              setDoc(turnRef, clearData),
-              setDoc(latestRef, { ...clearData, year: selectedYear, month: selectedMonth })
-          ]);
-
-          // 3. 呼叫 AI 找下一個人
-          alert(`✅ 已跳過 ${targetName}！系統正在呼叫 AI 尋找下一位...`);
-          if (typeof calculateAndNotifyNextStaff === 'function') {
-              await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, selectedYear, selectedMonth);
-          }
-      } catch (error) {
-          console.error("強制跳過失敗:", error);
-          alert("❌ 操作失敗，請檢查網路連線。");
-      }
-  };
   // -- ★ AI 分析專用狀態 --
   const loadedMonths = Object.keys(accumulatedReports || {});
   const hasData = loadedMonths.length > 0;
@@ -696,107 +627,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
 
           <div className="statistics__ai-center-grid">
 
-              {/* === 左欄：接力排班雷達與決策歷史 (行動層) === */}
-              <div className="statistics__ai-left">
-
-                  {/* 1. 雷達與引擎 */}
-                  <div className="statistics__radar">
-                      <div className="statistics__radar-layout">
-                         <div className="statistics__radar-info">
-                             <h3 className="statistics__radar-title">
-                                 🚀 AI 選班雷達與接力引擎
-                             </h3>
-                             <p className="statistics__radar-subtitle">
-                                 自動判斷順位並發通知，遇卡關可強制跳過。
-                             </p>
-
-                             {/* 雷達顯示器 */}
-                             <div className={`statistics__radar-display ${activeTurn?.active_staff_id ? 'statistics__radar-display--active' : 'statistics__radar-display--idle'}`}>
-                                 <div>
-                                     <div className="statistics__radar-waiting-label">目前發球權 (Waiting for)</div>
-                                     {activeTurn?.active_staff_id ? (
-                                         <div className="statistics__radar-waiting-name">
-                                             <span className="statistics__radar-waiting-pulse">⏳</span>
-                                             等待 {staffData.find(s => s.staff_id === activeTurn.active_staff_id)?.name || activeTurn.active_staff_id}
-                                         </div>
-                                     ) : (
-                                         <div className="statistics__radar-idle-text">⏸️ 引擎待機中</div>
-                                     )}
-                                 </div>
-                                 {activeTurn?.active_staff_id && (
-                                     <button onClick={handleForceSkip} className="statistics__radar-skip-btn">
-                                         ⏭️ 強制跳過
-                                     </button>
-                                 )}
-                             </div>
-
-                             {/* 客製化指令 */}
-                             <div className="statistics__radar-instruction">
-                                 <label className="statistics__radar-instruction-label">🧠 優先條件指令 (選填)</label>
-                                 <input
-                                     type="text"
-                                     value={priorityConfig?.relayInstruction || ''}
-                                     onChange={(e) => setPriorityConfig({...priorityConfig, relayInstruction: e.target.value})}
-                                     placeholder="例：女性優先... (預設找最疲勞者)"
-                                     className="statistics__radar-instruction-input"
-                                 />
-                             </div>
-                         </div>
-
-                         <div className="statistics__radar-actions">
-                             <button
-                                onClick={async () => {
-                                   if(window.confirm("確定要手動啟動第一棒嗎？\n系統將自動發送 Email 給最需要補血的第一位同仁。")) {
-                                       if (typeof calculateAndNotifyNextStaff !== 'function') {
-                                           alert("❌ 接力功能未就緒，請重新整理頁面後再試。");
-                                           return;
-                                       }
-                                       try {
-                                           alert("🚀 引擎已啟動！AI 正在背景運算並發送通知...");
-                                           await calculateAndNotifyNextStaff(finalizedSchedule || {}, healthStats, selectedYear, selectedMonth);
-                                           alert("✅ AI 接力啟動成功！已通知第一位選班人員。");
-                                       } catch (err) {
-                                           console.error("啟動接力失敗:", err);
-                                           alert(`❌ 啟動失敗：${err.message || err}\n\n請確認網路連線正常且已登入。`);
-                                       }
-                                   }
-                                }}
-                                className="statistics__radar-launch-btn"
-                             >
-                                ▶️ 啟動自動接力
-                             </button>
-                         </div>
-                      </div>
-                  </div>
-
-                  {/* 2. AI 決策歷史看板 */}
-                  <div className="statistics__decision-history">
-                      <h3 className="statistics__decision-history-title">
-                          <FileText size={18} color="#2980b9" /> 決策歷史 (最近 5 筆)
-                      </h3>
-                      <div className="statistics__decision-history-list">
-                          {decisionLogs.length === 0 ? (
-                              <div className="statistics__decision-history-empty">
-                                  暫無 AI 決策數據
-                              </div>
-                          ) : decisionLogs.map(log => (
-                              <div key={log.id} className="statistics__decision-history-item">
-                                  <div className="statistics__decision-history-item-header">
-                                      <strong className="statistics__decision-history-item-staff">🎯 {log.selected_staff}</strong>
-                                      <span className="statistics__decision-history-item-time">
-                                          {log.timestamp?.toDate ? log.timestamp.toDate().toLocaleString() : '...'}
-                                      </span>
-                                  </div>
-                                  <div className="statistics__decision-history-item-logic">
-                                      {log.ai_logic}
-                                  </div>
-                              </div>
-                          ))}
-                      </div>
-                  </div>
-              </div>
-
-              {/* === 右欄：跨月分析精靈 (洞察層) === */}
+              {/* === 跨月分析精靈（原本左欄的 AI 選班雷達 / 決策歷史已移除：CP-SAT 直接指派不再輪流認領）=== */}
               <div className="statistics__chat">
                   <div className="statistics__chat-header">
                       <h3 className="statistics__chat-title">

@@ -17,7 +17,7 @@ const ManagerInterface = ({
   staffData, setStaffData, requirements, setRequirements,
   schedule, violations,
   scheduleRisks,bedConfig, setBedConfig,
-  shiftOptions, setShiftOptions, priorityConfig, setPriorityConfig, publicHolidays,
+  shiftOptions, setShiftOptions, priorityConfig, publicHolidays,
   selectedYear, setSelectedYear,
   selectedMonth, setSelectedMonth,
   onGenerateSchedule, onSaveSchedule, setSchedule,
@@ -280,11 +280,10 @@ const ManagerInterface = ({
               } />
 
               <Route path="/statistics" element={
-                <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig} setPriorityConfig={setPriorityConfig}
+                <StatisticsPanel staffData={staffData} priorityConfig={priorityConfig}
                     healthStats={healthStats}
                     accumulatedReports={accumulatedReports}
                     setAccumulatedReports={setAccumulatedReports}
-                    calculateAndNotifyNextStaff={calculateAndNotifyNextStaff}
                     bedConfig={bedConfig}
                     schedule={schedule}
                     finalizedSchedule={finalizedSchedule}
