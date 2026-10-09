@@ -482,7 +482,7 @@ const handleCellChange = (staffId, day, newValue) => {
         </div>
       ) : <div className="schedule-panel__empty">
           <h3 className="schedule-panel__empty-title">桌面空空如也 🌬️</h3>
-          <p>請點擊上方的「生成 AI 班表」開始排班，或是切換其他月份。</p>
+          <p>請點擊上方的「CP-SAT 直接指派排班」開始排班，或是切換其他月份。</p>
       </div>}
     </div>
  );

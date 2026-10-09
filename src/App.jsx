@@ -46,6 +46,8 @@ const NurseSchedulingSystem = () => {
   // 自動存檔的「雲端目前內容」指紋：快照進來或寫完就更新；內容沒變就不寫
   // （以前光是瀏覽管理分頁，快照設進 state 就觸發 2 秒自動存檔把同樣的資料寫回去，一次 10 多筆）
   const lastSyncedRef = useRef({ settings: null, staff: null, schedule: {} });
+  // 自動存檔失敗時把指紋退回原值並遞增，讓自動存檔 effect 5 秒後再跑一次（否則網路暫時出錯就悄悄沒存到）
+  const [autosaveRetry, setAutosaveRetry] = useState(0);
   useEffect(() => {
     const buildUserPayload = (user) => {
       const localPart = (user.email || '').split('@')[0].toLowerCase();
@@ -226,7 +228,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     { key: 'activateAccount', label: '帳號啟用', desc: '一次性 token 啟用 / 重設密碼', url: '/api/activate-account', method: 'POST' },
     { key: 'logLogin', label: '登入紀錄', desc: '記錄成功 / 失敗登入到稽核日誌', url: '/api/log-login', method: 'POST' },
     { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle?healthCheck=true', method: 'GET' },
-    { key: 'cronTimeout', label: 'Cron 逾時', desc: '每日自動推進選班逾時', url: '/api/cron/check-timeout?healthCheck=true', method: 'GET' },
+    { key: 'cronTimeout', label: '每日排程', desc: '每日清理過期個資（稽核日誌、封存報表等保存期限）', url: '/api/cron/check-timeout?healthCheck=true', method: 'GET' },
     { key: 'calendar', label: '國定假日', desc: '台灣國定假日 API', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
   ];
 
@@ -488,16 +490,26 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   useEffect(() => {
     if (!isCloudLoaded || !currentUser || currentUser.role !== 'admin') return; 
 
+    // 先把指紋標成「已同步」避免重複送出；寫入失敗就退回原值並排定重試
+    const sendOnce = (key, getter, setter, write, label) => {
+      const prev = getter();
+      setter(key);
+      write().catch(err => {
+        console.error(`自動存檔${label}失敗，5 秒後重試:`, err);
+        if (getter() === key) setter(prev);
+        setTimeout(() => setAutosaveRetry(n => n + 1), 5000);
+      });
+    };
+
     const timeoutId = setTimeout(() => {
         
         // ★ 核心修復 2：絕對禁止把「空畫面」寫入雲端覆蓋掉別人的心血！
         const ym = `${selectedYear}_${selectedMonth}`;
         if (schedule && Object.keys(schedule).length > 0 && stableKey(schedule) !== lastSyncedRef.current.schedule[ym]) {
-            lastSyncedRef.current.schedule[ym] = stableKey(schedule);
-            saveMonthlySchedule(selectedYear, selectedMonth, {
-              schedule: schedule
+            const y = selectedYear, m = selectedMonth;
+            sendOnce(stableKey(schedule), () => lastSyncedRef.current.schedule[ym], v => { lastSyncedRef.current.schedule[ym] = v; },
               // ★ 警告：絕對不能在這裡自動寫入 finalizedSchedule，只能由發布按鈕寫入！
-            }).catch(err => console.error("自動存檔班表草稿失敗:", err));
+              () => saveMonthlySchedule(y, m, { schedule }), '班表草稿');
         }
 
         // ★ 注意：baseSalary 不在自動存檔範圍 — 它是加密欄位，由
@@ -505,8 +517,8 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
         //   若這裡也順手寫，會把密文蓋成明文 0/40000，整個加密就破功了。
         const settings = settingsPayload({ shiftOptions, priorityConfig, requirements, bedConfig, levelBonus });
         if (stableKey(settings) !== lastSyncedRef.current.settings) {
-          lastSyncedRef.current.settings = stableKey(settings);
-          saveGlobalSettings(settings).catch(err => console.error("自動存檔設定失敗:", err));
+          sendOnce(stableKey(settings), () => lastSyncedRef.current.settings, v => { lastSyncedRef.current.settings = v; },
+            () => saveGlobalSettings(settings), '設定');
         }
 
         // ★ 與 schedule 的「不寫空」guard 同款：staffData 從 useState([]) 起步，
@@ -517,8 +529,8 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
         //   StaffPrivate/* 跑 scripts/restore-staff-from-private.js 還原。
         const staffPayload = { staffData, healthStats: healthStats || [] };
         if (Array.isArray(staffData) && staffData.length > 0 && stableKey(staffPayload) !== lastSyncedRef.current.staff) {
-          lastSyncedRef.current.staff = stableKey(staffPayload);
-          saveGlobalStaff(staffPayload).catch(err => console.error("自動存檔員工資料失敗:", err));
+          sendOnce(stableKey(staffPayload), () => lastSyncedRef.current.staff, v => { lastSyncedRef.current.staff = v; },
+            () => saveGlobalStaff(staffPayload), '員工資料');
         }
 
     }, 2000);
@@ -526,7 +538,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     return () => clearTimeout(timeoutId);
 
   // ★ 核心修復 3：移除了 finalizedSchedule 與 publishedDate 的依賴，徹底打破無限覆蓋迴圈
-  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth, requirements, bedConfig, levelBonus]);
+  }, [shiftOptions, priorityConfig, staffData, schedule, healthStats, isCloudLoaded, currentUser, selectedYear, selectedMonth, requirements, bedConfig, levelBonus, autosaveRetry]);
 const handleGenerateSchedule = (providedSchedule = null) => {
     let newSchedule = providedSchedule;
     if (!newSchedule) { return; }
@@ -654,8 +666,6 @@ const handleSaveAndPublish = async () => {
 
     // 班表由 CP-SAT 直接指派到每位員工，發布後員工只能檢視（認領流程已移除）
     const newPubDate = { year: selectedYear, month: selectedMonth };
-    setPublishedDate(newPubDate);
-    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
 
     // ★★★ 強制立即存檔到雲端，不等待 2 秒防抖機制 ★★★
     // ★ baseSalary 排除：加密欄位由 ScheduleReviewPanel 自行存
@@ -677,6 +687,9 @@ const handleSaveAndPublish = async () => {
         alert(`❌ 發布失敗：${e.message || e}\n班表沒有存到雲端，請檢查網路後再按一次「儲存並發布」。`);
         return;
     }
+    // 雲端存檔成功後才更新本機的「已發布月份」（以前先更新，存檔失敗時畫面會以為已經發布）
+    setPublishedDate(newPubDate);
+    localStorage.setItem('publishedDate', JSON.stringify(newPubDate));
 
     alert(`✅ 班表已發布！\n員工登入後可檢視自己 [${selectedYear}年${selectedMonth}月] 的班表。`);
   };

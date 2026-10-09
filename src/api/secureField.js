@@ -23,6 +23,10 @@ async function call(body) {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
+    // AES-GCM 驗證失敗 = 這筆密文是用舊的 FIELD_ENC_KEY 加密的（2026-06-02 換過金鑰），已無法解開
+    if (/unable to authenticate data|Unsupported state/i.test(data.error || '')) {
+      throw new Error('這筆資料是用舊的加密金鑰存的，已無法解密，請重新輸入');
+    }
     throw new Error(data.error || `secure-field 呼叫失敗 (${res.status})`);
   }
   return data;
