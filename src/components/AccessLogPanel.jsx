@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { ShieldAlert, RefreshCw, Filter } from 'lucide-react';
-import { auth } from '../api/database';
+import { audit } from '@backend';
 import './AccessLogPanel.css';
 
 // 敏感欄位存取稽核日誌檢視器（admin 專用）
@@ -23,18 +23,9 @@ const AccessLogPanel = () => {
       setIsLoading(true);
       setErrMsg(null);
       try {
-        const token = await auth.currentUser.getIdToken();
-        const res = await fetch('/api/admin-user', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify({ action: 'list-access-logs', limit: maxRows }),
+        const data = await audit.list({ limit: maxRows }).catch((e) => {
+          throw new Error(e.status === 403 ? '無權限讀取稽核日誌（請確認您以管理員身份登入）' : e.message);
         });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(res.status === 403
-            ? '無權限讀取稽核日誌（請確認您以管理員身份登入）'
-            : (data.error || `HTTP ${res.status}`));
-        }
         if (!cancelled) {
           setLogs(Array.isArray(data.logs) ? data.logs : []);
           setIsLoading(false);

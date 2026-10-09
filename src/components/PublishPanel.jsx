@@ -1,6 +1,6 @@
 import React from 'react';
 import { Megaphone, AlertTriangle, ArrowRight, Scale, CheckCircle, Sparkles } from 'lucide-react';
-import { updateStaffSchedule } from '../api/database';
+import { updateStaffSchedule } from '@backend';
 import './PublishPanel.css';
 
 const PublishPanel = ({

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { Loader, Ban, CalendarOff, Clock, ClipboardList, Settings, X, Hand, CheckCircle, Camera } from 'lucide-react';
-import { auth } from '../api/database';
+import { authApi } from '@backend';
 import AvatarEditModal from './AvatarEditModal';
 import LeaveWishPicker from './LeaveWishPicker';
 import './StaffDashboard.css';
@@ -36,11 +35,8 @@ const StaffDashboard = ({ currentUser, myStaffRow, targetYear = 2026, targetMont
 
       setIsPwdSubmitting(true);
       try {
-          const user = auth.currentUser;
-          if (user) {
-              const credential = EmailAuthProvider.credential(user.email, pwdData.old);
-              await reauthenticateWithCredential(user, credential);
-              await updatePassword(user, pwdData.new);
+          if (authApi.isSignedIn()) {
+              await authApi.changePassword(pwdData.old, pwdData.new);   // 先驗目前密碼再改
               setIsPwdSubmitting(false);
               setPwdMsg({ type: 'success', text: '✅ 密碼修改成功！下次請使用新密碼登入。' });
               setTimeout(() => {

@@ -2,10 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import { Calendar, Settings, LogOut, X, Hand, Zap, ZapOff } from 'lucide-react';
 import { usePerformanceMode } from './hooks/usePerformanceMode';
-import { doc, getDoc } from 'firebase/firestore';
-import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from "firebase/auth";
-import { signOut, onAuthStateChanged } from "firebase/auth";
-import { auth, db, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive, subscribeToAnnouncement } from './api/database';
+import { authApi, audit, health, calendar, getScheduleOnce, subscribeToSettings, subscribeToStaff, subscribeToStaffPublic, subscribeToMyStaffPrivate, subscribeToSchedule, subscribeToSchedulePublic, saveGlobalSettings, saveGlobalStaff, saveMonthlySchedule, subscribeToArchiveReports, backupScheduleToArchive, subscribeToAnnouncement } from '@backend';
+import { useFeatures } from './backend/useFeatures';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from './constants';
 import LoginPanel from './components/LoginPanel';
 import StaffDashboard from './components/StaffDashboard';
@@ -16,7 +14,6 @@ import ParticleBackground from './components/ParticleBackground';
 import WeatherClockWidget from './components/WeatherClockWidget';
 import ConnectionStatusBanner from './components/ConnectionStatusBanner';
 import './App.refactored.css';
-import { buildUserPayload } from './utils/currentUser';
 import PdpaReconsent from './components/PdpaReconsent';
 import { PDPA_NOTICE_VERSION } from '../shared/policy.js';
 
@@ -52,10 +49,10 @@ const NurseSchedulingSystem = () => {
   // 自動存檔失敗時把指紋退回原值並遞增，讓自動存檔 effect 5 秒後再跑一次（否則網路暫時出錯就悄悄沒存到）
   const [autosaveRetry, setAutosaveRetry] = useState(0);
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
+    const unsub = authApi.onAuthStateChanged((user) => {
       if (initialAuthHandled.current) return; // 只認開機第一發
       initialAuthHandled.current = true;
-      if (user) setCurrentUser(await buildUserPayload(user));   // 與 LoginPanel 共用（src/utils/currentUser.js）
+      if (user) setCurrentUser(user);   // 後端介面已轉成 currentUser 形狀（與 LoginPanel 同一套）
       setAuthChecked(true);
     });
     return () => unsub();
@@ -64,6 +61,7 @@ const NurseSchedulingSystem = () => {
   // 省電模式：關閉 ParticleBackground (Three.js + aurora shader) 與所有 backdrop-filter，
   // 讓低階顯卡 / 內顯筆電也能順跑。可由使用者手動切換，或跟隨 prefers-reduced-motion。
   const [perfMode, { toggle: togglePerfMode }] = usePerformanceMode();
+  const feat = useFeatures();
 
   // ★ 系統連線狀態指示燈 (全端點) ★
   const [endpointStatus, setEndpointStatus] = useState({});
@@ -215,38 +213,25 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
   }, []);
 
   // ★ 全端點健康檢查 ★
-  const HEALTH_ENDPOINTS = [
-    { key: 'firestore', label: 'Firestore', desc: 'Firebase 即時資料庫' },
-    { key: 'gemini', label: 'Gemini AI', desc: 'AI 排班與對話引擎', url: '/api/gemini', method: 'POST' },
-    { key: 'analyzeExcel', label: 'Excel 分析', desc: 'CSV/Excel Gemini Flash 分析', url: '/api/analyze-excel', method: 'POST' },
-    { key: 'sendEmail', label: 'Email 服務', desc: 'Resend 電子郵件發送', url: '/api/sendEmail', method: 'POST' },
-    { key: 'adminUser', label: '帳號管理', desc: '批次同步建帳號 / 寄啟用信 / 寄密碼重設信', url: '/api/admin-user', method: 'POST' },
-    { key: 'activateAccount', label: '帳號啟用', desc: '一次性 token 啟用 / 重設密碼', url: '/api/activate-account', method: 'POST' },
-    { key: 'logLogin', label: '登入紀錄', desc: '記錄成功 / 失敗登入到稽核日誌', url: '/api/log-login', method: 'POST' },
-    { key: 'autoSettle', label: '自動結算', desc: '月薪結算引擎', url: '/api/auto-settle?healthCheck=true', method: 'GET' },
-    { key: 'cronTimeout', label: '每日排程', desc: '每日清理過期個資（稽核日誌、封存報表等保存期限）', url: '/api/cron/check-timeout?healthCheck=true', method: 'GET' },
-    { key: 'calendar', label: '國定假日', desc: '台灣國定假日 API', url: `https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`, method: 'GET' },
-  ];
+  // 要檢查的端點依後端而定（Firebase / Vercel，或地端 Aegis.Api）
+  const HEALTH_ENDPOINTS = health.endpoints(selectedYear);
 
   useEffect(() => {
     if (!currentUser) return;
 
     const checkAll = async () => {
-      const token = await auth.currentUser?.getIdToken?.().catch(() => null);
+      const token = await authApi.getIdToken().catch(() => null);
       const results = {};
 
       await Promise.allSettled(HEALTH_ENDPOINTS.map(async (ep) => {
         const t0 = Date.now();
         try {
-          if (ep.key === 'firestore') {
-            const settingsRef = doc(db, 'NurseApp', 'Settings');
-            const snap = await getDoc(settingsRef);
+          if (ep.check) {   // 資料庫連線：由後端介面自己檢查（回傳 null = 正常，字串 = 警告原因）
+            const warn = await ep.check();
             const ms = Date.now() - t0;
-            if (snap.exists()) {
-              results[ep.key] = { color: ms < 2000 ? 'green' : ms < 5000 ? 'yellow' : 'red', reason: `Firebase 正常 (${ms}ms)` };
-            } else {
-              results[ep.key] = { color: 'yellow', reason: `Firebase 無資料 (${ms}ms)` };
-            }
+            results[ep.key] = warn
+              ? { color: 'yellow', reason: `${ep.label} ${warn} (${ms}ms)` }
+              : { color: ms < 2000 ? 'green' : ms < 5000 ? 'yellow' : 'red', reason: `${ep.label} 正常 (${ms}ms)` };
             return;
           }
           const controller = new AbortController();
@@ -285,7 +270,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
     const fetchHolidays = async () => {
       try {
         // 使用開源的台灣行事曆 JSON 資料
-        const res = await fetch(`https://cdn.jsdelivr.net/gh/ruyut/TaiwanCalendar/data/${selectedYear}.json`);
+        const res = await fetch(calendar.holidaysUrl(selectedYear));
         const data = await res.json();
         
         // 過濾出「放假」且「有描述 (代表是國定假日或補假，而非一般週休二日)」的日期
@@ -390,18 +375,7 @@ const [requirements, setRequirements] = useState({ D: 15, E: 12, N: 8 });
       // fire-and-forget — 寫 log 失敗不阻擋業務。
       (async () => {
         try {
-          const token = await auth.currentUser?.getIdToken();
-          if (!token) return;
-          await fetch('/api/secure-field', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-            body: JSON.stringify({
-              action: 'logAdminRead',
-              target: { kind: 'staff-collection', id: 'NurseApp/Staff' },
-              fields: ['staffData(full)', 'healthStats'],
-              extra: { source: 'App.subscribeToStaff', subscription: 'onSnapshot' },
-            }),
-          });
+          await audit.logAdminRead({ source: 'App.subscribeToStaff', subscription: 'onSnapshot' });
         } catch (e) {
           console.warn('admin-read 稽核寫入失敗（不阻擋）:', e.message);
         }
@@ -611,7 +585,7 @@ const handleLogout = () => {
 
   // 2. 蓋板完全遮住畫面時 (約 750ms)，執行登出並清除狀態
   setTimeout(() => {
-    signOut(auth).then(() => {
+    authApi.signOut().then(() => {
       localStorage.clear();
       setCurrentUser(null);
     }).catch((error) => {
@@ -632,11 +606,9 @@ const handleLogout = () => {
       if (import.meta.env.DEV) console.log("🔄 正在向雲端請求最新資料...");
       
       // 直接向 Firebase 請求目前選擇的「年_月」的真實資料
-      const docRef = doc(db, 'Schedules', `${selectedYear}_${selectedMonth}`);
-      const snap = await getDoc(docRef);
+      const data = await getScheduleOnce(selectedYear, selectedMonth);
 
-      if (snap.exists()) {
-        const data = snap.data();
+      if (data) {
         setSchedule(data.schedule || {});
         setFinalizedSchedule(data.finalizedSchedule || null);
         alert(`✅ 已成功從雲端同步 ${selectedYear} 年 ${selectedMonth} 月的最新班表！`);
@@ -704,12 +676,8 @@ const handleSaveAndPublish = async () => {
 
       setIsAdminPwdSubmitting(true);
       try {
-          const user = auth.currentUser;
-
-          if (user) {
-              const credential = EmailAuthProvider.credential(user.email, adminPwdData.old);
-              await reauthenticateWithCredential(user, credential);
-              await updatePassword(user, adminPwdData.new);
+          if (authApi.isSignedIn()) {
+              await authApi.changePassword(adminPwdData.old, adminPwdData.new);   // 先驗目前密碼再改
 
               setIsAdminPwdSubmitting(false);
               setAdminPwdMsg({ type: 'success', text: '✅ 管理員密碼修改成功！下次請使用新密碼登入。' });
@@ -836,7 +804,7 @@ const handleSaveAndPublish = async () => {
           </div>
           <div className="app__header-right">
             {/* 天氣 + 時鐘 widget — header 嵌入式 pill 樣式 */}
-            <WeatherClockWidget inline />
+            {feat.weather && <WeatherClockWidget inline />}
             {/* 省電 / 視覺模式切換 — 關掉粒子背景與 backdrop-filter，給低階顯卡 / 內顯機器用 */}
             <button
               type="button"

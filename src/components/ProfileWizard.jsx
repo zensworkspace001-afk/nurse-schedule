@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Lock, ChevronRight, ChevronLeft, CheckCircle2, AlertCircle, Loader2, LogOut, ShieldCheck, ExternalLink, Camera } from 'lucide-react';
-import { auth } from '../api/database';
-import { signOut } from 'firebase/auth';
+import { authApi, profile } from '@backend';
 import ParticleBackground from './ParticleBackground';
 import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { TAIWAN_BANKS } from '../constants/banks';
@@ -99,12 +98,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
     if (e) return setError(e);
     setSubmitting(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error('登入逾期，請重新登入');
-      const res = await fetch('/api/complete-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
+      await profile.completeFirst({
           name: form.name.trim(),
           gender: form.gender,
           tenure_years: Number(form.tenure_years),
@@ -115,10 +109,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
           phone: form.phone.trim(),
           // PDPA §8 留證：告知文案版本（後端只接受目前版本；同意時間由後端記錄）
           pdpa_notice_version: PDPA_NOTICE_VERSION,
-        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '伺服器拒絕請求');
       // 成功後不需手動 redirect — App.jsx 的 onSnapshot 會抓到 profile_completed=true
       // 自動把畫面切到 StaffDashboard。
     } catch (err) {
@@ -128,7 +119,7 @@ const ProfileWizard = ({ staffRow, currentUser }) => {
   };
 
   const handleLogout = async () => {
-    try { await signOut(auth); } catch { /* 忽略 */ }
+    try { await authApi.signOut(); } catch { /* 忽略 */ }
     window.location.reload();
   };
 

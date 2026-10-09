@@ -1,17 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import {
-  signInWithEmailAndPassword,
-  setPersistence,
-  browserLocalPersistence,
-  browserSessionPersistence,
-} from 'firebase/auth';
 import { AlertCircle, LogIn, Shield, Eye, EyeOff } from 'lucide-react';
-import { auth, subscribeToAnnouncement } from '../api/database';
+import { authApi, subscribeToAnnouncement } from '@backend';
+import { useFeatures } from '../backend/useFeatures';
 import WeatherClockWidget from './WeatherClockWidget';
 import AnnouncementBanner from './AnnouncementBanner';
 import ForgotPasswordModal from './ForgotPasswordModal';
 import './LoginPanel.css';
-import { buildUserPayload } from '../utils/currentUser';
 
 // Hook：偵測是否為行動版尺寸（≤640px）
 // 桌面：widget 渲染在卡片外（position: fixed 才能黏到 viewport 右上角）
@@ -49,6 +43,7 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
 
   // 系統公告（Firestore rule 允許未登入讀取此 doc — 登入頁也能拿到）
   const [announcement, setAnnouncement] = useState(null);
+  const feat = useFeatures();   // 地端版：沒有外網天氣、沒有 SMTP 時沒有自助重設
   useEffect(() => {
     const unsub = subscribeToAnnouncement(setAnnouncement);
     return () => unsub && unsub();
@@ -59,24 +54,11 @@ const LoginPanel = ({ onLogin, onApiStatus }) => {
     setError('');
     setIsLoggingIn(true);
 
-    const inputId = employeeId.trim().toLowerCase();
-
-    // ★ 系統轉換：將工號 (如 N001 或 admin) 轉換為 Firebase 需要的 Email 格式
-    const emailToLogin = `${inputId}@hospital.com`;
-
 try {
-        // 0. 設定 token 持久層 — 這就是「記住我」的本質：
-        //    勾選 → browserLocalPersistence（存 IndexedDB，關瀏覽器仍登入）
-        //    不勾 → browserSessionPersistence（存 sessionStorage，關閉即登出，適合公用電腦）
-        //    必須在 signIn 之前設定，整條鏈路不碰 cookie。
-        await setPersistence(
-          auth,
-          rememberMe ? browserLocalPersistence : browserSessionPersistence,
-        );
-
-        // 1. 呼叫 Firebase 伺服器進行真實密碼比對！
+        // 「記住我」：勾選 → 關瀏覽器仍登入；不勾 → 關閉即登出（適合公用電腦）。登入稽核在後端介面裡寫。
         const loginStart = Date.now();
-        await signInWithEmailAndPassword(auth, emailToLogin, password);
+        // 角色看伺服器給的身分（被授權的護理長也是管理員），與 App 還原 session 同一套
+        const userPayload = await authApi.signIn(employeeId, password, rememberMe);
         const loginMs = Date.now() - loginStart;
 
         // ★ 回報 API 狀態：< 3 秒綠色，3~8 秒黃色，> 8 秒紅色
@@ -85,21 +67,6 @@ try {
           else if (loginMs < 8000) onApiStatus('yellow', `登入回應緩慢 (${loginMs}ms)`);
           else onApiStatus('red', `登入回應過慢 (${loginMs}ms)`);
         }
-
-        // ★ 稽核：登入成功，fire-and-forget 不阻擋 UI
-        try {
-            const token = await auth.currentUser?.getIdToken();
-            if (token) {
-                fetch('/api/log-login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ success: true }),
-                }).catch(() => {});
-            }
-        } catch { /* 寫稽核失敗不影響登入流程 */ }
-
-        // 角色看 ID token 的 claims（被授權的護理長也是管理員），與 App 還原 session 共用同一個函式
-        const userPayload = await buildUserPayload(auth.currentUser);
 
         // 2. 登入成功 → 建立毛玻璃蓋板（與登出同款動畫，方向相反）
         //    glassFadeIn：35% 蓋滿 → 60% 持續 → 100% 退開，總長 1.5s
@@ -113,17 +80,6 @@ try {
     } catch (err) {
         // ★ 登入失敗 → API 狀態紅燈
         if (onApiStatus) onApiStatus('red', `登入失敗: ${err.code || err.message}`);
-
-        // ★ 稽核：登入失敗，fire-and-forget 不阻擋 UI
-        fetch('/api/log-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                success: false,
-                attempted_email: emailToLogin,
-                error_code: err.code || 'unknown',
-            }),
-        }).catch(() => {});
 
         if (import.meta.env.DEV) {
         console.error("登入錯誤:", err.code);
@@ -160,7 +116,7 @@ try {
       <AnnouncementBanner announcement={announcement} />
 
       {/* 桌面版：widget 渲染在卡片外，可正常 fixed 在 viewport 右上角 */}
-      {!isMobile && <WeatherClockWidget />}
+      {!isMobile && feat.weather && <WeatherClockWidget />}
 
       {/* 🌟 背景動畫色塊 */}
       <div className="login-panel__blob login-panel__blob--1"></div>
@@ -171,7 +127,7 @@ try {
       <div className="login-panel__card">
         {/* 行動版：widget 渲染在卡片內、置中（卡片的 backdrop-filter 會造成 containing block，
             所以這個位置只能用 position: static，不能用 fixed） */}
-        {isMobile && <WeatherClockWidget />}
+        {isMobile && feat.weather && <WeatherClockWidget />}
 
         <h2 className="login-panel__title">排班系統 <span className="login-panel__badge"><Shield size={12} /> 安全版</span></h2>
 
@@ -224,9 +180,11 @@ try {
               {isLoggingIn ? <><span className="login-panel__spinner" /> 驗證中...</> : <><LogIn size={16} /> 登入系統</>}
           </button>
 
+          {feat.selfServiceReset && (
           <button type="button" className="login-panel__forgot" onClick={() => setShowForgot(true)}>
             忘記密碼？
           </button>
+          )}
         </form>
       </div>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, Unlock, Eye, EyeOff, Loader2, Save } from 'lucide-react';
-import { decryptField, encryptFieldRemote, isEncryptedBlob } from '../api/secureField';
+import { decryptField, encryptFieldRemote, isEncryptedBlob } from '@backend';
 import {
   TAIWAN_BANKS,
   parseBankAccount,

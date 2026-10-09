@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, Loader, Trash2, Plus, FileDown, Save, RefreshCw, Calculator } from 'lucide-react';
-import { auth } from '../api/database';
-import { saveLeaveWishSettings } from '../api/database';
-import { generateCpsatSchedule } from '../api/scheduleEngine';
+import { saveLeaveWishSettings, audit, ai, generateCpsatSchedule } from '@backend';
+import { useFeatures } from '../backend/useFeatures';
 import { computeDailyRequirements, legalDailyFloor } from '../constants';
 import './SchedulePanel.css';
 
@@ -19,6 +18,7 @@ const SchedulePanel = ({
 }) => {
   const [geminiMessages, setGeminiMessages] = useState([]);
   const [geminiInput, setGeminiInput] = useState('');
+  const feat = useFeatures();
   const [showGemini, setShowGemini] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
@@ -203,38 +203,17 @@ const SchedulePanel = ({
       setGeminiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
 
       try {
-          const token = await auth.currentUser.getIdToken();
-
           // 個資法稽核：admin 自由輸入的 chat 內容無法事前匿名（可能含工號 / 姓名等）；
-          // 至少留下「誰、何時、把多少 prompt 預覽 送給了 Gemini」的軌跡。fire-and-forget
-          // 不阻擋業務 — 寫 log 失敗只 console.warn。
-          // preview 加長至 500 字以提升事後溯源完整度（原本 80 字幾乎只夠看到開頭問句）。
-          fetch('/api/secure-field', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({
-                  action: 'logAiAccess',
-                  target: { kind: 'chat', id: null },
-                  fields: ['admin_chat_message'],
-                  extra: {
-                      source: 'SchedulePanel.handleUserChat',
-                      vendor: 'google-gemini',
-                      prompt_preview: userMsg.slice(0, 500),
-                      prompt_truncated: userMsg.length > 500,
-                      prompt_length: userMsg.length,
-                  },
-              }),
+          // 至少留下「誰、何時、把多少 prompt 預覽 送給了 AI」的軌跡。fire-and-forget 不阻擋業務。
+          audit.logAiAccess({ kind: 'chat', id: null }, ['admin_chat_message'], {
+              source: 'SchedulePanel.handleUserChat',
+              vendor: 'google-gemini',
+              prompt_preview: userMsg.slice(0, 500),
+              prompt_truncated: userMsg.length > 500,
+              prompt_length: userMsg.length,
           }).catch((e) => console.warn('AI 存取稽核寫入失敗（不阻擋）:', e.message));
 
-          const response = await fetch('/api/gemini', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ prompt: userMsg })
-          });
-
-          if (!response.ok) throw new Error("伺服器連線失敗");
-
-          const data = await response.json();
+          const data = await ai.chat(userMsg).catch(() => { throw new Error("伺服器連線失敗"); });
           setGeminiMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
       } catch (error) {
           setGeminiMessages(prev => [...prev, { role: 'assistant', content: "❌ 錯誤: " + error.message }]);
@@ -386,10 +365,14 @@ const handleCellChange = (staffId, day, newValue) => {
                 ))}
                 <div ref={messagesEndRef} />
             </div>
+            {feat.ai ? (
             <div className="schedule-panel__chat-input-row">
                 <input value={geminiInput} onChange={(e) => setGeminiInput(e.target.value)} onKeyPress={(e) => e.key === 'Enter' && handleUserChat()} placeholder="輸入指令..." className="schedule-panel__chat-input" disabled={processing} />
                 <button onClick={handleUserChat} disabled={processing} className="schedule-panel__chat-send-btn">發送指令</button>
             </div>
+            ) : (
+            <div className="schedule-panel__chat-input-row schedule-panel__chat-disabled">AI 對話未啟用（未設定語言模型）</div>
+            )}
         </div>
       )}
 

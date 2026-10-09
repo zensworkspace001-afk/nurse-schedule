@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Banknote, FileDown, Settings, X, Lock, Unlock, Save, Loader2 } from 'lucide-react';
-import { auth, updateStaffSchedule, saveArchiveReport, backupScheduleToArchive, saveGlobalSettings } from '../api/database';
-import { decryptField, encryptFieldRemote, logRelock } from '../api/secureField';
+import { updateStaffSchedule, saveArchiveReport, backupScheduleToArchive, saveGlobalSettings, decryptField, encryptFieldRemote, logRelock, testAutoSettle } from '@backend';
+import { useFeatures } from '../backend/useFeatures';
 import { checkLaborLawCompliance, checkSkillMixSafety, calculateScheduleRisks } from '../constants';
 import './ScheduleReviewPanel.css';
 
@@ -18,6 +18,7 @@ const ScheduleReviewPanel = ({
     historySchedule = {},
     levelBonus = { N0: 0, N1: 1000, N2: 2000, N3: 3200, N4: 5000 },
 }) => {
+  const feat = useFeatures();   // 開發者時光機（呼叫 auto-settle）只有 Firebase 後端有
   // 底薪加密欄位的本地狀態
   const [salaryBusy, setSalaryBusy] = useState(false);
   const [salaryErr, setSalaryErr] = useState(null);
@@ -421,18 +422,9 @@ const handleExportExcel = async () => {
       if (testDate === null) return; // 使用者按了取消
 
       try {
-          // 判斷要帶入哪種參數
-          const url = testDate.trim() !== '' 
-              ? `/api/auto-settle?targetDate=${testDate}` 
-              : '/api/auto-settle?force=true';
-          
-          const idToken = await auth.currentUser.getIdToken();
-          const response = await fetch(url, {
-              headers: { 'Authorization': `Bearer ${idToken}` }
-          });
-          const data = await response.json();
-          
-          if (response.ok) {
+          const { ok, data } = await testAutoSettle(testDate.trim());
+
+          if (ok) {
               alert(`✅ API 執行成功！\n\n伺服器回應：${data.message}`);
           } else {
               alert(`❌ API 執行失敗！\n\n錯誤：${data.error}\n詳細：${data.details || '無'}`);
@@ -523,7 +515,7 @@ return (
 
               <button onClick={handleOpenSettlement} className="review__btn review__btn--settle"><Banknote size={14} /> 薪資與加班費結算</button>
               <button onClick={handleExportExcel} className="review__btn review__btn--export"><FileDown size={14} /> 匯出 Excel</button>
-              {import.meta.env.DEV && <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用"><Settings size={14} /> 測試 API</button>}
+              {import.meta.env.DEV && feat.autoSettleTest && <button onClick={handleTestAutoSettle} className="review__btn review__btn--test-api" title="開發者測試專用"><Settings size={14} /> 測試 API</button>}
            </div>
       </div>
       {/* ▲▲▲ 頂部區塊結束 ▲▲▲ */}

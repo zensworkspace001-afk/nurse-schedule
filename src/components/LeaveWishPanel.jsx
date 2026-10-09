@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CalendarHeart, Calculator, Lock, Unlock, Loader, AlertTriangle, CheckCircle, Users } from 'lucide-react';
-import { saveLeaveWishSettings, subscribeToLeaveWishCounts, subscribeToLeaveWishEntries } from '../api/database';
-import { estimateStaffing } from '../api/scheduleEngine';
+import { saveLeaveWishSettings, subscribeToLeaveWishCounts, subscribeToLeaveWishEntries, estimateStaffing } from '@backend';
 import { isPublishedMonth, legalDailyFloor, RATIO_STANDARDS } from '../constants';
 import RequirementsPanel from './RequirementsPanel';
 import './LeaveWishPanel.css';

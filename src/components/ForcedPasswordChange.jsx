@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { KeyRound, AlertCircle, ShieldCheck, LogOut } from 'lucide-react';
-import { auth } from '../api/database';
+import { profile } from '@backend';
 import './ForcedPasswordChange.css';
 
 // 強制改密頁 — 當 myStaffRow.must_change_password === true 時由 App.jsx 攔下顯示。
@@ -25,15 +25,7 @@ const ForcedPasswordChange = ({ currentUser, onLogout }) => {
 
     setBusy(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error('登入狀態已失效，請重新登入');
-      const r = await fetch('/api/complete-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ mode: 'change-password', newPassword: pw1 }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(data.error || `伺服器回應 ${r.status}`);
+      await profile.changePasswordForced(pw1);
       setDone(true);
       // 旗標清除後 myStaffRow 訂閱會更新，App.jsx gate 自動放行；此處顯示短暫成功提示。
     } catch (err) {

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, ExternalLink, LogOut, Loader2, AlertCircle } from 'lucide-react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../api/database';
+import { authApi, profile } from '@backend';
 import ParticleBackground from './ParticleBackground';
 import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import { usePdpaRead, PDPA_NOTICE_VERSION } from '../utils/pdpa';
@@ -21,15 +20,7 @@ const PdpaReconsent = ({ currentUser, hadConsentedBefore }) => {
     setError('');
     setSubmitting(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
-      if (!token) throw new Error('登入逾期，請重新登入');
-      const res = await fetch('/api/complete-profile', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ mode: 'consent', pdpa_notice_version: PDPA_NOTICE_VERSION }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || '伺服器拒絕請求');
+      await profile.consent(PDPA_NOTICE_VERSION);
     } catch (err) {
       setError(err.message);
       setSubmitting(false);
@@ -37,7 +28,7 @@ const PdpaReconsent = ({ currentUser, hadConsentedBefore }) => {
   };
 
   const logout = async () => {
-    try { await signOut(auth); } catch { /* 忽略 */ }
+    try { await authApi.signOut(); } catch { /* 忽略 */ }
     window.location.reload();
   };
 
