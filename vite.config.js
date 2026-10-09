@@ -1,6 +1,6 @@
-
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
+import { fileURLToPath } from 'node:url'
 
 /**
  * Dev proxy 策略：
@@ -40,10 +40,24 @@ export default defineConfig(({ mode }) => {
       proxy[p] = { target: phpTarget, changeOrigin: true, secure: false }
     }
   }
-  proxy['/api'] = { target: VERCEL_TARGET, changeOrigin: true, secure: false }
+  // 後端選擇（神盾計畫階段四）：firebase = 現行 Vercel + Firebase；aegis = 地端 .NET（Aegis.Api）
+  // 元件一律 import '@backend'，只有選到的那一個會被打包。
+  const backend = env.VITE_BACKEND || 'firebase'
+  if (!['firebase', 'aegis'].includes(backend)) throw new Error(`VITE_BACKEND 只能是 firebase 或 aegis，目前是 ${backend}`)
+  if (backend === 'aegis') {
+    // 地端：/api 與 /hubs 都走本機 Aegis.Api（預設 http://localhost:5080）
+    const aegisTarget = env.VITE_AEGIS_API_TARGET || 'http://localhost:5080'
+    proxy['/api'] = { target: aegisTarget, changeOrigin: true, secure: false }
+    proxy['/hubs'] = { target: aegisTarget, changeOrigin: true, secure: false, ws: true }
+  } else {
+    proxy['/api'] = { target: VERCEL_TARGET, changeOrigin: true, secure: false }
+  }
 
   return {
     plugins: [react()],
+    resolve: {
+      alias: { '@backend': fileURLToPath(new URL(`./src/backend/${backend}/index.js`, import.meta.url)) },
+    },
     server: {
       // vercel dev injects $PORT and proxies to it; Vite ignores $PORT by default,
       // so without this it stays on 5173 and `vercel dev` fails with

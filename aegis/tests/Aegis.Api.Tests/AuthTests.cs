@@ -90,7 +90,10 @@ public sealed class AuthTests : IDisposable
         Assert.Equal(HttpStatusCode.OK, (await c.PostAsync("/api/auth/refresh", null)).StatusCode);
         Assert.Equal(HttpStatusCode.OK, (await c.PostAsync("/api/auth/refresh", null)).StatusCode);   // 每次都換新的
         Assert.Equal(HttpStatusCode.NoContent, (await c.PostAsync("/api/auth/logout", null)).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await c.PostAsync("/api/auth/refresh", null)).StatusCode);
+        // 登出會清掉 cookie → 之後的 refresh 是「沒有登入」（204、拿不到 token），不是錯誤
+        var after = await c.PostAsync("/api/auth/refresh", null);
+        Assert.Equal(HttpStatusCode.NoContent, after.StatusCode);
+        Assert.Equal("", await after.Content.ReadAsStringAsync());
     }
 
     [Fact]

@@ -1,4 +1,4 @@
-import { isAdminClaims } from '../../shared/policy.js';
+import { isAdminClaims } from '../../../shared/policy.js';
 
 // Firebase Auth 使用者 → App 的 currentUser。LoginPanel（表單登入）與 App（重新整理後還原 session）
 // 共用，兩邊形狀必須一致。管理員身分看 ID token 的 claims（shared/policy.js），不再只看帳號名稱：

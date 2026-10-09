@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Megaphone, AlertTriangle, AlertOctagon, Send, Trash2, CheckCircle2 } from 'lucide-react';
-import { saveAnnouncement, clearAnnouncement } from '../api/database';
+import { saveAnnouncement, clearAnnouncement } from '@backend';
 import './AnnouncementEditor.css';
 
 // admin 用：撰寫 / 清除全院系統公告。寫入後所有 authed 使用者首頁的

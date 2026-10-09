@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { X, Save, Loader2, AlertCircle, CheckCircle2, Camera, Trash2, ZoomIn, ZoomOut, RotateCcw, ScanFace, UserX } from 'lucide-react';
-import { auth } from '../api/database';
+import { profile } from '@backend';
 import { detectFace } from '../utils/faceDetect';
 import './AvatarEditModal.css';
 
@@ -195,18 +195,7 @@ const AvatarEditModal = ({ myStaffRow, onClose }) => {
     return out;
   };
 
-  const post = async (body) => {
-    const token = await auth.currentUser?.getIdToken();
-    if (!token) throw new Error('登入逾期，請重新登入');
-    const res = await fetch('/api/complete-profile', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || '伺服器拒絕請求');
-    return data;
-  };
+  const post = ({ mode: _mode, ...body }) => profile.update(body);   // 頭貼只走自助更新
 
   const handleSave = async () => {
     setMsg({ type: '', text: '' });

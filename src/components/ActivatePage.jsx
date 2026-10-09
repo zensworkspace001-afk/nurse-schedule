@@ -3,6 +3,7 @@ import { Lock, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
 import ParticleBackground from './ParticleBackground';
 import { usePerformanceMode } from '../hooks/usePerformanceMode';
 import './ActivatePage.css';
+import { accounts } from '@backend';
 
 // 帳號啟用 / 密碼重設頁面
 //
@@ -43,15 +44,7 @@ const ActivatePage = () => {
 
     setSubmitting(true);
     try {
-      const res = await fetch('/api/activate-account', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, newPassword: password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || '伺服器拒絕請求');
-      }
+      const data = await accounts.activate(token, password);
       setSuccess({ purpose: data.purpose, message: data.message });
     } catch (err) {
       setError(err.message || '啟用失敗，請稍後再試');

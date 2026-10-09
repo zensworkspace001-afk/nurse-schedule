@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, KeyRound, Check, AlertCircle, ArrowRight } from 'lucide-react';
 import './ForgotPasswordModal.css';
+import { accounts } from '@backend';
 
 // 自助「忘記密碼」三步驟流程（毛玻璃 modal，掛在 LoginPanel 內）：
 //   step 'request' → 輸入工號 + 註冊信箱 → POST request-reset（後端核對後寄 6 位驗證碼）
@@ -27,16 +28,9 @@ const ForgotPasswordModal = ({ onClose, onFilled }) => {
     setTimeout(() => onClose(), 250);
   };
 
-  const post = async (body) => {
-    const r = await fetch('/api/activate-account', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(data.error || `伺服器回應 ${r.status}`);
-    return data;
-  };
+  const post = (body) => (body.action === 'request-reset'
+    ? accounts.requestReset(body.staffId, body.email)
+    : accounts.verifyResetOtp(body.staffId, body.code, body.newPassword));
 
   const handleRequest = async (e) => {
     e.preventDefault();

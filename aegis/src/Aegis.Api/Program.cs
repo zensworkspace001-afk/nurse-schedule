@@ -86,6 +86,13 @@ builder.Services.AddSignalR();
 
 builder.Services.AddControllers(o => o.Filters.Add<ApiExceptionFilter>());
 var app = builder.Build();
+
+// 開發 / e2e：dotnet run -- --seed-demo（只在 Development；資料庫是空的才寫）
+if (args.Contains("--seed-demo"))
+{
+    if (!app.Environment.IsDevelopment()) throw new InvalidOperationException("--seed-demo 只能在 Development 環境使用");
+    await DemoSeed.RunAsync(app.Services, app.Logger);
+}
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();

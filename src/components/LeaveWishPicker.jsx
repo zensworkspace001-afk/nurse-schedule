@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarHeart, CheckCircle, AlertTriangle, Loader, Send } from 'lucide-react';
-import { subscribeToLeaveWishCounts, subscribeToMyLeaveWish } from '../api/database';
-import { submitLeaveWish } from '../api/scheduleEngine';
+import { subscribeToLeaveWishCounts, subscribeToMyLeaveWish, submitLeaveWish } from '@backend';
 import './LeaveWishPicker.css';
 
 // ============================================================================

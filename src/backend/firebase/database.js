@@ -13,8 +13,8 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
-import { reportFirestoreError, reportFirestoreHealthy } from './connectionStatus';
-import { buildStaffPublicProjection } from '../../shared/staffProjection.js';
+import { reportFirestoreError, reportFirestoreHealthy } from '../../api/connectionStatus';
+import { buildStaffPublicProjection } from '../../../shared/staffProjection.js';
 
 // 包裝 onSnapshot data callback：第一次成功就回報 healthy（讓 banner 自動消失）
 function wrapDataCb(source, cb) {

@@ -60,12 +60,27 @@ public sealed class SettingsController(DocumentService docs, RealtimeNotifier rt
     }
 }
 
+// 前端依此隱藏地端沒有的功能（決策 3、5）；未登入的登入頁也要讀
+[ApiController, Route("api/features"), AllowAnonymous]
+public sealed class FeaturesController(IConfiguration cfg) : ControllerBase
+{
+    [HttpGet]
+    public IActionResult Get() => Ok(new
+    {
+        selfServiceReset = false,                                    // 自助 OTP 重設尚未提供（需院內 SMTP，決策 2A）
+        ai = false,                                                  // 未設定語言模型（決策 3A）
+        weather = cfg.GetValue("Aegis:Features:Weather", false),     // 隔離網路連不到 OpenWeatherMap（決策 5）
+        autoSettleTest = false,
+        smtp = !string.IsNullOrEmpty(cfg["Smtp:Host"]),
+    });
+}
+
 [ApiController, Route("api/announcement"), Authorize]
 public sealed class AnnouncementController(DocumentService docs, RealtimeNotifier rt) : AegisController
 {
     public sealed record AnnouncementRequest(string Text, string Kind, string? UpdatedByName);
 
-    [HttpGet] public async Task<IActionResult> Get(CancellationToken ct) => Doc(await docs.GetAnnouncementAsync(ct));
+    [HttpGet, AllowAnonymous] public async Task<IActionResult> Get(CancellationToken ct) => Doc(await docs.GetAnnouncementAsync(ct));   // 登入頁（未登入）要顯示公告
 
     [HttpPut, Authorize(Policies.Admin)]
     public async Task<IActionResult> Put([FromBody] AnnouncementRequest req, CancellationToken ct)
@@ -107,11 +122,15 @@ public sealed class StaffController(DocumentService docs, AccountService account
 
     [HttpGet("public")] public async Task<IActionResult> Public(CancellationToken ct) => Doc(await docs.GetStaffPublicAsync(ct));
 
+    public sealed record SyncRequest(List<string>? StaffIds);
+
+    // staffIds = 前端名單；還沒寫進資料庫的（前端自動存檔有 2 秒延遲）回在 pending，前端稍後再同步一次
     [HttpPost("accounts/sync"), Authorize(Policies.Admin)]
-    public async Task<IActionResult> Sync(CancellationToken ct)
+    public async Task<IActionResult> Sync([FromBody] SyncRequest? req, CancellationToken ct)
     {
         var r = await accounts.SyncAsync(HttpContext, ct);
-        return Ok(new { message = "帳號同步作業完成", result = new { invitedCount = r.InvitedCount, existedCount = r.ExistedCount, errorCount = r.ErrorCount, errors = r.Errors, manualLinks = r.ManualLinks } });
+        var pending = await accounts.NotYetSavedAsync(req?.StaffIds, ct);
+        return Ok(new { message = "帳號同步作業完成", pending, result = new { invitedCount = r.InvitedCount, existedCount = r.ExistedCount, errorCount = r.ErrorCount, errors = r.Errors, manualLinks = r.ManualLinks } });
     }
 
     [HttpPost("{id}/reset-link"), Authorize(Policies.Admin)]

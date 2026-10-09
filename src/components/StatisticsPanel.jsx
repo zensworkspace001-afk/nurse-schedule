@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { auth, clearArchiveReports } from '../api/database';
+import { clearArchiveReports, audit, ai } from '@backend';
+import { useFeatures } from '../backend/useFeatures';
 import { RATIO_STANDARDS } from '../constants';
 import './StatisticsPanel.css';
 
@@ -117,6 +118,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
   const hasData = loadedMonths.length > 0;
   const [aiMessages, setAiMessages] = useState([{ role: 'assistant', content: '📊 【跨月大數據分析精靈】已就緒！\n只要您曾在「✅ 結算與歷史」面板匯出過 Excel，雲端就會自動記憶。\n您可以直接問我：「比較 2 月和 3 月的加班費差異」或「找出這幾個月請假最多的人」。' }]);
   const [aiInput, setAiInput] = useState('');
+  const feat = useFeatures();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const chatBoxRef = useRef(null);
 
@@ -195,7 +197,6 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
       setAiMessages(prev => [...prev, { role: 'user', content: userMsg }]);
 
       try {
-          const token = await auth.currentUser?.getIdToken();
           const formData = new FormData();
 
 // 個資法 §8 + 醫療法 §72 + 護理人員法 §28 跨境傳輸保護：
@@ -247,33 +248,18 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
           // ★ 稽核：在送 AI 前先記下「誰、何時、把哪幾個月的（已匿名化）薪資資料丟給 Gemini」。
           //   不阻擋業務 — 寫 log 失敗只 console.warn。
           try {
-            await fetch('/api/secure-field', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({
-                action: 'logAiAccess',
-                target: { kind: 'archive', id: null },
-                fields: ['cross_month_csv_anonymized', 'staff_balances_anonymized', 'health_trends_aggregate'],
-                extra: {
-                  months: loadedMonths,
-                  prompt_preview: userMsg.slice(0, 80),
-                  vendor: 'google-gemini',
-                  anonymization: 'CSV col 2 (姓名) blanked; staffAccumulatedHistory.name replaced by staff_id pseudonym',
-                },
-              }),
-            });
+            await audit.logAiAccess({ kind: 'archive', id: null },
+              ['cross_month_csv_anonymized', 'staff_balances_anonymized', 'health_trends_aggregate'], {
+                months: loadedMonths,
+                prompt_preview: userMsg.slice(0, 80),
+                vendor: 'google-gemini',
+                anonymization: 'CSV col 2 (姓名) blanked; staffAccumulatedHistory.name replaced by staff_id pseudonym',
+              });
           } catch (e) {
             console.warn('AI 存取稽核寫入失敗（不阻擋）:', e.message);
           }
 
-          const response = await fetch('/api/analyze-excel', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${token}` },
-              body: formData
-          });
-
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || "伺服器分析失敗");
+          const data = await ai.analyzeExcel(formData);
           setAiMessages(prev => [...prev, { role: 'assistant', content: data.text }]);
 
       } catch (error) {
@@ -694,6 +680,7 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
                       </div>
 
                       {/* 輸入區 */}
+                      {feat.ai ? (
                       <div className="statistics__chat-input-row">
                           <input
                               value={aiInput}
@@ -711,6 +698,9 @@ const [trendToggles, setTrendToggles] = useState({ health: true, ratioD: false, 
                               送出
                           </button>
                       </div>
+                      ) : (
+                      <div className="statistics__chat-input-row statistics__chat-disabled">AI 分析未啟用（未設定語言模型）</div>
+                      )}
                   </div>
               </div>
 

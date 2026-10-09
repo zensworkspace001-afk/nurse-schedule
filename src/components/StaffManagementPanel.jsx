@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, X, Download, Plus, Save, KeyRound, Trash2, AlertTriangle, ShieldCheck } from 'lucide-react';
-import { auth } from '../api/database';
+import { authApi, accounts } from '@backend';
 import EncryptedField from './EncryptedField';
 import AnnouncementEditor from './AnnouncementEditor';
-import { isSuperAdminClaims } from '../../shared/policy.js';
 import './StaffManagementPanel.css';
 
 const StaffManagementPanel = ({ staffData, setStaffData, currentUser, announcement }) => {
@@ -12,11 +11,19 @@ const StaffManagementPanel = ({ staffData, setStaffData, currentUser, announceme
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('active'); // all | active | inactive — 日常操作預設只看在職
 
+  // 編輯中（有未儲存修改）時，別人更新了員工資料 → 記下來；儲存時不覆蓋別人的修改（見 handleSave）
+  const changedWhileEditingRef = useRef(false);
+  const latestStaffRef = useRef(staffData);
+
 useEffect(() => {
+  latestStaffRef.current = staffData;
   // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
   setIsDirty(prev => {
     if (!prev) {
       setLocalStaff(staffData); // 沒在編輯中才更新
+      changedWhileEditingRef.current = false;
+    } else {
+      changedWhileEditingRef.current = true;
     }
     return prev; // isDirty 狀態保持不變
   });
@@ -77,14 +84,7 @@ useEffect(() => {
     )) return;
 
     try {
-      const token = await auth.currentUser.getIdToken();
-      const res = await fetch('/api/admin-user', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ action: 'delete-staff', staffId: id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || '刪除失敗');
+      const data = await accounts.offboard(id);
 
       // 後端已成功；同步剔除本地 list 避免後續儲存把它寫回
       setLocalStaff(prev => prev.filter(s => s.staff_id !== id));
@@ -154,7 +154,7 @@ useEffect(() => {
   };
 
   // 只有超級管理員（admin 帳號）看得到授權按鈕；後端 set-admin 也會再擋一次
-  const isSuperAdmin = isSuperAdminClaims({ email: auth.currentUser?.email });
+  const isSuperAdmin = authApi.isSuperAdmin();
 
   // 授予 / 撤銷管理員權限（Firebase custom claim；對方要重新登入才生效）
   const handleToggleAdmin = async (staff) => {
@@ -164,14 +164,7 @@ useEffect(() => {
           : `確定要撤銷「${staff.name} (${staff.staff_id})」的管理員權限嗎？\n\n對方會被登出，重新登入後回到一般員工畫面。`;
       if (!window.confirm(msg)) return;
       try {
-          const token = await auth.currentUser.getIdToken();
-          const response = await fetch('/api/admin-user', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ action: 'set-admin', staffId: staff.staff_id, admin: makeAdmin }),
-          });
-          const data = await response.json();
-          if (!response.ok) throw new Error(data.error || '設定失敗');
+          const data = await accounts.setAdmin(staff.staff_id, makeAdmin);
           alert(`✅ ${data.message}`);
       } catch (error) {
           alert(`❌ ${error.message}`);
@@ -185,20 +178,7 @@ useEffect(() => {
       }
 
       try {
-          const token = await auth.currentUser.getIdToken();
-          const response = await fetch('/api/admin-user', {
-              method: 'POST',
-              headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({ action: 'reset', staffId: id })
-          });
-
-          const data = await response.json();
-          if (!response.ok) {
-              throw new Error(data.error || '寄送失敗');
-          }
+          const data = await accounts.resetLink(id);
 
           if (data.manualLink) {
               // 寄信服務失效：連結交回管理員，用 prompt 讓它可以直接複製
@@ -213,33 +193,36 @@ useEffect(() => {
   };
 
 const handleSave = async () => {
+    // 0. 編輯期間有其他管理員更新了名單：用自己的舊副本存檔會蓋掉別人的修改 → 載入最新版、請使用者重改（不默默覆蓋）
+    if (changedWhileEditingRef.current) {
+      changedWhileEditingRef.current = false;
+      setLocalStaff(latestStaffRef.current);
+      setIsDirty(false);
+      alert('其他管理員剛更新了員工資料，已載入最新版本。\n您的修改沒有存入，請確認後再改一次。');
+      return;
+    }
+
     // 1. 更新前端畫面與觸發 Firestore 存檔 (靠 App.jsx 原本的 debounce 寫入)
     setStaffData(localStaff);
     setIsDirty(false);
 
     // 2. 偷偷在背景呼叫 Vercel API，幫大家建帳號！
     try {
-        const token = await auth.currentUser.getIdToken();
-        const response = await fetch('/api/admin-user', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({ action: 'sync', staffList: localStaff })
-        });
-
-        const data = await response.json();
-
-        if(response.ok) {
+        let data;
+        try {
+            data = await accounts.sync(localStaff);
+        } catch (e) {
+            if (!e.status) throw e;   // 連不上 → 外層顯示「無法連線」
+            alert(`⚠️ 資料已儲存，但建立登入帳號時發生錯誤：${e.message}`);
+            return;
+        }
+        {
             const r = data.result || {};
             alert(`✅ 員工資料已成功儲存！\n\n🔑 【系統後台報告】\n- 自動開通新帳號：${r.invitedCount ?? r.successCount ?? 0} 人\n- 既有帳號已略過：${r.existedCount ?? 0} 人\n- 發生錯誤：${r.errorCount ?? 0} 人`);
             // 啟用信寄不出去的人：帳號已建立但仍停用，連結逐一交回管理員轉交
             for (const m of r.manualLinks || []) {
               window.prompt(`⚠️ ${m.name || m.staffId} 的啟用信寄送失敗。\n請複製下方連結，親自交給本人（一次性、有時效）：`, m.link);
             }
-        } else {
-            alert(`⚠️ 資料已儲存，但建立登入帳號時發生錯誤：${data.error}`);
         }
     } catch (error) {
         console.error("同步帳號失敗", error);

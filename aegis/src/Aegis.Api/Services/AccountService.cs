@@ -74,6 +74,13 @@ public sealed class AccountService(AegisDbContext db, AuthService auth, TokenSer
         return new SyncResult(invited, existed, errors.Count, errors, manual);
     }
 
+    public async Task<List<string>> NotYetSavedAsync(IReadOnlyList<string>? staffIds, CancellationToken ct)
+    {
+        if (staffIds is not { Count: > 0 }) return [];
+        var saved = await db.Staff.Select(s => s.StaffId).ToListAsync(ct);
+        return staffIds.Where(id => !saved.Contains(id, StringComparer.OrdinalIgnoreCase)).ToList();
+    }
+
     // 重設連結；帳號仍停用（從沒啟用成功）就改發啟用連結，使用時一併解除停用
     public async Task<object> ResetLinkAsync(string staffId, HttpContext http, CancellationToken ct)
     {
@@ -116,7 +123,7 @@ public sealed class AccountService(AegisDbContext db, AuthService auth, TokenSer
         await tx.CommitAsync(ct);
         await audit.WriteAsync(new AuditEntry("delete-staff", actor.UserId, actor.LoginId, "staff", staffId,
             ["avatar", "avatar_thumb", "name", "email", "level", "tenure_years"], new { archived_to = $"ex_staff/{staffId}", auth_disabled = authDisabled }), http, ct);
-        return new { message = $"員工 {s.Name} 已永久離職歸檔", archived_to = $"ex_staff/{staffId}", auth_disabled = authDisabled };
+        return new { message = $"員工 {s.Name} 已永久離職歸檔", archived_to = $"ex_staff/{staffId}", had_avatar = s.Avatar?.Avatar != null, auth_disabled = authDisabled };
     }
 
     // 授予 / 撤銷管理員（僅超級管理員；Controller 用 SuperAdmin policy 擋）；撤銷對方登入讓變更立即生效
