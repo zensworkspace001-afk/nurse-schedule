@@ -1,0 +1,5 @@
+# 黃金樣本產生器（make_golden.py）在 CI 需要的套件 — 版本與 repo 根目錄 requirements.txt 相同
+# 鎖定檔：pip-compile --generate-hashes --allow-unsafe requirements.in -o requirements.lock
+ortools==9.15.6755
+fastapi==0.115.0
+pydantic==1.10.18

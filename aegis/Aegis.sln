@@ -1,0 +1,57 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{443B6F48-4F19-4A38-A3C0-96A51E5D0F44}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aegis.Engine", "src\Aegis.Engine\Aegis.Engine.csproj", "{7909B378-00A4-410B-BA80-211AB90DBFF5}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{DE83F9B2-688F-4814-BD0E-B1E71CDAF18E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aegis.Engine.Baseline", "tests\Aegis.Engine.Baseline\Aegis.Engine.Baseline.csproj", "{F8FCBFD9-7666-4ED2-99CA-0A664F58DFDE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aegis.Scheduling", "src\Aegis.Scheduling\Aegis.Scheduling.csproj", "{E520E132-DD3D-47AF-BBCB-0C8A362B1860}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aegis.Scheduling.Hosting", "src\Aegis.Scheduling.Hosting\Aegis.Scheduling.Hosting.csproj", "{B8C7B9B7-C8B9-4D54-A825-68728C52010A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Aegis.Scheduling.Tests", "tests\Aegis.Scheduling.Tests\Aegis.Scheduling.Tests.csproj", "{8EEF5FBC-1DE2-4ED5-BE6C-58F5482C8B99}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7909B378-00A4-410B-BA80-211AB90DBFF5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7909B378-00A4-410B-BA80-211AB90DBFF5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7909B378-00A4-410B-BA80-211AB90DBFF5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7909B378-00A4-410B-BA80-211AB90DBFF5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F8FCBFD9-7666-4ED2-99CA-0A664F58DFDE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F8FCBFD9-7666-4ED2-99CA-0A664F58DFDE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F8FCBFD9-7666-4ED2-99CA-0A664F58DFDE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F8FCBFD9-7666-4ED2-99CA-0A664F58DFDE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E520E132-DD3D-47AF-BBCB-0C8A362B1860}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E520E132-DD3D-47AF-BBCB-0C8A362B1860}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E520E132-DD3D-47AF-BBCB-0C8A362B1860}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E520E132-DD3D-47AF-BBCB-0C8A362B1860}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B8C7B9B7-C8B9-4D54-A825-68728C52010A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8C7B9B7-C8B9-4D54-A825-68728C52010A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8C7B9B7-C8B9-4D54-A825-68728C52010A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8C7B9B7-C8B9-4D54-A825-68728C52010A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8EEF5FBC-1DE2-4ED5-BE6C-58F5482C8B99}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8EEF5FBC-1DE2-4ED5-BE6C-58F5482C8B99}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8EEF5FBC-1DE2-4ED5-BE6C-58F5482C8B99}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8EEF5FBC-1DE2-4ED5-BE6C-58F5482C8B99}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7909B378-00A4-410B-BA80-211AB90DBFF5} = {443B6F48-4F19-4A38-A3C0-96A51E5D0F44}
+		{F8FCBFD9-7666-4ED2-99CA-0A664F58DFDE} = {DE83F9B2-688F-4814-BD0E-B1E71CDAF18E}
+		{E520E132-DD3D-47AF-BBCB-0C8A362B1860} = {443B6F48-4F19-4A38-A3C0-96A51E5D0F44}
+		{B8C7B9B7-C8B9-4D54-A825-68728C52010A} = {443B6F48-4F19-4A38-A3C0-96A51E5D0F44}
+		{8EEF5FBC-1DE2-4ED5-BE6C-58F5482C8B99} = {DE83F9B2-688F-4814-BD0E-B1E71CDAF18E}
+	EndGlobalSection
+EndGlobal
