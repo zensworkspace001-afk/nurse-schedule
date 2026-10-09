@@ -33,6 +33,9 @@ jobs:
       - name: 資料層與 ETL（SQLite）
         working-directory: aegis
         run: dotnet test tests/Aegis.Data.Tests && dotnet test tests/Aegis.Migration.Tests
+      - name: Web API、登入、SignalR（階段三）
+        working-directory: aegis
+        run: dotnet test tests/Aegis.Api.Tests
       - name: 產生 Python 黃金樣本
         run: python -u aegis/baseline/make_golden.py
       - name: C# 引擎比對

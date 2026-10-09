@@ -71,6 +71,9 @@ public sealed class MigrationTests(ITestOutputHelper output)
         snap.Collections["password_history"] = [new("n001", new JsonObject { ["entries"] = new JsonArray(new JsonObject { ["salt"] = "aa", ["hash"] = "bb", ["at"] = "2026-10-01T00:00:00Z" }) })];
         snap.Collections["ex_staff"] = [new("N033", new JsonObject { ["staff_id"] = "N033", ["name"] = "離職", ["had_avatar"] = false,
             ["deleted_by"] = new JsonObject { ["uid"] = "admin", ["email"] = "admin@hospital.com" } })];
+        snap.AuthUsers = [new("N001", "n001@hospital.com", false, "aGFzaA", "c2FsdA", null, null),
+                          new("Xq9rAnDoM", "admin@hospital.com", false, "aGFzaDI", "c2FsdDI", null, null)];
+        snap.AuthHashConfig = new FirebaseHashConfig("SCRYPT", "c2lnbmVy", "Bw==", 8, 14);
         snap.SkippedCollections["SelectionTurn"] = 12;
         snap.SkippedCollections["AI_Decision_Logs"] = 82;
         return snap;
@@ -102,6 +105,11 @@ public sealed class MigrationTests(ITestOutputHelper output)
         Assert.Equal(4, plan.Cells.Count);                                         // 草稿 1、正式 2、封存 1
         Assert.Contains(plan.Cells, c => c is { Kind: ScheduleKind.Draft, RowKey: "D001", Day: 1, ShiftType: "D", ShiftTime: "07-16" });
         Assert.Contains(plan.Cells, c => c is { Kind: ScheduleKind.Archive, RowKey: "N001", Day: 3, ShiftType: "E" });
+        var n001 = plan.Users.Single(u => u.LoginId == "n001");
+        Assert.Equal(("N001", false, "firebase-scrypt$c2FsdA$aGFzaA"), (n001.StaffId, n001.IsSuperAdmin, n001.PasswordHash));
+        var admin = plan.Users.Single(u => u.LoginId == "admin");
+        Assert.Equal(("Xq9rAnDoM", true, (string?)null), (admin.Id, admin.IsSuperAdmin, admin.StaffId));
+        Assert.Equal((8, 14), (plan.HashConfig!.Rounds, plan.HashConfig.MemoryCost));
     }
 
     [Fact]

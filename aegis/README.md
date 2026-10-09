@@ -111,3 +111,43 @@ dotnet test tests/Aegis.Migration.Tests   # 轉換、快照雜湊、試跑回滾
 - 實際的 SQL Server 匯入。
 
 資料層邏輯目前都是用 SQLite 驗證的。
+
+## 階段三：Web API、自有登入與 SignalR（`src/Aegis.Api`）
+
+**原則：** API 回應的形狀和現行 Firestore 文件一樣；SignalR 推送的內容和對應 GET 的回應一樣。這樣階段四的前端只要換資料來源，元件不必改。
+
+| 取代 | 改成 |
+|---|---|
+| Firebase Auth | `AuthController`：JWT 15 分鐘 + refresh token。refresh token 存在 HttpOnly / SameSite=Strict cookie，每次換發都輪替，重放舊的就整串撤銷。連錯 5 次鎖 15 分鐘。錯誤代碼沿用 Firebase 的。 |
+| 從 Firebase 遷移的密碼 | `firebase-scrypt$…` 驗一次後自動換成 ASP.NET Core Identity 格式（方案 A）。 |
+| Firestore 規則 | 每條路由用 `[Authorize(Policy)]`（Admin / SuperAdmin / Staff）；「員工只能碰自己的資料」在服務層檢查。 |
+| `onSnapshot` | `ScheduleHub`（`/hubs/schedule`）：寫入後推送最新文件，依群組分送：all / admins / staff:{id} / month:{y}_{m}。 |
+| `admin-user` / `complete-profile` / `secure-field` / `log-login` / `activate-account` | `StaffController`、`MeController`、`SecureFieldController`、`AuthController`。驗證規則與錯誤訊息逐字移植。 |
+| Cloud Run 引擎 | `EngineController`：排班回 202 加工作 ID，背景計算，完成時推送 `ScheduleJobChanged`。 |
+| Vercel Cron 保留期限掃除 | `RetentionService`（每天一次）。 |
+
+**新增的保護：**
+
+- **ETag 樂觀鎖：** 兩人同時編輯時，後存的人會收到 409，不再直接覆蓋前一個人的修改。
+- **員工名單漏傳就拒絕：** 移除員工必須走離職流程。
+- **伺服器控管的欄位不能被前端覆寫：** 管理員權限、強制改密、個資同意紀錄。
+- **明文個資一律在伺服器端加密。**
+- **管理員讀全院名單會自動留下稽核紀錄。**
+
+**依決策刻意不同於現行版本：**
+
+- **寄信：** 沒設院內 SMTP 時，啟用與重設連結交回給管理員親自轉交；自助 OTP 重設停用。
+- **AI：** 所有 AI 路由回 503「未啟用」。
+- **`auto-settle.js` 沒有移植：** 正式版用錯文件 ID（`2026-11` 而非 `2026_11`），從來沒有成功執行過。結算仍由前端「結算並封存至歷史區」完成，資料寫入改走新的 API。
+
+**設定：**
+
+- `ConnectionStrings:Aegis` 與 `Aegis:DatabaseProvider`（SqlServer / Sqlite）
+- `Auth:JwtSigningKey`（base64，至少 32 bytes）
+- `FIELD_ENC_KEY`
+- `Aegis:PublicBaseUrl`
+- `Smtp:*`（選填）
+
+```bash
+dotnet test tests/Aegis.Api.Tests   # 19 項：登入 8 + API 11（權限矩陣、ETag、名單保護、遮罩、SignalR 推送、預假、排班背景工作、離職、首登個資、加密欄位、帳號同步）
+```

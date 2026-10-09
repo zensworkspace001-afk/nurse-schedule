@@ -167,7 +167,8 @@ public class ArchiveReport
     public int Month { get; set; }
     public string? Note { get; set; }
     public string? Csv { get; set; }
-    public DateTimeOffset? BackedUpAt { get; set; }
+    public DateTimeOffset? CsvSavedAt { get; set; }      // = saveArchiveReport 的 timestamp
+    public DateTimeOffset? BackedUpAt { get; set; }      // = backupScheduleToArchive 的 backedUpAt
 }
 
 public class MonthlyHealthStat
