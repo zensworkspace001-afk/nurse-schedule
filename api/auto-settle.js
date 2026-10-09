@@ -1,5 +1,6 @@
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
+import { isAdminToken } from './_lib/adminAuth.js';
 
 // 初始化 Firebase Admin (確保只初始化一次)
 if (!admin.apps.length) {
@@ -52,7 +53,7 @@ export default async function handler(req, res) {
   if (!isCronCall) {
     try {
       const decodedToken = await admin.auth().verifyIdToken(token);
-      if (decodedToken.email !== 'admin@hospital.com') {
+      if (!isAdminToken(decodedToken)) {
         return res.status(403).json({ error: '權限不足：只有管理員能執行此操作' });
       }
     } catch {

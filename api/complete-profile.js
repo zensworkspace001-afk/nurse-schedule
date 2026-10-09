@@ -1,10 +1,11 @@
 // api/complete-profile.js
 //
-// 員工個人資料端點（兩種模式，由 body.mode 切換；預設首登流程）。
+// 員工個人資料端點（由 body.mode 切換；預設首登流程）。
 //
 // 模式 1：mode 省略或 'first'  — 首次啟用後完善個資（PII 必填、會加密）
 //   Body: { name, gender, tenure_years, is_pregnant_or_nursing, can_night_shift,
-//           idNumber, bankAccount, phone }
+//           idNumber, bankAccount, phone, pdpa_notice_version }
+//     - pdpa_notice_version 必須等於 shared/policy.js 的 PDPA_NOTICE_VERSION；同意時間用伺服器時間
 //   行為：驗 token → 驗欄位 → 加密 PII → 寫三層 doc，profile_completed=true → 寫 access_logs(encrypt)
 //
 // 模式 2：mode === 'update'  — 已啟用後自助更新基本資料 + 頭貼（不動 PII）
@@ -16,7 +17,11 @@
 //   行為：驗 token → 驗欄位（不要求 PII）→ 寫三層 doc，profile_completed 維持原值
 //        → 寫 access_logs(update-profile)，包含被改動的欄位名清單
 //
-// 共同：員工只能改自己（actor.uid === staff_id）；admin 不可走此端點。
+// 模式 3：mode === 'consent' — 告知版本升級後重新同意 { mode:'consent', pdpa_notice_version }
+//   只更新 pdpa_notice_version / pdpa_consented_at，寫 access_logs(pdpa-consent)
+// 模式 4：mode === 'change-password' — 自助改密 { mode:'change-password', newPassword }
+//
+// 共同：員工只能改自己（actor.uid === staff_id）；超級管理員（admin 帳號）不可走此端點。
 import admin from 'firebase-admin';
 import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
@@ -25,6 +30,8 @@ import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 import { validatePasswordStrength } from './_lib/activationToken.js';
 import { assertPasswordNotReused, recordPassword } from './_lib/passwordHistory.js';
 import { buildStaffPublicProjection } from '../shared/staffProjection.js';
+import { isSuperAdminToken } from './_lib/adminAuth.js';
+import { PDPA_NOTICE_VERSION } from '../shared/policy.js';
 
 if (!admin.apps.length) {
   let pk = process.env.FIREBASE_PRIVATE_KEY;
@@ -84,9 +91,11 @@ function validate(body) {
     const v = String(body.pdpa_consented_at).trim();
     if (v && !Number.isNaN(Date.parse(v))) pdpaConsentedAt = v;
   }
-  if (body.pdpa_notice_version !== undefined) {
-    pdpaNoticeVersion = String(body.pdpa_notice_version).slice(0, 16);
+  // 告知版本以後端為準：只接受目前版本（shared/policy.js）。舊分頁讀的是舊版告知，不算數。
+  if (body.pdpa_notice_version !== PDPA_NOTICE_VERSION) {
+    errors.push('個人資料蒐集告知已更新，請重新整理頁面後重新閱讀並同意');
   }
+  pdpaNoticeVersion = PDPA_NOTICE_VERSION;
 
   return {
     ok: errors.length === 0,
@@ -202,8 +211,8 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }
 
-  // admin 不應透過此端點寫入（admin 自己沒有 staffData 列）
-  if (actor.email === 'admin@hospital.com') {
+  // 超級管理員沒有 staffData 列，不能用這個端點；被授權為管理員的員工仍是員工，可以改自己的資料
+  if (isSuperAdminToken({ email: actor.email })) {
     return res.status(403).json({ error: '管理員請使用員工管理頁面' });
   }
 
@@ -262,6 +271,47 @@ export default async function handler(req, res) {
     }
   }
 
+  // —— mode:'consent' — 告知版本升級後重新同意（已填過資料的員工不必重填整份精靈）——
+  if (req.body?.mode === 'consent') {
+    const rlC = checkRateLimit(`consent:${actor.uid}`, 10);
+    if (!rlC.allowed) return res.status(429).json({ error: '請求過於頻繁，請稍候再試' });
+    if (req.body?.pdpa_notice_version !== PDPA_NOTICE_VERSION) {
+      return res.status(400).json({ error: '個人資料蒐集告知已更新，請重新整理頁面後重新閱讀並同意' });
+    }
+    const metaC = extractClientMeta(req);
+    const staffRefC = admin.firestore().doc('NurseApp/Staff');
+    const consentedAt = new Date().toISOString();
+    try {
+      const found = await admin.firestore().runTransaction(async (tx) => {
+        const snap = await tx.get(staffRefC);
+        const list = snap.exists && Array.isArray(snap.data().staffData) ? snap.data().staffData : [];
+        const idx = list.findIndex(
+          (s) => String(s.staff_id).toLowerCase() === String(actor.uid).toLowerCase(),
+        );
+        if (idx === -1) return false;
+        const row = { ...list[idx], pdpa_notice_version: PDPA_NOTICE_VERSION, pdpa_consented_at: consentedAt };
+        const next = [...list];
+        next[idx] = row;
+        tx.update(staffRefC, { staffData: next });     // 投影欄位沒變，StaffPublic 不必重算
+        tx.set(admin.firestore().doc(`StaffPrivate/${row.staff_id}`), row);
+        return true;
+      });
+      if (!found) return res.status(404).json({ error: '找不到您的員工資料，請聯絡管理員' });
+      await writeAccessLog({
+        actor,
+        action: 'pdpa-consent',
+        target: { kind: 'staff', id: actor.uid },
+        fields: ['pdpa_notice_version', 'pdpa_consented_at'],
+        ip: metaC.ip, ua: metaC.ua,
+        extra: { version: PDPA_NOTICE_VERSION },
+      });
+      return res.status(200).json({ ok: true, version: PDPA_NOTICE_VERSION });
+    } catch (err) {
+      console.error('consent 失敗:', err);
+      return res.status(500).json({ error: '伺服器處理失敗，請稍後再試' });
+    }
+  }
+
   const mode = req.body?.mode === 'update' ? 'update' : 'first';
 
   const rl = checkRateLimit(`complete-profile:${actor.uid}:${mode}`, 10);
@@ -298,11 +348,10 @@ export default async function handler(req, res) {
         phone: encryptField(v.cleaned.phone),
       };
 
-      // PDPA §8 留證欄位：若前端有送，寫進去；否則 server 端 fallback 補上提交當下時間
-      // 這是給審計查的法定欄位，原則上一定要有，因此即便前端漏送也要兜底
+      // PDPA §8 留證欄位：同意時間一律用伺服器時間（不信任用戶端時鐘），版本已在 validate 驗過
       const serverTime = new Date().toISOString();
-      const pdpaConsentedAt = v.cleaned.pdpa_consented_at || serverTime;
-      const pdpaNoticeVersion = v.cleaned.pdpa_notice_version || 'v1';
+      const pdpaConsentedAt = serverTime;
+      const pdpaNoticeVersion = v.cleaned.pdpa_notice_version;
 
       updatedRow = {
         ...staffData[idx],

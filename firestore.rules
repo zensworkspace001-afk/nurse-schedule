@@ -10,10 +10,13 @@ service cloud.firestore {
     }
 
     // ============================================================
-    // Helper: 是否為管理員 (admin@hospital.com)
+    // Helper: 是否為管理員 — 超級管理員 admin@hospital.com，或被授權的員工帳號
+    //         （Firebase Auth custom claim admin == true，由 /api/admin-user action 'set-admin' 設定）
+    //         與 shared/policy.js isAdminClaims 保持一致
     // ============================================================
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email == 'admin@hospital.com';
+      return isAuthenticated() &&
+        (request.auth.token.email == 'admin@hospital.com' || request.auth.token.get('admin', false) == true);
     }
 
     // ============================================================

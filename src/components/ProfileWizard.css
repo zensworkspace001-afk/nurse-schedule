@@ -116,6 +116,8 @@
   text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
   text-align: center;
   justify-content: center;
+  /* 左右留出右上角「登出」按鈕的寬度，窄螢幕上標題才不會壓到它 */
+  padding: 0 64px;
 }
 
 .profwiz__greeting {
@@ -549,4 +551,14 @@
 .profwiz__avatar-hint {
   font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 480px) {
+  /* 窄螢幕：標題移到「登出」按鈕下方一行，左右不必再預留按鈕寬度，也就不會折行 */
+  .profwiz__title {
+    font-size: 19px;
+    padding: 0;
+    margin-top: 30px;
+    white-space: nowrap;
+  }
 }

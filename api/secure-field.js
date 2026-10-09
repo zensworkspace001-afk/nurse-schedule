@@ -8,7 +8,7 @@
 //     { action: 'logAiAccess',   target: {kind, id},  fields: [...],         extra?: object }
 //
 // 權限規則：
-//   - admin@hospital.com：所有 action / 所有 target
+//   - 管理員（admin@hospital.com 或 claim admin:true，見 shared/policy.js）：所有 action / 所有 target
 //   - 員工本人：只能對自己的 staff 資料執行 decrypt / batchDecrypt
 //   - encrypt：admin only（員工不需主動加密；UI 寫入時才走 encrypt）
 //
@@ -19,8 +19,8 @@ import { checkCsrf } from './_lib/csrf.js';
 import { checkRateLimit } from './_lib/rateLimit.js';
 import { encryptField, decryptField, isEncrypted, currentKeyId } from './_lib/crypto.js';
 import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
+import { isAdminToken } from './_lib/adminAuth.js';
 
-const ADMIN_EMAIL = 'admin@hospital.com';
 
 // 沿用既有的 Firebase Admin 初始化模式（雙路徑：SERVICE_ACCOUNT 或 PROJECT_ID 三件組）
 if (!admin.apps.length) {
@@ -76,7 +76,7 @@ export default async function handler(req, res) {
   try {
     const token = authHeader.split('Bearer ')[1];
     const decoded = await admin.auth().verifyIdToken(token);
-    actor = { uid: decoded.uid, email: decoded.email || null };
+    actor = { uid: decoded.uid, email: decoded.email || null, isAdmin: isAdminToken(decoded) };
   } catch {
     return res.status(401).json({ error: '未經授權：登入憑證無效或已過期' });
   }
@@ -91,7 +91,7 @@ export default async function handler(req, res) {
   }
 
   const { action, payload, target, fields, extra } = req.body || {};
-  const isAdmin = actor.email === ADMIN_EMAIL;
+  const isAdmin = actor.isAdmin;
   const meta = extractClientMeta(req);
 
   try {

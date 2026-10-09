@@ -16,6 +16,9 @@ import ParticleBackground from './components/ParticleBackground';
 import WeatherClockWidget from './components/WeatherClockWidget';
 import ConnectionStatusBanner from './components/ConnectionStatusBanner';
 import './App.refactored.css';
+import { buildUserPayload } from './utils/currentUser';
+import PdpaReconsent from './components/PdpaReconsent';
+import { PDPA_NOTICE_VERSION } from '../shared/policy.js';
 
 // 物件內容指紋（key 排序後 JSON），用來判斷自動存檔前後內容是否真的有變
 const stableKey = (v) => JSON.stringify(v, (_k, val) =>
@@ -49,17 +52,10 @@ const NurseSchedulingSystem = () => {
   // 自動存檔失敗時把指紋退回原值並遞增，讓自動存檔 effect 5 秒後再跑一次（否則網路暫時出錯就悄悄沒存到）
   const [autosaveRetry, setAutosaveRetry] = useState(0);
   useEffect(() => {
-    const buildUserPayload = (user) => {
-      const localPart = (user.email || '').split('@')[0].toLowerCase();
-      // 與 LoginPanel.handleLogin 的 userPayload 維持完全一致的形狀
-      return localPart === 'admin'
-        ? { id: 'ADMIN', name: '管理人員', role: 'admin' }
-        : { id: localPart.toUpperCase(), name: '載入中...', role: 'staff', rule: 'Standard' };
-    };
-    const unsub = onAuthStateChanged(auth, (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
       if (initialAuthHandled.current) return; // 只認開機第一發
       initialAuthHandled.current = true;
-      if (user) setCurrentUser(buildUserPayload(user));
+      if (user) setCurrentUser(await buildUserPayload(user));   // 與 LoginPanel 共用（src/utils/currentUser.js）
       setAuthChecked(true);
     });
     return () => unsub();
@@ -776,6 +772,13 @@ const handleSaveAndPublish = async () => {
   //   - 只有透過 sync-accounts 新建的員工 / admin 在 StaffManagementPanel 新增的列才會被標記為 false。
   if (currentUser.role === 'staff' && myStaffRow && myStaffRow.profile_completed === false) {
     return <ProfileWizard staffRow={myStaffRow} currentUser={currentUser} />;
+  }
+
+  // 個資告知升版（shared/policy.js PDPA_NOTICE_VERSION）→ 同意過舊版的員工必須重新同意才能繼續。
+  // 只攔「有同意紀錄但版本舊」的人；從未留下同意紀錄的舊帳號（精靈上線前建立的）暫不攔。
+  if (currentUser.role === 'staff' && myStaffRow && myStaffRow.pdpa_notice_version
+      && myStaffRow.pdpa_notice_version !== PDPA_NOTICE_VERSION) {
+    return <PdpaReconsent currentUser={currentUser} hadConsentedBefore />;
   }
 
 

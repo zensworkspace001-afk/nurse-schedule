@@ -3,13 +3,14 @@
 // 管理員的「員工帳號管理」統一端點。原本拆成兩個檔案（sync-accounts、reset-password），
 // 但 Vercel Hobby plan 上限 12 個 serverless function，合併以節省 quota。
 //
-// POST /api/admin-user   (Bearer Firebase token — 必須是 admin@hospital.com)
+// POST /api/admin-user   (Bearer Firebase token — 必須是管理員：admin@hospital.com 或 claim admin:true；set-admin 限超級管理員)
 //
 //   { action: 'sync',         staffList: [...] }   ← 批次建立帳號 + 寄啟用信
 //   { action: 'reset',        staffId: 'N001' }    ← 寄送密碼重設信給該員工
 //   { action: 'delete-staff', staffId: 'N001' }    ← 永久離職：歸檔頭貼到 ex_staff/{id}、
 //                                                     從 NurseApp/Staff + StaffPublic 移除、
 //                                                     刪除 StaffPrivate/{id}、停用 Auth、寫稽核
+//   { action: 'set-admin', staffId: 'N001', admin: true|false }  ← 授予 / 撤銷管理員（僅超級管理員）
 //   { action: 'list-access-logs', limit, actionFilter, actorFilter }  ← 讀稽核日誌
 //                                                     （後端依 ACCESS_LOG_BACKEND 讀 Firestore 或 MySQL）
 //
@@ -21,6 +22,7 @@ import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
 import { clearPasswordHistory } from './_lib/passwordHistory.js';
 import { writeAccessLog, readAccessLogs, extractClientMeta } from './_lib/accessLog.js';
 import { buildStaffPublicProjection } from '../shared/staffProjection.js';
+import { isAdminToken, isSuperAdminToken } from './_lib/adminAuth.js';
 
 if (!admin.apps.length) {
   let serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -125,7 +127,7 @@ export default async function handler(req, res) {
   try {
     const token = authHeader.split('Bearer ')[1];
     decodedToken = await admin.auth().verifyIdToken(token);
-    if (decodedToken.email !== 'admin@hospital.com') {
+    if (!isAdminToken(decodedToken)) {
       return res.status(403).json({ error: '權限不足：只有管理員能執行此操作' });
     }
   } catch {
@@ -245,6 +247,70 @@ export default async function handler(req, res) {
     }
   }
 
+  // —— set-admin：授予 / 撤銷管理員權限（僅超級管理員）——
+  // 權限存在 Firebase Auth custom claim（admin: true），Firestore 規則、各 API、排班引擎都讀 token 判斷；
+  // staffData 上的 is_admin 只供畫面顯示。撤銷 refresh token 讓變更立即生效：對方必須重新登入，
+  // 新 token 才會帶上（或拿掉）claim。
+  if (action === 'set-admin') {
+    if (!isSuperAdminToken(decodedToken)) {
+      return res.status(403).json({ error: '只有超級管理員（admin 帳號）可以授予或撤銷管理員權限' });
+    }
+    const staffId = String(req.body?.staffId || '').trim().toUpperCase();
+    const makeAdmin = req.body?.admin === true;
+    const meta = extractClientMeta(req);
+    if (!/^[A-Z0-9_-]{1,32}$/.test(staffId)) return res.status(400).json({ error: '員工編號格式錯誤' });
+
+    try {
+      const db = admin.firestore();
+      const staffRef = db.doc('NurseApp/Staff');
+      // 先確認是在職名單上的人，再動 Auth（離職者已從名單移除，不能被重新授權）
+      const snap = await staffRef.get();
+      const list = snap.exists ? (snap.data().staffData || []) : [];
+      const row = list.find((s) => String(s.staff_id).toUpperCase() === staffId);
+      if (!row) return res.status(404).json({ error: `找不到員工 ${staffId}` });
+
+      const user = await admin.auth().getUser(staffId);
+      const claims = { ...(user.customClaims || {}) };
+      if (makeAdmin) claims.admin = true; else delete claims.admin;
+      await admin.auth().setCustomUserClaims(staffId, Object.keys(claims).length ? claims : null);
+      await revokeTokensForUid(staffId);
+
+      // 畫面顯示用的旗標：NurseApp/Staff + StaffPrivate 同步（StaffPublic 投影不含此欄位）
+      await db.runTransaction(async (tx) => {
+        const s = await tx.get(staffRef);
+        const rows = s.exists ? (s.data().staffData || []) : [];
+        const idx = rows.findIndex((r) => String(r.staff_id).toUpperCase() === staffId);
+        if (idx === -1) return;
+        const next = [...rows];
+        next[idx] = { ...rows[idx], is_admin: makeAdmin };
+        tx.update(staffRef, { staffData: next });
+        tx.set(db.doc(`StaffPrivate/${rows[idx].staff_id}`), next[idx]);
+      });
+
+      await writeAccessLog({
+        actor: { uid: decodedToken.uid, email: decodedToken.email },
+        action: 'set-admin',
+        target: { kind: 'staff', id: staffId },
+        fields: ['admin'],
+        ip: meta.ip, ua: meta.ua,
+        extra: { admin: makeAdmin },
+      });
+
+      return res.status(200).json({
+        message: makeAdmin
+          ? `已授予 ${row.name || staffId} 管理員權限（對方需重新登入）`
+          : `已撤銷 ${row.name || staffId} 的管理員權限（對方需重新登入）`,
+        admin: makeAdmin,
+      });
+    } catch (error) {
+      console.error('set-admin 失敗:', error);
+      if (error.code === 'auth/user-not-found') {
+        return res.status(404).json({ error: '這位員工還沒有登入帳號，請先儲存員工資料建立帳號' });
+      }
+      return res.status(500).json({ error: '伺服器內部錯誤' });
+    }
+  }
+
   // —— delete-staff：永久離職歸檔 ——
   // 行為：
   //   1. 在 transaction 內讀 NurseApp/Staff，找到該員工
@@ -322,6 +388,7 @@ export default async function handler(req, res) {
       let authDisabled = false;
       try {
         await admin.auth().updateUser(staffId, { disabled: true });
+        await admin.auth().setCustomUserClaims(staffId, null);   // 離職一併撤銷管理員權限
         await revokeTokensForUid(staffId);
         authDisabled = true;
       } catch (authErr) {

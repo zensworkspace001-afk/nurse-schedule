@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, X, Download, Plus, Save, KeyRound, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, X, Download, Plus, Save, KeyRound, Trash2, AlertTriangle, ShieldCheck } from 'lucide-react';
 import { auth } from '../api/database';
 import EncryptedField from './EncryptedField';
 import AnnouncementEditor from './AnnouncementEditor';
+import { isSuperAdminClaims } from '../../shared/policy.js';
 import './StaffManagementPanel.css';
 
 const StaffManagementPanel = ({ staffData, setStaffData, currentUser, announcement }) => {
@@ -152,9 +153,34 @@ useEffect(() => {
     reader.readAsText(file);
   };
 
+  // 只有超級管理員（admin 帳號）看得到授權按鈕；後端 set-admin 也會再擋一次
+  const isSuperAdmin = isSuperAdminClaims({ email: auth.currentUser?.email });
+
+  // 授予 / 撤銷管理員權限（Firebase custom claim；對方要重新登入才生效）
+  const handleToggleAdmin = async (staff) => {
+      const makeAdmin = !staff.is_admin;
+      const msg = makeAdmin
+          ? `確定要授予「${staff.name} (${staff.staff_id})」管理員權限嗎？\n\n對方將能看到所有員工資料（含解密個資）、排班與發布班表。授權後對方需重新登入。`
+          : `確定要撤銷「${staff.name} (${staff.staff_id})」的管理員權限嗎？\n\n對方會被登出，重新登入後回到一般員工畫面。`;
+      if (!window.confirm(msg)) return;
+      try {
+          const token = await auth.currentUser.getIdToken();
+          const response = await fetch('/api/admin-user', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ action: 'set-admin', staffId: staff.staff_id, admin: makeAdmin }),
+          });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || '設定失敗');
+          alert(`✅ ${data.message}`);
+      } catch (error) {
+          alert(`❌ ${error.message}`);
+      }
+  };
+
   // 觸發後端寄送一次性密碼重設信（不再直接覆寫密碼）
   const handleResetPassword = async (id, name) => {
-      if (!window.confirm(`確定要寄送密碼重設信給「${name} (${id})」嗎？\n\n系統將寄出 24 小時內有效的一次性連結，員工點擊後可自行設定新密碼。`)) {
+      if (!window.confirm(`確定要寄送密碼重設信給「${name} (${id})」嗎？\n\n系統將寄出有時效的一次性連結，員工點擊後可自行設定新密碼。`)) {
           return;
       }
 
@@ -452,6 +478,14 @@ const handleSave = async () => {
                 <td className="staff-mgmt__td--actions">
                   {/* 新增：重置密碼按鈕 */}
                   <button onClick={() => handleResetPassword(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--reset" title="寄送密碼重設信"><KeyRound size={16} /></button>
+                  {isSuperAdmin && (
+                    <button
+                      onClick={() => handleToggleAdmin(staff)}
+                      className={`staff-mgmt__icon-btn staff-mgmt__icon-btn--admin${staff.is_admin ? ' staff-mgmt__icon-btn--admin-on' : ''}`}
+                      title={staff.is_admin ? '管理員（點擊撤銷）' : '授予管理員權限'}
+                      aria-pressed={!!staff.is_admin}
+                    ><ShieldCheck size={16} /></button>
+                  )}
                   <button onClick={() => handleDelete(staff.staff_id, staff.name)} className="staff-mgmt__icon-btn staff-mgmt__icon-btn--delete" title="永久離職（歸檔頭貼 + 停用帳號 + 寫稽核）"><Trash2 size={16} /></button>
                 </td>
 

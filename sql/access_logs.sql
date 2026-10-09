@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS access_logs (
   ts           DATETIME(3)  NOT NULL DEFAULT CURRENT_TIMESTAMP(3),  -- 毫秒精度，對齊 ISO timestamp
   actor_uid    VARCHAR(40),
   actor_email  VARCHAR(120),
-  action       VARCHAR(30)  NOT NULL,   -- decrypt|encrypt|relock|ai-access|ai-access-blocked|update-profile|delete-staff|login|login-failure
+  action       VARCHAR(30)  NOT NULL,   -- decrypt|encrypt|relock|ai-access|ai-access-blocked|update-profile|delete-staff|set-admin|pdpa-consent|login|login-failure
   target_kind  VARCHAR(30),             -- staff|settings|archive...
   target_id    VARCHAR(64),
   fields       JSON,                    -- 被存取的欄位清單，如 ["idNumber","phone"]
