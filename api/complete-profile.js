@@ -24,7 +24,7 @@ import { encryptField } from './_lib/crypto.js';
 import { writeAccessLog, extractClientMeta } from './_lib/accessLog.js';
 import { validatePasswordStrength } from './_lib/activationToken.js';
 import { assertPasswordNotReused, recordPassword } from './_lib/passwordHistory.js';
-import { buildStaffPublicProjection } from './_lib/staffProjection.js';
+import { buildStaffPublicProjection } from '../shared/staffProjection.js';
 
 if (!admin.apps.length) {
   let pk = process.env.FIREBASE_PRIVATE_KEY;
@@ -355,7 +355,7 @@ export default async function handler(req, res) {
     //   1. NurseApp/Staff       — 完整名單 (admin 用)
     //   2. NurseApp/StaffPublic — 精簡公開投影 (同事看得到的部分)
     //   3. StaffPrivate/{id}    — 該員工自己的完整 row（頂層 collection；2 段路徑才是合法 doc）
-    // 投影欄位定義在 api/_lib/staffProjection.js（與前端 / 腳本共用同一份）。
+    // 投影欄位定義在 shared/staffProjection.js（與前端 / 腳本共用同一份）。
     const publicList = buildStaffPublicProjection(staffData);
 
     const batch = admin.firestore().batch();

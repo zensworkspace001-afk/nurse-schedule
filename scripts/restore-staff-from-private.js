@@ -15,7 +15,7 @@
 //   node --env-file=.env.local scripts/restore-staff-from-private.js --commit # 實際寫回
 
 import admin from 'firebase-admin';
-import { buildStaffPublicProjection } from '../api/_lib/staffProjection.js';
+import { buildStaffPublicProjection } from '../shared/staffProjection.js';
 
 const COMMIT = process.argv.includes('--commit');
 

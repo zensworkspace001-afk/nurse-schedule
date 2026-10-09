@@ -171,7 +171,7 @@ NurseApp/Staff             — { staffData: [...], healthStats: [...] }   admin-
 NurseApp/StaffPublic       — { staffData: [{staff_id,name,level,is_leader,is_active,avatar_thumb}, ...] }   any authed user reads
                              sanitized projection — no PII/health/financial. Only avatar_thumb (not full avatar) is included
                              to stay under Firestore's 1 MiB single-doc limit (~100 staff × 4 KB thumb ≈ 400 KB). Mirrored
-                             on every saveGlobalStaff. Single definition in api/_lib/staffProjection.js, imported by the
+                             on every saveGlobalStaff. Single definition in shared/staffProjection.js, imported by the
                              frontend, both APIs and the scripts; `npm run lint` fails if a copy reappears.
 StaffPrivate/{id}          — top-level collection; full row for a single staff   admin or matching staff uid reads
                              same shape as a single element of NurseApp/Staff.staffData

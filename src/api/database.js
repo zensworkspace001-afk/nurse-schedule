@@ -14,7 +14,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { reportFirestoreError, reportFirestoreHealthy } from './connectionStatus';
-import { buildStaffPublicProjection } from '../../api/_lib/staffProjection.js';
+import { buildStaffPublicProjection } from '../../shared/staffProjection.js';
 
 // 包裝 onSnapshot data callback：第一次成功就回報 healthy（讓 banner 自動消失）
 function wrapDataCb(source, cb) {
@@ -115,7 +115,7 @@ export const clearAnnouncement = async () => {
 // 違反 PDPA §6（特種個資 — 醫療/健康 — 包含懷孕、產假狀態）。
 // 拆成三個 doc 後：管理員仍從 Staff 讀完整；員工角色只讀同事的精簡 + 自己的私有。
 
-// 公開投影的唯一定義在 api/_lib/staffProjection.js（前後端與腳本共用）；這裡轉出給既有的 import。
+// 公開投影的唯一定義在 shared/staffProjection.js（前後端與腳本共用）；這裡轉出給既有的 import。
 export { buildStaffPublicProjection };
 
 // 管理員：訂閱完整 Staff doc（規則限定 admin）

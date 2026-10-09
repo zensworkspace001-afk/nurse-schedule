@@ -1,4 +1,4 @@
-// CI 檢查：StaffPublic 投影只能有一份定義（api/_lib/staffProjection.js）。
+// CI 檢查：StaffPublic 投影只能有一份定義（shared/staffProjection.js）。
 // 過去前端、兩支 API、兩支腳本各複製一份，改欄位時漏改任何一份就會讓 StaffPublic 內容依寫入路徑而不同
 // （甚至把 PII 帶進全員可讀的 doc）。這裡擋住兩種重新複製的寫法：
 //   1. 在別處重新定義 buildStaffPublicProjection / toStaffPublic
@@ -7,8 +7,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const ROOTS = ['src', 'api', 'scripts'];
-const CANONICAL = path.normalize('api/_lib/staffProjection.js');
+const ROOTS = ['src', 'api', 'scripts', 'shared'];
+const CANONICAL = path.normalize('shared/staffProjection.js');
 const SELF = path.normalize('scripts/check-projection-single-source.js');
 const DEFINE = /(function\s+(buildStaffPublicProjection|toStaffPublic)\b|(const|let|var)\s+(buildStaffPublicProjection|toStaffPublic)\s*=)/;
 const INLINE = /staff_id:\s*\w+\.staff_id[\s\S]{0,300}?is_leader:[\s\S]{0,200}?is_active:[\s\S]{0,200}?avatar_thumb:/;
@@ -28,8 +28,8 @@ for (const file of ROOTS.filter(fs.existsSync).flatMap(walk)) {
 }
 
 if (bad.length) {
-  console.error('StaffPublic 投影必須 import api/_lib/staffProjection.js，不可另寫一份：');
+  console.error('StaffPublic 投影必須 import shared/staffProjection.js，不可另寫一份：');
   bad.forEach((b) => console.error(`  ✗ ${b}`));
   process.exit(1);
 }
-console.log('✓ StaffPublic 投影只有 api/_lib/staffProjection.js 一份定義');
+console.log('✓ StaffPublic 投影只有 shared/staffProjection.js 一份定義');

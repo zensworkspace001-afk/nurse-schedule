@@ -16,7 +16,7 @@
 //   FIREBASE_SERVICE_ACCOUNT  或  (FIREBASE_PROJECT_ID + FIREBASE_CLIENT_EMAIL + FIREBASE_PRIVATE_KEY)
 
 import admin from 'firebase-admin';
-import { toStaffPublic } from '../api/_lib/staffProjection.js';
+import { toStaffPublic } from '../shared/staffProjection.js';
 
 const COMMIT = process.argv.includes('--commit');
 

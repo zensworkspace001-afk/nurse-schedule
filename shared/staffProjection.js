@@ -5,6 +5,8 @@
 //
 // avatar_thumb 是 64x64 縮圖；不放 220x220 主圖是因為 Firestore 單 doc 1 MiB 上限。
 // 純函式、零依賴：瀏覽器 (Vite) 與 Node (Vercel / scripts) 都能直接 import。
+// 放在 shared/ 而不是 api/_lib/：dev server 會把 /api/* 整段 proxy 到正式站，前端 import
+// api/ 底下的檔案在本機會拿到 HTML（白畫面）。
 
 export function toStaffPublic(s) {
   return {

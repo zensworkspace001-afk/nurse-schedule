@@ -20,7 +20,7 @@ import { checkCsrf } from './_lib/csrf.js';
 import { issueToken, revokeTokensForUid } from './_lib/activationToken.js';
 import { clearPasswordHistory } from './_lib/passwordHistory.js';
 import { writeAccessLog, readAccessLogs, extractClientMeta } from './_lib/accessLog.js';
-import { buildStaffPublicProjection } from './_lib/staffProjection.js';
+import { buildStaffPublicProjection } from '../shared/staffProjection.js';
 
 if (!admin.apps.length) {
   let serviceAccount = process.env.FIREBASE_SERVICE_ACCOUNT;
@@ -282,7 +282,7 @@ export default async function handler(req, res) {
         const nextList = list.filter((_, i) => i !== idx);
         tx.update(staffRef, { staffData: nextList });
 
-        // 3. 重算 StaffPublic 投影（共用 api/_lib/staffProjection.js）
+        // 3. 重算 StaffPublic 投影（共用 shared/staffProjection.js）
         const publicList = buildStaffPublicProjection(nextList);
         tx.set(publicRef, { staffData: publicList });
 
