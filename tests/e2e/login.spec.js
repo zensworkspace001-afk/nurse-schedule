@@ -23,7 +23,10 @@ test.describe('login smoke', () => {
 
   test('wrong password shows an error and stays on login', async ({ page }) => {
     await page.goto('/');
-    await page.getByPlaceholder(/請輸入工號/).fill(creds.staff.id);
+    // 用不存在的工號：拿真的測試帳號故意輸錯，失敗次數會累積到 Firebase 暫時鎖住該帳號
+    // （auth/too-many-requests），之後所有用它登入的測試都會失敗。登入頁對「帳號不存在」與
+    // 「密碼錯誤」顯示同一句訊息（防帳號列舉），所以斷言不變。
+    await page.getByPlaceholder(/請輸入工號/).fill('e2e-no-such-user');
     await page.getByPlaceholder(/請輸入密碼/).fill('definitely-wrong-pw');
     await page.getByRole('button', { name: /登入系統|驗證中/ }).click();
 
