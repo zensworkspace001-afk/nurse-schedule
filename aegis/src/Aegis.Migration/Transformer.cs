@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Aegis.Data;
 using Aegis.Engine;
 using Aegis.Security;
+using static Aegis.Data.DocumentMapper;
 
 namespace Aegis.Migration;
 
@@ -41,8 +42,6 @@ public interface ISnapshotTransformer
 // 純函式：快照 → 實體（不碰資料庫）。欄位對照見 aegis/README.md 階段二
 public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransformer
 {
-    private static readonly string[] Pii = ["idNumber", "bankAccount", "phone"];
-
     public MigrationPlan Transform(FirestoreSnapshot s, MigrationOptions o)
     {
         var plan = new MigrationPlan();
@@ -57,32 +56,8 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
         foreach (var r in rows)
         {
             string id = Str(r, "staff_id") ?? throw new InvalidDataException("staffData 有一列沒有 staff_id");
-            var st = new Staff
-            {
-                StaffId = id, Name = Str(r, "name") ?? id, Email = Str(r, "email") ?? "", Gender = Str(r, "gender"),
-                Level = Str(r, "level") ?? "N0", IsLeader = Bool(r, "is_leader") ?? false, IsActive = Bool(r, "is_active") ?? true,
-                SpecialStatus = Str(r, "special_status") == "BiWeekly" ? SpecialStatus.BiWeekly : SpecialStatus.Standard,
-                LeaveStatus = Str(r, "leave_status") ?? "None", IsPregnantOrNursing = Bool(r, "is_pregnant_or_nursing") ?? false,
-                CanNightShift = Bool(r, "can_night_shift") ?? true, TenureYears = (int)(Num(r, "tenure_years") ?? 0),
-                AccumulatedOt = (int)(Num(r, "accumulated_ot") ?? 0), NightShiftBalance = (int)(Num(r, "night_shift_balance") ?? 0),
-                AnnualLeaveUsed = Num(r, "annual_leave_used") is double a ? (int)a : null,
-                ProfileCompleted = Bool(r, "profile_completed"), ProfileCompletedAt = Time(r, "profile_completed_at"),
-                ProfileUpdatedAt = Time(r, "profile_updated_at"), PdpaConsentedAt = Time(r, "pdpa_consented_at"),
-                PdpaNoticeVersion = Str(r, "pdpa_notice_version"), MustChangePassword = Bool(r, "must_change_password") ?? false,
-                IsAdmin = (Bool(r, "is_admin") ?? false) || authAdmins.Contains(id.ToUpperInvariant()),
-            };
-            var sens = new StaffSensitive { StaffId = id };
-            sens.IdNumber = Encrypted(r, "idNumber", id, plan, o);
-            sens.BankAccount = Encrypted(r, "bankAccount", id, plan, o);
-            sens.Phone = Encrypted(r, "phone", id, plan, o);
-            if (sens.IdNumber != null || sens.BankAccount != null || sens.Phone != null) st.Sensitive = sens;
-            string? avatar = Str(r, "avatar"), thumb = Str(r, "avatar_thumb");
-            if (avatar != null || thumb != null) st.Avatar = new StaffAvatar { StaffId = id, Avatar = avatar, AvatarThumb = thumb };
-            if (r["settlement_history"] is JsonObject hist)
-                foreach (var (period, v) in hist)
-                    if (v is JsonObject h)
-                        st.Settlements.Add(new SettlementRecord { StaffId = id, Period = period, Annual = (int)(Num(h, "annual") ?? 0),
-                                                                  Ot = (int)(Num(h, "ot") ?? 0), Night = (int)(Num(h, "night") ?? 0) });
+            var st = StaffFromRow(r, (field, plain) => EncryptPlaintext($"{id}.{field}", plain, plan, o));
+            st.IsAdmin = st.IsAdmin || authAdmins.Contains(id.ToUpperInvariant());
             plan.Staff.Add(st);
         }
         // 三份員工資料的漂移檢查（合併成一張表之後就不會再發生）
@@ -114,7 +89,7 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
                 RatioD = (int)(Num(bed, "ratioD") ?? 0), RatioE = (int)(Num(bed, "ratioE") ?? 0), RatioN = (int)(Num(bed, "ratioN") ?? 0),
                 ReqD = (int)(Num(req, "D") ?? 0), ReqE = (int)(Num(req, "E") ?? 0), ReqN = (int)(Num(req, "N") ?? 0),
                 OptimalD = (int?)Num(req, "optimalD"), OptimalE = (int?)Num(req, "optimalE"), OptimalN = (int?)Num(req, "optimalN"),
-                BaseSalary = Encrypted(set, "baseSalary", "Settings", plan, o),
+                BaseSalary = JsonToEncrypted(set["baseSalary"], plain => EncryptPlaintext("Settings.baseSalary", plain, plan, o)),
                 PublishedYear = (int?)Num(pub, "year"), PublishedMonth = (int?)Num(pub, "month"),
             };
             int order = 0;
@@ -125,14 +100,9 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
                 plan.LevelBonuses.Add(new LevelBonus { Level = lv, Amount = (int)(AsDouble(amt) ?? 0) });
             if (set["leaveWish"] is JsonObject lw)
             {
-                var reqs = lw["reqs"] as JsonObject;
-                plan.Windows.Add(new LeaveWishWindow
-                {
-                    Year = (int)Num(lw, "year")!, Month = (int)Num(lw, "month")!, Open = Bool(lw, "open") ?? false,
-                    ReqD = (int)(Num(reqs, "D") ?? 0), ReqE = (int)(Num(reqs, "E") ?? 0), ReqN = (int)(Num(reqs, "N") ?? 0),
-                    Quota = (int)(Num(lw, "quota") ?? 0), DaysPerPerson = (int)(Num(lw, "days_per_person") ?? 4),
-                    OpenedAt = Time(lw, "openedAt"), ClosedAt = Time(lw, "closedAt"),
-                });
+                var w = new LeaveWishWindow { Year = (int)Num(lw, "year")!, Month = (int)Num(lw, "month")! };
+                WindowFromJson(w, lw);
+                plan.Windows.Add(w);
             }
             if (set.ContainsKey("priorityConfig")) plan.Skipped.Add("Settings.priorityConfig（舊認領流程的接力設定，不遷移）");
         }
@@ -168,8 +138,8 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
         {
             var (y, m) = YearMonth(doc.Id);
             plan.Months.Add(new ScheduleMonth { Year = y, Month = m });
-            AddCells(plan, y, m, ScheduleKind.Draft, doc.Fields["schedule"] as JsonObject);
-            AddCells(plan, y, m, ScheduleKind.Final, doc.Fields["finalizedSchedule"] as JsonObject);
+            plan.Cells.AddRange(CellsFromDoc(y, m, ScheduleKind.Draft, doc.Fields["schedule"] as JsonObject));
+            plan.Cells.AddRange(CellsFromDoc(y, m, ScheduleKind.Final, doc.Fields["finalizedSchedule"] as JsonObject));
         }
         plan.SourceCounts["Schedules"] = s.Docs("Schedules").Count;
         if (s.Docs("SchedulesPublic").Count > 0) plan.Skipped.Add($"SchedulesPublic（{s.Docs("SchedulesPublic").Count} 份，改由檢視表 vSchedulePublic 產生）");
@@ -178,8 +148,8 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
         {
             var (y, m) = YearMonth(doc.Id);
             plan.Archives.Add(new ArchiveReport { Year = y, Month = m, Note = Str(doc.Fields, "note"), Csv = Str(doc.Fields, "csv"),
-                                                  BackedUpAt = Time(doc.Fields, "backedUpAt") ?? Time(doc.Fields, "timestamp") });
-            AddCells(plan, y, m, ScheduleKind.Archive, doc.Fields["schedule_backup"] as JsonObject);
+                                                  BackedUpAt = Time(doc.Fields, "backedUpAt"), CsvSavedAt = Time(doc.Fields, "timestamp") });
+            plan.Cells.AddRange(CellsFromDoc(y, m, ScheduleKind.Archive, doc.Fields["schedule_backup"] as JsonObject));
         }
         plan.SourceCounts["archive_reports"] = s.Docs("archive_reports").Count;
 
@@ -240,62 +210,14 @@ public sealed class SnapshotTransformer(IFieldCrypto? crypto) : ISnapshotTransfo
         return plan;
     }
 
-    private static void AddCells(MigrationPlan plan, int y, int m, ScheduleKind kind, JsonObject? rows)
+    // 明文個資 / 底薪：依決策 5 用目前金鑰加密並記錄；沒有金鑰就拒絕（不以明文寫進 SQL）
+    private EncryptedValue EncryptPlaintext(string label, FieldPlain plain, MigrationPlan plan, MigrationOptions o)
     {
-        if (rows is null) return;
-        foreach (var (rowKey, row) in rows)
-            foreach (var (day, cell) in row as JsonObject ?? [])
-            {
-                if (!int.TryParse(day, out int d)) continue;
-                string? type = cell is JsonObject c ? Str(c, "type") : cell?.GetValueKind() == JsonValueKind.String ? cell.GetValue<string>() : null;
-                if (type is null) continue;
-                plan.Cells.Add(new ScheduleCell { Year = y, Month = m, Kind = kind, RowKey = rowKey, Day = d, ShiftType = type,
-                                                  ShiftTime = cell is JsonObject c2 ? Str(c2, "time") : null });
-            }
-    }
-
-    // 加密欄位：{ct,iv,tag,v,kid} → 原樣搬（不解密）；明文字串 → 依決策 5 用目前金鑰加密並記錄；null → null
-    private EncryptedValue? Encrypted(JsonObject? obj, string field, string owner, MigrationPlan plan, MigrationOptions o)
-    {
-        var node = obj?[field];
-        if (node is null) return null;
-        if (node is JsonObject b && b["ct"] is not null)
-            return EncryptedValue.FromNode(Str(b, "ct")!, Str(b, "iv")!, Str(b, "tag")!, (int)(Num(b, "v") ?? 1), Str(b, "kid"));
-        string plain = node.GetValueKind() == JsonValueKind.String ? node.GetValue<string>() : node.ToJsonString();
         if (!o.EncryptPlaintextPii || crypto is null)
-            throw new InvalidOperationException($"{owner}.{field} 是明文，需要 FIELD_ENC_KEY 才能加密後匯入（不會以明文寫進 SQL）");
-        plan.PlaintextPiiEncrypted.Add($"{owner}.{field}");
-        return node.GetValueKind() == JsonValueKind.Number
-            ? crypto.Encrypt(new FieldPlain.Num(AsDouble(node)!.Value))
-            : crypto.Encrypt(FieldPlain.Of(plain));
+            throw new InvalidOperationException($"{label} 是明文，需要 FIELD_ENC_KEY 才能加密後匯入（不會以明文寫進 SQL）");
+        plan.PlaintextPiiEncrypted.Add(label);
+        return crypto.Encrypt(plain);
     }
 
-    private static (int, int) YearMonth(string id)
-    {
-        var p = id.Split('_');
-        return (int.Parse(p[0], CultureInfo.InvariantCulture), int.Parse(p[1], CultureInfo.InvariantCulture));
-    }
-
-    private static string? Str(JsonObject? o, string k) => o?[k] is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
-    private static bool? Bool(JsonObject? o, string k) => o?[k] is JsonValue v && v.GetValueKind() is JsonValueKind.True or JsonValueKind.False ? v.GetValue<bool>() : null;
-    private static double? Num(JsonObject? o, string k) => AsDouble(o?[k]);
-
-    // 數字可能是 CLR long（剛從 Firestore 轉來）或 JsonElement（從快照檔讀回）— 兩種都要能讀
-    private static double? AsDouble(JsonNode? n)
-    {
-        if (n is not JsonValue v || v.GetValueKind() != JsonValueKind.Number) return null;
-        if (v.TryGetValue<double>(out var d)) return d;
-        if (v.TryGetValue<long>(out var l)) return l;
-        if (v.TryGetValue<int>(out var i)) return i;
-        return v.TryGetValue<JsonElement>(out var e) ? e.GetDouble() : null;
-    }
     private static string? Truncate(string? s, int n) => s is null || s.Length <= n ? s : s[..n];
-
-    // ISO 字串或 {"$ts": ...}；Firestore 裡兩種都有（前端寫字串、Admin SDK 寫 timestamp）
-    private static DateTimeOffset? Time(JsonObject? o, string k)
-    {
-        var n = o?[k];
-        string? s = n is JsonObject t ? Str(t, "$ts") : n is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
-        return s != null && DateTimeOffset.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var d) ? d : null;
-    }
 }

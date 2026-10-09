@@ -1,6 +1,11 @@
 using System.Threading.RateLimiting;
 using Aegis.Api.Auth;
+using Aegis.Api.Controllers;
+using Aegis.Api.Realtime;
+using Aegis.Api.Services;
 using Aegis.Data;
+using Aegis.Scheduling;
+using Aegis.Scheduling.Hosting;
 using Aegis.Security;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -62,12 +67,30 @@ builder.Services.AddRateLimiter(o =>
         _ => new FixedWindowRateLimiterOptions { PermitLimit = cfg.GetValue("Aegis:AuthPerMinute", 30), Window = TimeSpan.FromMinutes(1) }));
 });
 
-builder.Services.AddControllers();
+// —— 業務：文件讀寫、個人資料、帳號管理、即時推送、排班引擎（階段一）——
+builder.Services.AddScoped<DocumentService>();
+builder.Services.AddScoped<ProfileService>();
+builder.Services.AddScoped<AccountService>();
+builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
+builder.Services.AddScoped<RealtimeNotifier>();
+builder.Services.AddAegisScheduling(o =>
+{
+    o.Workers = cfg.GetValue("Aegis:Engine:Workers", Math.Max(1, Environment.ProcessorCount));
+    o.RequestBudgetSeconds = cfg.GetValue("Aegis:Engine:RequestBudgetSeconds", 110.0);
+});
+builder.Services.AddScoped<IScheduleDataStore, SqlScheduleDataStore>();
+builder.Services.AddSingleton<IScheduleJobNotifier, SignalRJobNotifier>();
+builder.Services.AddSingleton<RetentionService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RetentionService>());
+builder.Services.AddSignalR();
+
+builder.Services.AddControllers(o => o.Filters.Add<ApiExceptionFilter>());
 var app = builder.Build();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<ScheduleHub>("/hubs/schedule");
 app.MapGet("/health", () => Results.Ok(new { ok = true, service = "aegis-api" }));
 app.Run();
 

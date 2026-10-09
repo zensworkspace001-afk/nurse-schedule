@@ -60,6 +60,26 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         db.SaveChanges();
     }
 
+    // 排班 / 預假測試用：= local_test/run_demo.py SAMPLE_STAFF 的 14 人（N002 孕婦、N003 雙週、N009 實習生）
+    public void SeedSample14()
+    {
+        using var scope = Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AegisDbContext>();
+        var hasher = scope.ServiceProvider.GetRequiredService<IPasswordService>();
+        for (int i = 5; i <= 14; i++)
+        {
+            string id = $"N{i:000}";
+            db.Staff.Add(new Staff { StaffId = id, Name = id, Email = $"{id.ToLower()}@x", SpecialStatus = SpecialStatus.Standard,
+                                     LeaveStatus = id == "N009" ? "Student" : "None" });
+            db.Users.Add(new AppUser { Id = id, LoginId = id.ToLower(), StaffId = id, CreatedAt = DateTimeOffset.UtcNow, PasswordHash = hasher.Hash("Pass1word") });
+        }
+        var n002 = db.Staff.Single(s => s.StaffId == "N002"); n002.IsPregnantOrNursing = true;
+        var n003 = db.Staff.Single(s => s.StaffId == "N003"); n003.SpecialStatus = SpecialStatus.BiWeekly;
+        db.Users.Single(u => u.Id == "N004").Disabled = false;
+        db.Users.Single(u => u.Id == "N004").PasswordHash = hasher.Hash("Pass1word");
+        db.SaveChanges();
+    }
+
     protected override void Dispose(bool disposing)
     {
         base.Dispose(disposing);
