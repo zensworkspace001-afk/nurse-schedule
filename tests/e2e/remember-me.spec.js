@@ -6,8 +6,16 @@ import { creds, hasCreds } from './helpers/auth.js';
 //   不勾 → browserSessionPersistence → token 落在 sessionStorage（關閉即登出）
 // （此版 Firebase SDK 的 LOCAL persistence 寫 localStorage，非 IndexedDB——已用 storage dump 確認。）
 // 整條鏈路不碰 cookie，所以也順手斷言 document.cookie 沒有 Firebase 痕跡。
+// 地端版（E2E_BACKEND=aegis）：登入狀態不放瀏覽器儲存，改用 HttpOnly refresh cookie —
+//   勾選 → 持久 cookie（有 expires）；不勾 → session cookie（expires = -1，關瀏覽器就消失）；JS 讀不到（document.cookie 看不到）
+const AEGIS = process.env.E2E_BACKEND === 'aegis';
+
 test.describe('remember me persistence', () => {
   test.skip(!hasCreds('staff'), 'TEST_STAFF_ID / TEST_STAFF_PW env vars required');
+
+  async function refreshCookie(context) {
+    return (await context.cookies()).find((c) => c.name === 'aegis_rt') || null;
+  }
 
   function localStorageAuthKey(page) {
     return page.evaluate(
@@ -37,8 +45,17 @@ test.describe('remember me persistence', () => {
     await page.waitForTimeout(1500);
   }
 
-  test('勾選 → token 落在 localStorage（持久），不在 sessionStorage', async ({ page }) => {
+  test('勾選 → token 落在 localStorage（持久），不在 sessionStorage', async ({ page, context }) => {
     await doLogin(page, { remember: true });
+    if (AEGIS) {
+      const c = await refreshCookie(context);
+      expect(c, '應有 refresh cookie').toBeTruthy();
+      expect(c.expires, '記住我 = 持久 cookie').toBeGreaterThan(Date.now() / 1000 + 86400);
+      expect(c.httpOnly).toBe(true);
+      expect(await page.evaluate(() => document.cookie)).not.toMatch(/aegis_rt/);   // JS 讀不到
+      expect(await page.evaluate(() => localStorage.getItem('remember_me'))).not.toBe('false');
+      return;
+    }
 
     expect(await localStorageAuthKey(page), 'localStorage 應有 firebase:authUser').toBeTruthy();
     expect(await sessionStorageAuthKey(page), 'sessionStorage 不應有 firebase:authUser').toBeNull();
@@ -50,8 +67,15 @@ test.describe('remember me persistence', () => {
     expect(await page.evaluate(() => document.cookie)).not.toMatch(/firebase|authUser/i);
   });
 
-  test('不勾 → token 落在 sessionStorage（關閉即逝），不在 localStorage', async ({ page }) => {
+  test('不勾 → token 落在 sessionStorage（關閉即逝），不在 localStorage', async ({ page, context }) => {
     await doLogin(page, { remember: false });
+    if (AEGIS) {
+      const c = await refreshCookie(context);
+      expect(c, '應有 refresh cookie').toBeTruthy();
+      expect(c.expires, '不勾 = session cookie（關瀏覽器就消失）').toBe(-1);
+      expect(await page.evaluate(() => localStorage.getItem('remember_me'))).toBe('false');
+      return;
+    }
 
     expect(await sessionStorageAuthKey(page), 'sessionStorage 應有 firebase:authUser').toBeTruthy();
     expect(await localStorageAuthKey(page), 'localStorage 不應有 firebase:authUser').toBeNull();

@@ -151,3 +151,47 @@ dotnet test tests/Aegis.Migration.Tests   # 轉換、快照雜湊、試跑回滾
 ```bash
 dotnet test tests/Aegis.Api.Tests   # 19 項：登入 8 + API 11（權限矩陣、ETag、名單保護、遮罩、SignalR 推送、預假、排班背景工作、離職、首登個資、加密欄位、帳號同步）
 ```
+
+## 階段四：前端接地端後端（`src/backend/`）
+
+**同一套前端，在建置時選後端：**
+
+```bash
+npm run build                          # 預設 VITE_BACKEND=firebase：現行 Vercel + Firebase 正式環境（不變）
+VITE_BACKEND=aegis npm run build       # 地端：只打包 src/backend/aegis/（axios + @microsoft/signalr，不含任何 Firebase 程式）
+```
+
+元件一律 `import … from '@backend'`。兩個後端匯出的函式同名、同簽章、回傳的形狀也相同。地端版的對應方式：
+
+| 現行 | 地端 |
+|---|---|
+| 訂閱：`onSnapshot` | 先 GET 一次，之後收到 SignalR 推送就重抓；重連後也會補抓一次 |
+| 存檔：`setDoc` / `updateDoc` | PUT 並帶 `If-Match`。收到 409 時（決策 2A）載入最新版、提示使用者，不再自動重試 |
+| 登入：Firebase Auth | JWT 存在記憶體；refresh 用 HttpOnly cookie，401 時自動換發一次再重試 |
+| 排班：Cloud Run 同步回應 | 排背景工作，等 SignalR 推送完成；推送沒到就每 3 秒查一次 |
+| 國定假日：jsDelivr CDN | 前端同網域的 `/holidays/{year}.json`，由 `node aegis/scripts/fetch-holidays.mjs 2026 2027` 在可連網的機器下載 |
+| 天氣、自助重設密碼、AI、開發者時光機 | 依 `GET /api/features` 隱藏 |
+
+**本機跑地端整套：**
+
+```bash
+cd aegis/src/Aegis.Api && dotnet run -- --seed-demo        # http://localhost:5080，SQLite 加示範資料：admin / Admin1234、n001–n014 / Demo1234
+VITE_BACKEND=aegis npm run dev                             # http://localhost:5173（/api 與 /hubs 轉到 5080）
+E2E_BACKEND=aegis TEST_STAFF_ID=n004 TEST_STAFF_PW=Demo1234 TEST_ADMIN_ID=admin TEST_ADMIN_PW=Admin1234 npm run test:e2e
+```
+
+**e2e 結果：**
+
+- 地端 17/17：既有 14 項，加上地端專屬 3 項（SignalR 即時推送、同時編輯保護、CP-SAT 背景排班）。
+- 正式 Firebase 14/14：地端專屬的 3 項會自動略過。
+- CI 的 `e2e-aegis` job 每個 PR 都會跑地端這一組。
+
+**階段四一併修掉的問題：**
+
+- **員工管理的同時編輯。** 現行版本也有這個漏洞：A 編輯中、B 先存檔，A 再存時會用舊副本蓋掉 B 的修改。現在改成提示 A、載入最新版，不再默默覆蓋。
+- **後端與前端的小落差：**
+  - 啟用帳號的回應補上 `purpose`；
+  - 離職回應補上 `had_avatar`；
+  - 自己改密碼時要驗目前密碼（等同 Firebase 的 reauthenticate）；
+  - 公告可以匿名讀取，登入頁才顯示得出來；
+  - 沒有 refresh cookie 時回 204，不再回 401 讓瀏覽器 console 出現紅字。

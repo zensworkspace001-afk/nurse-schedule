@@ -52,6 +52,13 @@ public sealed class AuthService(
         return new LoginResult(true, null, null, pair, user);
     }
 
+    public async Task<bool> CheckPasswordAsync(string userId, string password, CancellationToken ct)
+    {
+        var user = await db.Users.AsNoTracking().FirstAsync(u => u.Id == userId, ct);
+        var legacy = await db.LegacyHashConfig.AsNoTracking().FirstOrDefaultAsync(ct);
+        return passwords.Verify(user, password ?? "", legacy) != PasswordCheck.Fail;
+    }
+
     public async Task<TokenPair?> RefreshAsync(string refresh, CancellationToken ct)
     {
         var consumed = await tokens.ConsumeRefreshAsync(refresh, ct);

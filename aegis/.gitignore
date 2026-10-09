@@ -4,3 +4,8 @@ obj/
 *.user
 # 根目錄 .gitignore 排除了 *.sln；這個方案檔 CI 與基準測試都要用
 !Aegis.sln
+
+# 開發用 SQLite 資料庫
+*.db
+*.db-shm
+*.db-wal

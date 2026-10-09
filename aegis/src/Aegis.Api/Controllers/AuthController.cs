@@ -12,7 +12,7 @@ namespace Aegis.Api.Controllers;
 public sealed class AuthController(AuthService auth, IOptions<AuthOptions> options) : ControllerBase
 {
     public sealed record LoginRequest(string LoginId, string Password, bool RememberMe = false);
-    public sealed record PasswordRequest(string NewPassword);
+    public sealed record PasswordRequest(string NewPassword, string? CurrentPassword = null);
     public sealed record LinkRequest(string Token, string NewPassword);
 
     [HttpPost("login")]
@@ -28,8 +28,9 @@ public sealed class AuthController(AuthService auth, IOptions<AuthOptions> optio
     [AllowAnonymous]
     public async Task<IActionResult> Refresh(CancellationToken ct)
     {
+        // 完全沒有 cookie = 本來就沒登入（開機還原 session 的正常情況）→ 204，不當錯誤；cookie 無效才 401
         if (!Request.Cookies.TryGetValue(options.Value.RefreshCookieName, out var rt) || string.IsNullOrEmpty(rt))
-            return Unauthorized(new { error = "登入已逾期，請重新登入" });
+            return NoContent();
         var pair = await auth.RefreshAsync(rt, ct);
         if (pair is null) { ClearCookie(); return Unauthorized(new { error = "登入已逾期，請重新登入" }); }
         return Ok(Issue(pair));
@@ -52,6 +53,9 @@ public sealed class AuthController(AuthService auth, IOptions<AuthOptions> optio
     [Authorize]
     public async Task<IActionResult> ChangePassword([FromBody] PasswordRequest req, CancellationToken ct)
     {
+        // 自己主動改密碼要先驗目前密碼（= Firebase reauthenticate）；強制改密（臨時 / 啟用後）不必帶
+        if (req.CurrentPassword != null && !await auth.CheckPasswordAsync(CurrentUser.From(User).UserId, req.CurrentPassword, ct))
+            return BadRequest(new { error = "目前密碼錯誤", code = "auth/wrong-password" });
         var problem = await auth.ChangePasswordAsync(CurrentUser.From(User).UserId, req.NewPassword, HttpContext, ct);
         return problem is null ? Ok(new { ok = true, message = "密碼已更新" }) : BadRequest(new { error = problem });
     }
@@ -62,7 +66,7 @@ public sealed class AuthController(AuthService auth, IOptions<AuthOptions> optio
     public async Task<IActionResult> Activate([FromBody] LinkRequest req, CancellationToken ct)
     {
         var (ok, msg) = await auth.UseLinkAsync(req.Token, req.NewPassword, HttpContext, ct);
-        return ok ? Ok(new { ok = true, message = msg }) : BadRequest(new { error = msg });
+        return ok ? Ok(new { ok = true, message = msg, purpose = msg == "帳號啟用成功" ? "activation" : "reset" }) : BadRequest(new { error = msg });
     }
 
     private object Issue(TokenPair pair)

@@ -17,8 +17,10 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@microsoft/signalr": "8.0.7",
     "@tensorflow-models/blazeface": "^0.1.0",
     "@tensorflow/tfjs": "^4.22.0",
+    "axios": "1.7.9",
     "busboy": "^1.6.0",
     "firebase": "^12.9.0",
     "firebase-admin": "^13.7.0",

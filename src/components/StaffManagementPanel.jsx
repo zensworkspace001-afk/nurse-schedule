@@ -11,11 +11,19 @@ const StaffManagementPanel = ({ staffData, setStaffData, currentUser, announceme
   const [searchQuery, setSearchQuery] = useState('');
   const [filterStatus, setFilterStatus] = useState('active'); // all | active | inactive — 日常操作預設只看在職
 
+  // 編輯中（有未儲存修改）時，別人更新了員工資料 → 記下來；儲存時不覆蓋別人的修改（見 handleSave）
+  const changedWhileEditingRef = useRef(false);
+  const latestStaffRef = useRef(staffData);
+
 useEffect(() => {
+  latestStaffRef.current = staffData;
   // ★ 只在「沒有未儲存的修改」時才接受雲端同步的資料
   setIsDirty(prev => {
     if (!prev) {
       setLocalStaff(staffData); // 沒在編輯中才更新
+      changedWhileEditingRef.current = false;
+    } else {
+      changedWhileEditingRef.current = true;
     }
     return prev; // isDirty 狀態保持不變
   });
@@ -185,6 +193,15 @@ useEffect(() => {
   };
 
 const handleSave = async () => {
+    // 0. 編輯期間有其他管理員更新了名單：用自己的舊副本存檔會蓋掉別人的修改 → 載入最新版、請使用者重改（不默默覆蓋）
+    if (changedWhileEditingRef.current) {
+      changedWhileEditingRef.current = false;
+      setLocalStaff(latestStaffRef.current);
+      setIsDirty(false);
+      alert('其他管理員剛更新了員工資料，已載入最新版本。\n您的修改沒有存入，請確認後再改一次。');
+      return;
+    }
+
     // 1. 更新前端畫面與觸發 Firestore 存檔 (靠 App.jsx 原本的 debounce 寫入)
     setStaffData(localStaff);
     setIsDirty(false);
