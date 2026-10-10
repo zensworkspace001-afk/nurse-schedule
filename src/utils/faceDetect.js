@@ -24,11 +24,15 @@ async function ensureModel() {
     }
 
     // 2. 載入 BlazeFace 模型
+    //    預設從 tfhub 下載權重；地端（隔離網路）由 aegis/deploy/package.sh 把模型放進 public/models/blazeface/，
+    //    web 映像建置時設 VITE_BLAZEFACE_MODEL_URL 指過去
     const blazeface = await import('@tensorflow-models/blazeface');
+    const modelUrl = import.meta.env.VITE_BLAZEFACE_MODEL_URL;
     const model = await blazeface.load({
       // maxFaces 設 5 — 我們只關心「有沒有臉」，但若使用者上傳合照也能正確判斷
       maxFaces: 5,
       // inputWidth/Height 用預設 128（BlazeFace 原生輸入大小）
+      ...(modelUrl ? { modelUrl } : {}),
     });
 
     return model;

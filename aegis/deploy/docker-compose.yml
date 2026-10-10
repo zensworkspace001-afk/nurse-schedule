@@ -1,0 +1,149 @@
+# 神盾計畫 地端部署（隔離網路單機）
+#   web（Nginx，HTTPS）→ api（Aegis.Api）→ db（SQL Server Express）
+#   migrator：每次啟動先以 sa 套用 EF Core migrations、建立 API 的最小權限帳號，成功結束後 api 才會啟動
+# 映像由 package.sh 在可連網機器建好、docker save 帶進來；這裡 pull_policy: never，絕不嘗試連外抓映像。
+# 設定見 .env（從 .env.example 複製）；機密見 secrets/README.md；憑證見 certs/README.md。
+
+name: aegis
+
+x-hardening: &hardening
+  security_opt: ["no-new-privileges:true"]
+  restart: unless-stopped
+  logging:
+    driver: json-file
+    options: { max-size: "20m", max-file: "5" }
+
+services:
+  db:
+    <<: *hardening
+    image: mcr.microsoft.com/mssql/server:${MSSQL_TAG:-2022-CU16-ubuntu-22.04}
+    pull_policy: never
+    platform: linux/amd64   # SQL Server 只有 x86-64 映像（Apple 晶片上由 Rosetta 執行）
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Express
+      MSSQL_MEMORY_LIMIT_MB: ${MSSQL_MEMORY_LIMIT_MB:-2048}
+      MSSQL_BACKUP_DIR: /var/opt/mssql/backup
+    # 映像不支援從檔案讀 sa 密碼 → 啟動前從 Docker secret 讀出來
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        export MSSQL_SA_PASSWORD="$$(cat /run/secrets/mssql_sa_password)"
+        if [ -x /opt/mssql/bin/permissions_check.sh ]; then exec /opt/mssql/bin/permissions_check.sh /opt/mssql/bin/sqlservr; fi
+        exec /opt/mssql/bin/sqlservr
+    secrets: [mssql_sa_password]
+    volumes:
+      - mssql-data:/var/opt/mssql
+      - ./backups:/var/opt/mssql/backup
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P \"$$(cat /run/secrets/mssql_sa_password)\" -b -Q 'SELECT 1' -o /dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    networks: [data]
+
+  migrator:
+    image: aegis-api:${AEGIS_VERSION:?請在 .env 設定 AEGIS_VERSION}
+    pull_policy: never
+    platform: ${AEGIS_PLATFORM:-linux/amd64}
+    build:
+      context: ..
+      dockerfile: deploy/api.Dockerfile
+    command: ["--migrate"]
+    environment:
+      Aegis__Db__Host: db
+      Aegis__Db__Name: ${AEGIS_DB_NAME:-Aegis}
+    secrets: [mssql_sa_password, db_app_password, field_enc_key, field_enc_keys_previous]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    depends_on:
+      db: { condition: service_healthy }
+    networks: [data]
+
+  api:
+    <<: *hardening
+    image: aegis-api:${AEGIS_VERSION}
+    pull_policy: never
+    platform: ${AEGIS_PLATFORM:-linux/amd64}
+    environment:
+      Aegis__Db__Host: db
+      Aegis__Db__Name: ${AEGIS_DB_NAME:-Aegis}
+      Aegis__TrustedProxies: ${AEGIS_SUBNET:-172.31.250.0/24}
+      Aegis__PublicBaseUrl: ${AEGIS_PUBLIC_URL:?請在 .env 設定 AEGIS_PUBLIC_URL}
+      Aegis__Engine__Workers: ${ENGINE_WORKERS:-2}
+      Smtp__Host: ${SMTP_HOST:-}
+      Smtp__Port: ${SMTP_PORT:-25}
+      Smtp__EnableSsl: ${SMTP_ENABLE_SSL:-false}
+      Smtp__User: ${SMTP_USER:-}
+      Smtp__From: ${SMTP_FROM:-nurse-schedule@localhost}
+    secrets: [db_app_password, field_enc_key, field_enc_keys_previous, jwt_signing_key, smtp_password]
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits: { cpus: "${API_CPUS:-2}", memory: "${API_MEMORY:-2g}" }   # CP-SAT 求解吃 CPU / 記憶體
+    healthcheck:
+      test: ["CMD", "dotnet", "/app/api/Aegis.Api.dll", "--healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    depends_on:
+      db: { condition: service_healthy }
+      migrator: { condition: service_completed_successfully }
+    networks: [data, app]
+
+  web:
+    <<: *hardening
+    image: aegis-web:${AEGIS_VERSION}
+    pull_policy: never
+    platform: ${AEGIS_PLATFORM:-linux/amd64}
+    build:
+      context: ../..
+      dockerfile: aegis/deploy/web.Dockerfile
+    environment:
+      AEGIS_HTTPS_PORT: ${AEGIS_HTTPS_PORT:-443}
+    ports:
+      - "${AEGIS_BIND:-0.0.0.0}:${AEGIS_HTTPS_PORT:-443}:8443"
+      - "${AEGIS_BIND:-0.0.0.0}:${AEGIS_HTTP_PORT:-80}:8080"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+    read_only: true
+    # 範本在啟動時展開到 conf.d/：tmpfs 要給 nginx 使用者（UID 101）寫，預設是 root 的
+    tmpfs:
+      - /tmp:uid=101,gid=101
+      - /etc/nginx/conf.d:uid=101,gid=101,mode=0755
+    cap_drop: [ALL]
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      api: { condition: service_healthy }
+    networks: [app]
+
+networks:
+  # 資料庫只在內部網路：沒有對外 port，也不能主動連外
+  data:
+    internal: true
+  # Nginx ↔ API；API 從這裡連院內 SMTP。子網段固定，API 只信任這段送來的 X-Forwarded-*
+  app:
+    ipam:
+      config:
+        - subnet: ${AEGIS_SUBNET:-172.31.250.0/24}
+
+volumes:
+  mssql-data:
+
+# 檔案型 Docker secret（掛在容器的 /run/secrets/<名稱>）。選用的兩個留空檔即可（install.sh 會建）
+secrets:
+  mssql_sa_password:       { file: ./secrets/mssql_sa_password }
+  db_app_password:         { file: ./secrets/db_app_password }
+  field_enc_key:           { file: ./secrets/field_enc_key }
+  field_enc_keys_previous: { file: ./secrets/field_enc_keys_previous }
+  jwt_signing_key:         { file: ./secrets/jwt_signing_key }
+  smtp_password:           { file: ./secrets/smtp_password }

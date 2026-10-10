@@ -6,8 +6,9 @@ using Microsoft.EntityFrameworkCore;
 // 神盾計畫階段二 ETL
 //   export      --out snapshot.json [--include-auth] [--project id]     可連網機器：Firestore → 快照（唯讀）
 //   import      --in snapshot.json --provider sqlserver|sqlite --connection "<cs>" [--commit]   隔離網路：快照 → SQL
+//               地端容器內可省略 --connection：以 Docker secret mssql_sa_password 連 db（--database 預設 Aegis），見 aegis/deploy/README.md
 //   dryrun-live [--include-auth] [--project id]                         匯出 → 轉換 → 寫進記憶體 SQLite 再回滾，只印報告、不落地
-// 金鑰：FIELD_ENC_KEY（+ FIELD_ENC_KEYS_PREVIOUS）環境變數；匯入有明文個資時必須提供
+// 金鑰：FIELD_ENC_KEY（+ FIELD_ENC_KEYS_PREVIOUS）環境變數或 Docker secret；匯入有明文個資時必須提供
 var argv = args.ToList();
 string? Arg(string name) { int i = argv.IndexOf(name); return i >= 0 && i + 1 < argv.Count ? argv[i + 1] : null; }
 bool Flag(string name) => argv.Contains(name);
@@ -16,7 +17,7 @@ string project = Arg("--project") ?? "scheduling-systembachelor";
 IFieldCrypto? CryptoFromEnv(bool allowEphemeral, out string? note)
 {
     note = null;
-    var key = Environment.GetEnvironmentVariable("FIELD_ENC_KEY");
+    var key = Secrets.Get("FIELD_ENC_KEY");
     if (!string.IsNullOrWhiteSpace(key)) return new FieldCrypto(StaticFieldKeyProvider.FromEnvironment());
     if (!allowEphemeral) return null;
     note = "未提供 FIELD_ENC_KEY：試跑用一次性金鑰模擬明文個資的加密，正式匯入時必須提供正式金鑰";
@@ -41,8 +42,11 @@ try
             var snap = await SnapshotFile.LoadAsync(Arg("--in") ?? throw new ArgumentException("缺少 --in"));
             var crypto = CryptoFromEnv(allowEphemeral: false, out _);
             var opts = new DbContextOptionsBuilder<AegisDbContext>();
-            string cs = Arg("--connection") ?? throw new ArgumentException("缺少 --connection");
-            if (Arg("--provider") == "sqlite") opts.UseSqlite(cs); else opts.UseSqlServer(cs);
+            bool sqlite = Arg("--provider") == "sqlite";
+            string cs = Arg("--connection") ?? (sqlite ? throw new ArgumentException("缺少 --connection")
+                : AegisDatabase.SqlServerConnection(Environment.GetEnvironmentVariable("AEGIS_DB_HOST") ?? "db", Arg("--database") ?? "Aegis", "sa",
+                                                    Secrets.Get("MSSQL_SA_PASSWORD") ?? throw new ArgumentException("缺少 --connection（或 Docker secret mssql_sa_password）")));
+            if (sqlite) opts.UseSqlite(cs); else opts.UseSqlServer(cs);
             await using var db = new AegisDbContext(opts.Options);
             var plan = new SnapshotTransformer(crypto).Transform(snap, new MigrationOptions());
             var report = await new MigrationLoader(db, crypto).LoadAsync(plan, Flag("--commit"));

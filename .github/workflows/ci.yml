@@ -110,3 +110,102 @@ jobs:
           name: playwright-test-results-aegis
           path: test-results/
           retention-days: 14
+
+  # 神盾計畫階段五：照正式流程部署（install.sh + docker compose + SQL Server Express + Nginx HTTPS），
+  # 再對部署起來的站跑同一組地端 e2e；資料層 / ETL / API 測試改連真的 SQL Server；最後演練備份與還原。
+  e2e-aegis-docker:
+    name: 地端部署驗收（Docker Compose + SQL Server）
+    runs-on: ubuntu-latest
+    needs: lint
+    timeout-minutes: 60
+    env:
+      E2E_BACKEND: aegis
+      E2E_BASE_URL: https://localhost:8443
+      COMPOSE_FILE: docker-compose.yml:docker-compose.ci.yml
+      AEGIS_VERSION: ci
+      # 示範資料的帳號（migrator --seed-demo 建立；不是正式帳密）
+      AEGIS_DEMO_ADMIN_PW: Admin1234
+      AEGIS_DEMO_STAFF_PW: Demo1234
+      TEST_STAFF_ID: n004
+      TEST_STAFF_PW: Demo1234
+      TEST_ADMIN_ID: admin
+      TEST_ADMIN_PW: Admin1234
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: npm ci --ignore-scripts   # 不執行套件的安裝腳本
+      - name: Install Playwright browsers
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+      - name: 設定檔與自簽憑證（正式環境由廠內 CA 簽發）
+        working-directory: aegis/deploy
+        run: |
+          cp .env.example .env
+          sed -i -e 's/^AEGIS_VERSION=.*/AEGIS_VERSION=ci/' \
+                 -e 's#^AEGIS_PUBLIC_URL=.*#AEGIS_PUBLIC_URL=https://localhost:8443#' \
+                 -e 's/^AEGIS_HTTPS_PORT=.*/AEGIS_HTTPS_PORT=8443/' \
+                 -e 's/^AEGIS_HTTP_PORT=.*/AEGIS_HTTP_PORT=8080/' \
+                 -e 's/^AEGIS_BIND=.*/AEGIS_BIND=127.0.0.1/' .env
+          openssl req -x509 -newkey rsa:2048 -nodes -days 2 -subj "/CN=localhost" \
+            -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -keyout certs/tls.key -out certs/tls.crt
+      - name: 建置映像（與 package.sh 相同）
+        run: |
+          docker build -f aegis/deploy/api.Dockerfile -t aegis-api:ci aegis
+          docker build -f aegis/deploy/web.Dockerfile -t aegis-web:ci .
+      - name: install.sh（產生機密 → migrations → 啟動 → 健康檢查）
+        working-directory: aegis/deploy
+        run: sudo -E ./install.sh --skip-load --generate-secrets --new-field-key
+      - name: 安全設定檢查
+        working-directory: aegis/deploy
+        run: |
+          for s in api web; do uid=$(sudo -E docker compose exec -T $s id -u); echo "$s uid=$uid"; test "$uid" != 0; done
+          # 正式設定（不含 CI 覆寫）只有 web 對外開 port
+          test "$(COMPOSE_FILE=docker-compose.yml docker compose config --format json | jq -r '[.services | to_entries[] | select(.value.ports) | .key] | join(",")')" = web
+          curl -sk -D - -o /dev/null https://localhost:8443/ | grep -i -E '^(strict-transport-security|content-security-policy):'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)" = 301
+      - name: Playwright e2e（經 Nginx HTTPS 打部署起來的站）
+        run: npm run test:e2e
+      - name: 資料層 / ETL / API 測試（真的 SQL Server，走 migrations）
+        working-directory: aegis
+        run: |
+          SA="$(sudo cat deploy/secrets/mssql_sa_password)"
+          echo "::add-mask::$SA"
+          export AEGIS_TEST_SQLSERVER="Server=127.0.0.1,1433;User Id=sa;Password=$SA;TrustServerCertificate=True"
+          mkdir -p "$RUNNER_TEMP/etl"
+          export AEGIS_SAMPLE_SNAPSHOT_OUT="$RUNNER_TEMP/etl/sample-snapshot.json"
+          dotnet test tests/Aegis.Data.Tests
+          dotnet test tests/Aegis.Migration.Tests
+          dotnet test tests/Aegis.Api.Tests
+      - name: 映像裡的 ETL 工具（試跑 → 正式匯入）
+        working-directory: aegis/deploy
+        run: |
+          KEY=AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=   # 測試樣本的欄位金鑰（tests/Aegis.Migration.Tests，非正式金鑰）
+          chmod -R a+rX "$RUNNER_TEMP/etl"
+          for mode in "" "--commit"; do
+            sudo -E docker compose run --rm --no-deps -e FIELD_ENC_KEY=$KEY -v "$RUNNER_TEMP/etl:/import:ro" --entrypoint dotnet \
+              migrator /app/tools/Aegis.Migration.dll import --in /import/sample-snapshot.json --database AegisEtlSmoke $mode
+          done
+      - name: 備份與還原演練
+        working-directory: aegis/deploy
+        run: |
+          sudo -E ./backup/backup.sh
+          BAK="$(sudo ls -t backups | grep -E '^Aegis_.*\.bak$' | head -1)"
+          echo Aegis | sudo -E ./backup/restore.sh "backups/$BAK"
+          for i in $(seq 1 60); do curl -fsk https://localhost:8443/health | grep -q '"ok":true' && exit 0; sleep 5; done
+          exit 1
+      - name: 容器紀錄
+        if: failure()
+        working-directory: aegis/deploy
+        run: sudo -E docker compose ps -a; sudo -E docker compose logs --tail 200
+      - name: Upload failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-test-results-aegis-docker
+          path: test-results/
+          retention-days: 14

@@ -1,0 +1,10 @@
+# 白名單：只送前端建置需要的檔案（repo 根目錄的 .dockerignore 是給 Cloud Run 排班微服務用的，這裡不適用）
+*
+!package.json
+!package-lock.json
+!index.html
+!vite.config.js
+!shared/
+!src/
+!public/
+!aegis/deploy/nginx/

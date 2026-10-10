@@ -1,0 +1,104 @@
+# 神盾計畫 地端前端 + 反向代理（Nginx 終結 HTTPS，憑證由廠內 CA 簽發，掛在 /etc/nginx/certs）
+# templates/ 下的 *.template 啟動時以 envsubst 展開到 /etc/nginx/conf.d/（只展開已定義的環境變數 AEGIS_HTTPS_PORT，$host 這類 Nginx 變數不受影響）
+
+server_tokens off;
+
+# 存取紀錄不記查詢字串：SignalR 的 WebSocket 把登入權杖放在 ?access_token=…，用 $request 會把權杖寫進紀錄
+log_format aegis '$remote_addr - [$time_local] "$request_method $uri $server_protocol" $status $body_bytes_sent '
+                 'rt=$request_time urt=$upstream_response_time "$http_user_agent"';
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+upstream aegis_api {
+    server api:8080;
+    keepalive 16;
+}
+
+# HTTP：只做導向，以及容器健康檢查
+server {
+    listen 8080;
+    server_name _;
+    access_log /dev/stdout aegis;   # server 層設定才會取代映像預設（http 層、記完整網址）的那份
+
+    location = /nginx-health {
+        access_log off;
+        default_type text/plain;
+        return 200 "ok\n";
+    }
+
+    location / {
+        return 301 https://$host:${AEGIS_HTTPS_PORT}$request_uri;
+    }
+}
+
+server {
+    listen 8443 ssl;
+    http2 on;
+    server_name _;
+    access_log /dev/stdout aegis;
+
+    ssl_certificate     /etc/nginx/certs/tls.crt;   # 伺服器憑證（含中繼 CA 串鏈）
+    ssl_certificate_key /etc/nginx/certs/tls.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+    ssl_session_tickets off;
+
+    root /usr/share/nginx/html;
+
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+    # 頭貼（base64）與 Excel 上傳
+    client_max_body_size 10m;
+
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    # 只送 Nginx 看到的來源 IP（不沿用用戶端自帶的 X-Forwarded-For，避免偽造來源繞過頻率限制）
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Proto https;
+
+    location /api/ {
+        include /etc/nginx/conf.d/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        proxy_set_header Connection "";
+        proxy_read_timeout 300s;   # 排班引擎是背景工作 + 推送，一般請求很快；保留餘裕給人力試算
+        proxy_pass http://aegis_api;
+    }
+
+    # SignalR（WebSocket；不支援時退回長輪詢）
+    location /hubs/ {
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_read_timeout 1h;
+        proxy_buffering off;
+        proxy_pass http://aegis_api;
+    }
+
+    location = /health {
+        access_log off;
+        include /etc/nginx/conf.d/snippets/security-headers.conf;
+        add_header Cache-Control "no-store" always;
+        proxy_set_header Connection "";
+        proxy_pass http://aegis_api/health;
+    }
+
+    # Vite 產出的檔名含內容雜湊 → 可以永久快取
+    location /assets/ {
+        include /etc/nginx/conf.d/snippets/security-headers.conf;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+        try_files $uri =404;
+    }
+
+    location / {
+        include /etc/nginx/conf.d/snippets/security-headers.conf;
+        add_header Cache-Control "no-cache" always;
+        try_files $uri $uri/ /index.html;   # SPA：/activate、/privacy-notice 等前端路由
+    }
+}

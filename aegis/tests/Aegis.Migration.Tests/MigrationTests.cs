@@ -2,7 +2,7 @@ using System.Text.Json.Nodes;
 using Aegis.Data;
 using Aegis.Migration;
 using Aegis.Security;
-using Microsoft.Data.Sqlite;
+using Aegis.Tests.Shared;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 using Xunit.Abstractions;
@@ -132,12 +132,21 @@ public sealed class MigrationTests(ITestOutputHelper output)
         File.Delete(path); File.Delete(path + ".sha256");
     }
 
+    // CI 的部署驗收（ci.yml e2e-aegis-docker）拿這份樣本測「正式映像裡的匯入工具」：設了 AEGIS_SAMPLE_SNAPSHOT_OUT 才寫檔
+    [Fact]
+    public async Task 輸出樣本快照給部署驗收()
+    {
+        var outPath = Environment.GetEnvironmentVariable("AEGIS_SAMPLE_SNAPSHOT_OUT");
+        if (string.IsNullOrEmpty(outPath)) return;
+        await SnapshotFile.SaveAsync(Sample(), outPath);
+        Assert.True(File.Exists(outPath + ".sha256"));
+    }
+
     [Fact]
     public async Task 匯入_試跑回滾_正式寫入對帳全部相符_加密欄位可解_檢視表可用()
     {
-        await using var conn = new SqliteConnection("DataSource=:memory:");
-        await conn.OpenAsync();
-        DbContextOptions<AegisDbContext> opts = new DbContextOptionsBuilder<AegisDbContext>().UseSqlite(conn).Options;
+        using var testDb = new TestDatabase();   // SQLite，或 CI 的 SQL Server（AEGIS_TEST_SQLSERVER）
+        DbContextOptions<AegisDbContext> opts = testDb.Options;
         // 經過檔案存讀（數字型別與正式流程相同）
         var path = Path.Combine(Path.GetTempPath(), $"snap-{Guid.NewGuid():N}.json");
         await SnapshotFile.SaveAsync(Sample(), path);

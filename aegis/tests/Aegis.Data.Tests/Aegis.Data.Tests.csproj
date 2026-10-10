@@ -26,4 +26,8 @@
     <ProjectReference Include="..\..\src\Aegis.Scheduling\Aegis.Scheduling.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shared\TestDatabase.cs" Link="Shared\TestDatabase.cs" />
+  </ItemGroup>
+
 </Project>

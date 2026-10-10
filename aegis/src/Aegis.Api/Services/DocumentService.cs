@@ -21,6 +21,9 @@ public sealed class DocumentService(AegisDbContext db, IFieldCrypto crypto, Time
     private static void CheckETag(JsonNode? current, string? ifMatch)
     {
         if (ifMatch is null || ifMatch == "*") return;
+        // 反向代理壓縮回應時會把 ETag 改成弱驗證（Nginx gzip：W/"…"），瀏覽器就帶 W/"…" 回來。
+        // 我們的 ETag 是內容雜湊，強弱比對結果相同 → 去掉 W/ 再比
+        if (ifMatch.StartsWith("W/", StringComparison.Ordinal)) ifMatch = ifMatch[2..];
         if (ifMatch != ETagOf(current)) throw new ConcurrencyConflictException("資料已被其他人更新，請重新整理後再儲存（為避免覆蓋別人的修改）");
     }
 

@@ -1,0 +1,10 @@
+# BuildKit：「<Dockerfile 名稱>.dockerignore」優先於建置脈絡根目錄的 .dockerignore
+**/bin/
+**/obj/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+baseline/
+tests/
+deploy/
+.config/
